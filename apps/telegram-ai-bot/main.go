@@ -38,10 +38,10 @@ func ensureInit() {
 		}
 	}
 	if chatID == 0 {
-		logMsg("ERROR: telegram_chat_id not configured")
-		return
+		logMsg("WARN: telegram_chat_id 未配置，进入 discovery 模式，收到消息后会广播 chat_id")
+	} else {
+		logMsg(fmt.Sprintf("Telegram AI Bot 初始化完成 (token=...%s, chatID=%d)", token[len(token)-4:], chatID))
 	}
-	logMsg(fmt.Sprintf("Telegram AI Bot 初始化完成 (token=...%s, chatID=%d)", token[len(token)-4:], chatID))
 
 	// 注册客户端上下文，让 AI 知道回复目标是 Telegram
 	request("register_client_context", map[string]interface{}{
@@ -60,7 +60,9 @@ func ensureInit() {
 	})
 
 	// 从 backend 获取命令列表，注册到 Telegram Bot Commands
-	registerBotCommands()
+	if chatID != 0 {
+		registerBotCommands()
+	}
 }
 
 //go:wasmexport on_event
@@ -284,7 +286,7 @@ func onCommandResult(data json.RawMessage) {
 }
 
 func pollOnce() {
-	if token == "" || chatID == 0 {
+	if token == "" {
 		return
 	}
 	lastUpdateID := 0
@@ -319,6 +321,34 @@ func pollOnce() {
 				continue
 			}
 			msg := update.Message
+
+			// Discovery 模式：chat_id 未配置，广播提示
+			if chatID == 0 {
+				userName := ""
+				if msg.From != nil {
+					userName = msg.From.FirstName
+				}
+				cidStr := strconv.Itoa(msg.Chat.ID)
+				logMsg(fmt.Sprintf("[discovery] 收到来自 %s 的消息, chat_id=%s", userName, cidStr))
+
+				// 广播 config_hint 给所有客户端
+				request("notify_config_hint", map[string]interface{}{
+					"appId":    "telegram-ai-bot",
+					"appName":  "Telegram Bot",
+					"key":      "telegram_chat_id",
+					"value":    cidStr,
+					"userName": userName,
+					"message":  fmt.Sprintf("Telegram 用户 [%s] 发来消息，chat_id 为 %s，请在应用设置中填入", userName, cidStr),
+				})
+
+				// 回复用户提示
+				sendTelegramAsync(msg.Chat.ID, fmt.Sprintf(
+					"⚙️ Bot 尚未配置 chat_id。\n\n你的 Chat ID 是: %s\n\n请在 WebOS 设置中将此 ID 填入 Telegram Bot 的 chat_id 配置项。",
+					cidStr,
+				), nil)
+				continue
+			}
+
 			userText := msg.Text
 			logMsg(fmt.Sprintf("[chat:%d] %s: %s", msg.Chat.ID, msg.From.FirstName, userText))
 			if userText == "/start" {

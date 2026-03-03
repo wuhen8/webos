@@ -147,6 +147,36 @@ func InitWasmBridge() {
 		return json.Marshal(map[string]string{"requestId": reqID})
 	})
 
+	// Config hint broadcast — WASM apps can notify all clients about discovered config values.
+	// Used when a bot receives a message but has no chat_id configured yet.
+	wasm.RegisterSyncHandler("notify_config_hint", func(payload json.RawMessage) ([]byte, error) {
+		var p struct {
+			AppID    string `json:"appId"`
+			AppName  string `json:"appName"`
+			Key      string `json:"key"`
+			Value    string `json:"value"`
+			UserName string `json:"userName"`
+			Message  string `json:"message"`
+		}
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return json.Marshal(map[string]string{"error": err.Error()})
+		}
+		if p.AppID == "" || p.Key == "" || p.Value == "" {
+			return json.Marshal(map[string]string{"error": "appId, key, value are required"})
+		}
+		// Broadcast to all connected clients (Web UI, other bots, etc.)
+		chatSvc.GetBroadcastSink().OnSystemEvent("config_hint", map[string]string{
+			"appId":    p.AppID,
+			"appName":  p.AppName,
+			"key":      p.Key,
+			"value":    p.Value,
+			"userName": p.UserName,
+			"message":  p.Message,
+		})
+		log.Printf("[config_hint] %s: %s=%s (from user: %s)", p.AppID, p.Key, p.Value, p.UserName)
+		return json.Marshal(map[string]string{"ok": "broadcast"})
+	})
+
 	rt := wasm.GetRuntime()
 	rt.OnProcStart = RegisterWasmSink
 	rt.OnProcStop = UnregisterWasmSink
