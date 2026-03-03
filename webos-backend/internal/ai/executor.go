@@ -107,6 +107,24 @@ func (b *BroadcastSink) OnSystemEvent(msgType string, data interface{}) {
 	b.broadcast(func(_ string, s ChatSink) { s.OnSystemEvent(msgType, data) })
 }
 
+// SendToSystemEvent sends a system event to a specific sink by ID. Returns false if not found.
+func (b *BroadcastSink) SendToSystemEvent(sinkID, msgType string, data interface{}) bool {
+	b.mu.RLock()
+	sink, ok := b.sinks[sinkID]
+	b.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[BroadcastSink] sink %s panicked: %v, removing", sinkID, r)
+			b.Remove(sinkID)
+		}
+	}()
+	sink.OnSystemEvent(msgType, data)
+	return true
+}
+
 // ---------------------------------------------------------------------------
 // AIExecutor
 // ---------------------------------------------------------------------------

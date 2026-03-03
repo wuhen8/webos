@@ -4,3 +4,4 @@ export { dockerService } from './dockerService'
 export { taskService } from './taskService'
 export { exec } from './execService'
 export { appStoreService } from './appStoreService'
+import './notifyService' // side-effect: registers system_notify handler

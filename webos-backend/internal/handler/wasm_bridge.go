@@ -147,33 +147,25 @@ func InitWasmBridge() {
 		return json.Marshal(map[string]string{"requestId": reqID})
 	})
 
-	// Config hint broadcast — WASM apps can notify all clients about discovered config values.
-	// Used when a bot receives a message but has no chat_id configured yet.
-	wasm.RegisterSyncHandler("notify_config_hint", func(payload json.RawMessage) ([]byte, error) {
+	// System notification broadcast — any WASM app can send notifications to all clients.
+	wasm.RegisterSyncHandler("broadcast_notify", func(payload json.RawMessage) ([]byte, error) {
 		var p struct {
-			AppID    string `json:"appId"`
-			AppName  string `json:"appName"`
-			Key      string `json:"key"`
-			Value    string `json:"value"`
-			UserName string `json:"userName"`
-			Message  string `json:"message"`
+			Level   string `json:"level"`   // info / warning / error / success
+			Title   string `json:"title"`
+			Message string `json:"message"`
+			Source  string `json:"source"`  // who sent it, e.g. "telegram-ai-bot"
+			Target  string `json:"target"`  // optional: specific sink ID, empty = broadcast all
 		}
 		if err := json.Unmarshal(payload, &p); err != nil {
 			return json.Marshal(map[string]string{"error": err.Error()})
 		}
-		if p.AppID == "" || p.Key == "" || p.Value == "" {
-			return json.Marshal(map[string]string{"error": "appId, key, value are required"})
+		if p.Message == "" {
+			return json.Marshal(map[string]string{"error": "message is required"})
 		}
-		// Broadcast to all connected clients (Web UI, other bots, etc.)
-		chatSvc.GetBroadcastSink().OnSystemEvent("config_hint", map[string]string{
-			"appId":    p.AppID,
-			"appName":  p.AppName,
-			"key":      p.Key,
-			"value":    p.Value,
-			"userName": p.UserName,
-			"message":  p.Message,
-		})
-		log.Printf("[config_hint] %s: %s=%s (from user: %s)", p.AppID, p.Key, p.Value, p.UserName)
+		if p.Level == "" {
+			p.Level = "info"
+		}
+		doBroadcastNotify(p.Level, p.Title, p.Message, p.Source, p.Target)
 		return json.Marshal(map[string]string{"ok": "broadcast"})
 	})
 

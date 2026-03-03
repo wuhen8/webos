@@ -331,14 +331,12 @@ func pollOnce() {
 				cidStr := strconv.Itoa(msg.Chat.ID)
 				logMsg(fmt.Sprintf("[discovery] 收到来自 %s 的消息, chat_id=%s", userName, cidStr))
 
-				// 广播 config_hint 给所有客户端
-				request("notify_config_hint", map[string]interface{}{
-					"appId":    "telegram-ai-bot",
-					"appName":  "Telegram Bot",
-					"key":      "telegram_chat_id",
-					"value":    cidStr,
-					"userName": userName,
-					"message":  fmt.Sprintf("Telegram 用户 [%s] 发来消息，chat_id 为 %s，请在应用设置中填入", userName, cidStr),
+				// 广播系统通知给所有客户端
+				request("broadcast_notify", map[string]interface{}{
+					"level":   "info",
+					"title":   "Telegram Chat ID",
+					"message": fmt.Sprintf("用户 [%s] 发来消息，Chat ID: %s，请在 Telegram Bot 设置中填入", userName, cidStr),
+					"source":  "telegram-ai-bot",
 				})
 
 				// 回复用户提示

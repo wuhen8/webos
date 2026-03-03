@@ -139,6 +139,9 @@ func main() {
 	// External AI API — uses API token auth, not JWT
 	api.POST("/ai/send", handler.ExternalAISendHandler)
 
+	// System notification broadcast — uses API token auth
+	api.POST("/notify", handler.ExternalNotifyHandler)
+
 	// 统一 WebSocket（首条消息认证）
 	r.GET("/api/ws", func(c *gin.Context) {
 		handler.HandleUnifiedWS(c.Writer, c.Request)
