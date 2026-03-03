@@ -107,6 +107,8 @@ func on_event(ptr uint32, size uint32) uint32 {
 	case "tick":
 		ensureInit()
 		onTick()
+	default:
+		logMsg("未知事件: " + ev.Type)
 	}
 	return 0
 }
@@ -121,7 +123,8 @@ func startWSConnection() {
 	logMsg("正在获取飞书长连接地址...")
 
 	// 飞书 SDK 协议：直接用 AppID/AppSecret 请求，不需要 Bearer token
-	url := feishuBaseURL + "/callback/ws/endpoint"
+	// 注意：长连接 endpoint 不在 /open-apis 下，而是直接在 open.feishu.cn 根路径下
+	url := "https://open.feishu.cn/callback/ws/endpoint"
 	body := fmt.Sprintf(`{"AppID":"%s","AppSecret":"%s"}`, appID, appSecret)
 	httpRequestAsync("POST", url, body, "Content-Type: application/json\nlocale: zh", func(resp string) {
 		wsConnecting = false
@@ -188,6 +191,8 @@ func onWSMessage(data json.RawMessage) {
 	if json.Unmarshal(data, &d) != nil || d.ConnID != wsConnID {
 		return
 	}
+
+	logMsg(fmt.Sprintf("ws_message: binary=%v, len=%d", d.Binary, len(d.Data)))
 
 	if d.Binary {
 		// 二进制消息：base64 编码的 protobuf 帧

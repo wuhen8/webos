@@ -83,12 +83,34 @@ func drainSendQueue() {
 			return
 		}
 		url := feishuBaseURL + "/im/v1/messages?receive_id_type=chat_id"
+
+		// 使用飞书卡片消息，原生支持 Markdown 渲染
+		card := map[string]interface{}{
+			"type": "template",
+			"data": map[string]interface{}{
+				"template_variable": map[string]string{
+					"content": item.text,
+				},
+			},
+		}
+		// 飞书卡片 Markdown 模板：直接用 markdown 元素
+		card = map[string]interface{}{
+			"elements": []interface{}{
+				map[string]interface{}{
+					"tag":     "markdown",
+					"content": item.text,
+				},
+			},
+		}
+		cardJSON, _ := json.Marshal(card)
+
 		bodyMap := map[string]string{
 			"receive_id": item.chatID,
-			"msg_type":   "text",
-			"content":    mustJSON(map[string]string{"text": item.text}),
+			"msg_type":   "interactive",
+			"content":    string(cardJSON),
 		}
 		bodyBytes, _ := json.Marshal(bodyMap)
+
 		headers := fmt.Sprintf("Content-Type: application/json; charset=utf-8\nAuthorization: Bearer %s", token)
 		httpRequestAsync("POST", url, string(bodyBytes), headers, func(resp string) {
 			if strings.Contains(resp, `"code":0`) {
