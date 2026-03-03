@@ -74,6 +74,10 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn.SetReadDeadline(time.Time{}) // clear deadline
+
+	// Generate connID early so we can include it in the auth response
+	connID := genSid()
+
 	conn.WriteJSON(map[string]interface{}{
 		"type":    "auth",
 		"message": "ok",
@@ -81,13 +85,13 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 			"username": claims.Username,
 			"avatar":   "",
 			"homePath": "~",
+			"connId":   connID,
 		},
 	})
 
 	// ── Build WSConn ──
 	var writeMu sync.Mutex
 	done := make(chan struct{})
-	connID := genSid()
 
 	wc := &WSConn{
 		ConnID: connID,

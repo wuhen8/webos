@@ -141,6 +141,14 @@ func init() {
 			CategoryLabel: "📋 会话管理",
 			CategoryOrder: 15,
 		},
+		{
+			Name:          "notify",
+			Description:   "发送系统通知广播 / 查看已连接客户端",
+			Category:      "system",
+			CategoryLabel: "🔧 系统",
+			CategoryOrder: 30,
+			Args:          "[list | <消息内容>]",
+		},
 	}
 }
 
@@ -240,6 +248,8 @@ func (s *Service) ExecuteCommand(convID, cmdName, cmdArgs string) CommandResult 
 		return s.cmdCompress(convID)
 	case "conv":
 		return s.cmdConv(cmdArgs)
+	case "notify":
+		return s.cmdNotify(cmdArgs)
 	default:
 		return CommandResult{
 			Text:    fmt.Sprintf("未知命令: /%s\n输入 /help 查看可用命令。", cmdName),
@@ -626,4 +636,49 @@ func (s *Service) cmdConvNew() CommandResult {
 		}
 	}
 	return CommandResult{Text: fmt.Sprintf("已创建新对话: `%s`", convID)}
+}
+func (s *Service) cmdNotify(args string) CommandResult {
+	args = strings.TrimSpace(args)
+
+	// /notify list — 列出所有已连接的 sink
+	if args == "" || args == "list" {
+		ids := s.Executor.GetBroadcastSink().SinkIDs()
+		sort.Strings(ids)
+		if len(ids) == 0 {
+			return CommandResult{Text: "当前没有已连接的客户端。"}
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("**已连接客户端 (%d)：**\n\n", len(ids)))
+		for _, id := range ids {
+			sb.WriteString(fmt.Sprintf("- `%s`\n", id))
+		}
+		return CommandResult{Text: sb.String()}
+	}
+
+	// /notify @sinkId <message> — 定向发送
+	sink := s.Executor.GetBroadcastSink()
+	data := map[string]string{
+		"level":  "info",
+		"title":  "系统通知",
+		"source": "command",
+	}
+
+	if strings.HasPrefix(args, "@") {
+		parts := strings.SplitN(args, " ", 2)
+		target := strings.TrimPrefix(parts[0], "@")
+		if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
+			return CommandResult{Text: "用法: /notify @sinkId <消息内容>", IsError: true}
+		}
+		msg := strings.TrimSpace(parts[1])
+		data["message"] = msg
+		if !sink.SendToSystemEvent(target, "system_notify", data) {
+			return CommandResult{Text: fmt.Sprintf("客户端 `%s` 不存在或已断开", target), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("已发送通知到 `%s`: %s", target, msg)}
+	}
+
+	// /notify <message> — 广播
+	data["message"] = args
+	sink.OnSystemEvent("system_notify", data)
+	return CommandResult{Text: fmt.Sprintf("已广播通知: %s", args)}
 }

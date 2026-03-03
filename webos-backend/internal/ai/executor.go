@@ -125,6 +125,17 @@ func (b *BroadcastSink) SendToSystemEvent(sinkID, msgType string, data interface
 	return true
 }
 
+// SinkIDs returns all registered sink IDs.
+func (b *BroadcastSink) SinkIDs() []string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	ids := make([]string, 0, len(b.sinks))
+	for id := range b.sinks {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // ---------------------------------------------------------------------------
 // AIExecutor
 // ---------------------------------------------------------------------------
