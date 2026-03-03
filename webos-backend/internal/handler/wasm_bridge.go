@@ -201,13 +201,13 @@ func WasmRequest(msgType string, payload json.RawMessage) ([]byte, error) {
 func RegisterWasmSink(appID string) {
 	sink := newWasmEventSink(appID, nil)
 	sysCtx := chatSvc.GetSystemContext()
-	sysCtx.Subscribe("wasm_"+appID, sink)
+	sysCtx.Subscribe(appID, sink)
 }
 
 // UnregisterWasmSink removes the event sink for a wasm app.
 func UnregisterWasmSink(appID string) {
 	sysCtx := chatSvc.GetSystemContext()
-	sysCtx.Unsubscribe("wasm_" + appID)
+	sysCtx.Unsubscribe(appID)
 }
 
 // wasmEventSink implements ai.ChatSink via async channel.

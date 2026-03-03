@@ -147,20 +147,26 @@ type EnqueueMsg struct {
 }
 // executeCommand runs a slash command in an independent goroutine (never queued).
 // Results are broadcast to all sinks (WebSocket, WASM, etc.).
-func (e *AIExecutor) executeCommand(convID, cmdName, cmdArgs string) {
-	e.broadcastSink.OnSystemEvent("chat_command_progress", map[string]interface{}{
+func (e *AIExecutor) executeCommand(convID, cmdName, cmdArgs, clientID string) {
+	sendToClient := func(msgType string, data interface{}) {
+		if clientID == "" || !e.broadcastSink.SendToSystemEvent(clientID, msgType, data) {
+			e.broadcastSink.OnSystemEvent(msgType, data)
+		}
+	}
+
+	sendToClient("chat_command_progress", map[string]interface{}{
 		"command": cmdName, "state": "running",
 	})
 
 	result := e.service.ExecuteCommand(convID, cmdName, cmdArgs)
 
-	e.broadcastSink.OnSystemEvent("chat_command_progress", map[string]interface{}{
+	sendToClient("chat_command_progress", map[string]interface{}{
 		"command": cmdName, "state": "done",
 	})
 
 	e.service.HandleCommandResult(convID, result)
 
-	e.broadcastSink.OnSystemEvent("chat_command_result", map[string]interface{}{
+	sendToClient("chat_command_result", map[string]interface{}{
 		"conversationId": convID,
 		"command":        cmdName,
 		"text":           result.Text,
@@ -261,7 +267,7 @@ func (e *AIExecutor) Enqueue(convID, content, clientID string) EnqueueResult {
 
 	// Slash commands bypass the queue — independent goroutine ensures /stop /restart always work
 	if cmdName, cmdArgs, isCmd := ParseCommand(content); isCmd {
-		go e.executeCommand(convID, cmdName, cmdArgs)
+		go e.executeCommand(convID, cmdName, cmdArgs, clientID)
 		return EnqueueResult{Accepted: true}
 	}
 
