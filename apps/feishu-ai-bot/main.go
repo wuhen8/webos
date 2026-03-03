@@ -1,5 +1,6 @@
-// 飞书 AI Bot — WebOS Wasm App (Reactor 模式)
+// 飞书 AI Bot — WebOS Wasm App (长连接模式)
 //
+// 通过飞书 WebSocket 长连接接收事件，不再轮询拉取消息。
 // Build: GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o bot.wasm .
 package main
 
@@ -14,11 +15,16 @@ import (
 var (
 	appID       string
 	appSecret   string
-	chatID      string // 飞书 chat_id（群组或单聊）
 	initialized bool
 	replyBuf    strings.Builder
 	deltaCount  int
 	inCodeBlock bool
+
+	// 长连接状态
+	wsConnID     string // 当前 WebSocket 连接 ID
+	wsConnecting bool   // 是否正在连接中
+	wsReady      bool   // 连接是否就绪
+	tickCount    int    // tick 计数，用于重连间隔控制
 )
 
 func main() {}
@@ -31,18 +37,13 @@ func ensureInit() {
 
 	appID = configGet("feishu_app_id")
 	appSecret = configGet("feishu_app_secret")
-	chatID = configGet("feishu_chat_id")
 
 	if appID == "" || appSecret == "" {
 		logMsg("ERROR: feishu_app_id 或 feishu_app_secret 未配置")
 		return
 	}
-	if chatID == "" {
-		logMsg("WARN: feishu_chat_id 未配置，飞书 Bot 需要 chat_id 才能拉取消息，请在飞书群设置中获取群 ID 并填入配置")
-		return
-	}
 
-	logMsg(fmt.Sprintf("飞书 AI Bot 初始化完成 (appID=%s..., chatID=%s)", appID[:min(6, len(appID))], chatID))
+	logMsg(fmt.Sprintf("飞书 AI Bot 初始化完成 (appID=%s...)", appID[:min(6, len(appID))]))
 
 	// 注册客户端上下文
 	request("register_client_context", map[string]interface{}{
@@ -60,8 +61,11 @@ func ensureInit() {
 			"6. 回复尽量精炼",
 	})
 
-	// 获取 bot 自身信息（用于过滤自己发的消息）
+	// 获取 bot 自身信息
 	fetchBotInfo()
+
+	// 启动长连接
+	startWSConnection()
 }
 
 //go:wasmexport on_event
@@ -94,15 +98,270 @@ func on_event(ptr uint32, size uint32) uint32 {
 		onMediaAttachment(ev.Data)
 	case "system_notify":
 		onSystemNotify(ev.Data)
+
+	// WebSocket 事件（宿主推送）
+	case "ws_open":
+		onWSOpen(ev.Data)
+	case "ws_message":
+		onWSMessage(ev.Data)
+	case "ws_close":
+		onWSClose(ev.Data)
+	case "ws_error":
+		onWSError(ev.Data)
+
 	case "tick":
 		ensureInit()
-		pollOnce()
+		onTick()
 	}
 	return 0
 }
 
+// ==================== 飞书长连接管理 ====================
+
+// startWSConnection 获取飞书 WSS URL 并建立长连接
+func startWSConnection() {
+	if wsConnecting || wsReady {
+		return
+	}
+	wsConnecting = true
+	logMsg("正在获取飞书长连接地址...")
+
+	refreshToken(func(token string) {
+		if token == "" {
+			wsConnecting = false
+			logMsg("ERROR: 获取 token 失败，无法建立长连接")
+			return
+		}
+		// 调用飞书长连接 endpoint
+		url := feishuBaseURL + "/callback/ws/endpoint"
+		headers := fmt.Sprintf("Content-Type: application/json; charset=utf-8\nAuthorization: Bearer %s", token)
+		httpRequestAsync("POST", url, "{}", headers, func(resp string) {
+			wsConnecting = false
+			var r struct {
+				Code int `json:"code"`
+				Msg  string `json:"msg"`
+				Data struct {
+					URL string `json:"URL"`
+				} `json:"data"`
+			}
+			if json.Unmarshal([]byte(resp), &r) != nil || r.Code != 0 {
+				logMsg("ERROR: 获取飞书 WS URL 失败: " + resp[:min(len(resp), 300)])
+				return
+			}
+			if r.Data.URL == "" {
+				logMsg("ERROR: 飞书返回空 WS URL")
+				return
+			}
+			logMsg("飞书 WS URL 获取成功，正在连接...")
+			wsConnID = wsConnect(r.Data.URL, "")
+			if wsConnID == "" {
+				logMsg("ERROR: wsConnect 调用失败")
+			}
+		})
+	})
+}
+
+func onWSOpen(data json.RawMessage) {
+	var d struct {
+		ConnID string `json:"connId"`
+	}
+	json.Unmarshal(data, &d)
+	if d.ConnID == wsConnID {
+		wsReady = true
+		wsConnecting = false
+		logMsg("✅ 飞书 WebSocket 长连接已建立 (connID=" + wsConnID + ")")
+	}
+}
+
+func onWSMessage(data json.RawMessage) {
+	var d struct {
+		ConnID string `json:"connId"`
+		Data   string `json:"data"`
+		Binary bool   `json:"binary"`
+	}
+	if json.Unmarshal(data, &d) != nil || d.ConnID != wsConnID {
+		return
+	}
+	handleFeishuWSMessage(d.Data)
+}
+
+func onWSClose(data json.RawMessage) {
+	var d struct {
+		ConnID string `json:"connId"`
+	}
+	json.Unmarshal(data, &d)
+	if d.ConnID == wsConnID {
+		wsReady = false
+		wsConnID = ""
+		logMsg("⚠️ 飞书 WebSocket 连接已断开，将在下次 tick 重连")
+	}
+}
+
+func onWSError(data json.RawMessage) {
+	var d struct {
+		ConnID string `json:"connId"`
+		Error  string `json:"error"`
+	}
+	json.Unmarshal(data, &d)
+	if d.ConnID == wsConnID || wsConnID == "" {
+		wsReady = false
+		wsConnecting = false
+		wsConnID = ""
+		logMsg("❌ 飞书 WebSocket 错误: " + d.Error)
+	}
+}
+
+// onTick 定时检查连接状态，断线重连
+func onTick() {
+	tickCount++
+	if appID == "" || appSecret == "" {
+		return
+	}
+	// 每 10 个 tick（约 30 秒）检查一次，避免频繁重连
+	if !wsReady && !wsConnecting && tickCount%10 == 0 {
+		logMsg("尝试重新建立飞书长连接...")
+		startWSConnection()
+	}
+}
+
+// ==================== 飞书 WS 消息解析 ====================
+
+// handleFeishuWSMessage 解析飞书长连接推送的消息
+func handleFeishuWSMessage(raw string) {
+	// 飞书长连接消息格式：
+	// {"headers":{"event_id":"...","event_type":"...","token":"...","message_id":"..."},"event":{...}}
+	// 或 ping/pong 心跳
+	var envelope struct {
+		Type    string `json:"type"`
+		Headers struct {
+			EventID   string `json:"event_id"`
+			EventType string `json:"event_type"`
+			Token     string `json:"token"`
+			MessageID string `json:"message_id"`
+		} `json:"headers"`
+		Event json.RawMessage `json:"event"`
+	}
+	if json.Unmarshal([]byte(raw), &envelope) != nil {
+		return
+	}
+
+	// 心跳 pong：飞书会发 ping，我们需要回 pong
+	if envelope.Type == "pong" {
+		return
+	}
+	if envelope.Type == "ping" {
+		pong := `{"type":"pong"}`
+		wsSend(wsConnID, []byte(pong))
+		return
+	}
+
+	// 回复 ACK（飞书要求收到事件后回复，否则会重推）
+	if envelope.Headers.MessageID != "" {
+		ack := fmt.Sprintf(`{"headers":{"message_id":"%s"},"type":"ack"}`, envelope.Headers.MessageID)
+		wsSend(wsConnID, []byte(ack))
+	}
+
+	// 处理事件
+	switch envelope.Headers.EventType {
+	case "im.message.receive_v1":
+		handleIMMessage(envelope.Event)
+	default:
+		// 其他事件类型暂不处理
+		if envelope.Headers.EventType != "" {
+			logMsg("收到飞书事件: " + envelope.Headers.EventType)
+		}
+	}
+}
+
+// handleIMMessage 处理收到的即时消息事件
+func handleIMMessage(eventData json.RawMessage) {
+	var ev struct {
+		Sender struct {
+			SenderID struct {
+				OpenID string `json:"open_id"`
+			} `json:"sender_id"`
+			SenderType string `json:"sender_type"`
+		} `json:"sender"`
+		Message struct {
+			MessageID   string `json:"message_id"`
+			ChatID      string `json:"chat_id"`
+			ChatType    string `json:"chat_type"`
+			MessageType string `json:"message_type"`
+			Content     string `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(eventData, &ev) != nil {
+		return
+	}
+
+	// 跳过 bot 自己发的消息
+	if ev.Sender.SenderType == "app" {
+		return
+	}
+	if botOpenID != "" && ev.Sender.SenderID.OpenID == botOpenID {
+		return
+	}
+
+	// 只处理文本消息
+	if ev.Message.MessageType != "text" {
+		return
+	}
+
+	// 解析消息内容
+	var content struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal([]byte(ev.Message.Content), &content) != nil || content.Text == "" {
+		return
+	}
+
+	userText := strings.TrimSpace(content.Text)
+	userText = stripAtMention(userText)
+	if userText == "" {
+		return
+	}
+
+	// 记住回复目标 chat_id
+	currentChatID = ev.Message.ChatID
+
+	logMsg(fmt.Sprintf("[chat:%s] %s: %s", ev.Message.ChatID, ev.Sender.SenderID.OpenID, userText))
+
+	deltaCount = 0
+	request("chat_send", map[string]interface{}{
+		"messageContent": userText,
+		"clientId":       "feishu-ai-bot",
+	})
+}
+
+// currentChatID 当前正在对话的 chat_id（从最近收到的消息中获取）
+var currentChatID string
+
+// stripAtMention 去掉飞书消息中的 @bot mention
+func stripAtMention(text string) string {
+	for strings.Contains(text, "@_user_") {
+		start := strings.Index(text, "@_user_")
+		end := start + 7
+		for end < len(text) && text[end] >= '0' && text[end] <= '9' {
+			end++
+		}
+		text = text[:start] + text[end:]
+	}
+	return strings.TrimSpace(text)
+}
+
+// ==================== AI 回复处理 ====================
+
+func getChatID() string {
+	// 优先用长连接收到的 chatID，兜底用配置的
+	if currentChatID != "" {
+		return currentChatID
+	}
+	return configGet("feishu_chat_id")
+}
+
 func onChatDelta(data json.RawMessage) {
-	if chatID == "" {
+	cid := getChatID()
+	if cid == "" {
 		return
 	}
 	var d struct {
@@ -110,15 +369,13 @@ func onChatDelta(data json.RawMessage) {
 	}
 	json.Unmarshal(data, &d)
 	replyBuf.WriteString(d.Content)
-
 	deltaCount++
-	// 飞书没有 typing 状态 API，跳过
-
 	flushReplyBuf(false)
 }
 
 func onChatDone() {
-	if chatID == "" {
+	cid := getChatID()
+	if cid == "" {
 		return
 	}
 	flushReplyBuf(true)
@@ -126,7 +383,8 @@ func onChatDone() {
 }
 
 func onChatError(data json.RawMessage) {
-	if chatID == "" {
+	cid := getChatID()
+	if cid == "" {
 		return
 	}
 	var d struct {
@@ -135,11 +393,11 @@ func onChatError(data json.RawMessage) {
 	json.Unmarshal(data, &d)
 	flushReplyBuf(true)
 	inCodeBlock = false
-	sendFeishuAsync(chatID, "AI 错误: "+d.Error)
+	sendFeishuAsync(cid, "AI 错误: "+d.Error)
 }
 
-// flushReplyBuf 从 buffer 中切出可安全发送的段落
 func flushReplyBuf(force bool) {
+	cid := getChatID()
 	for {
 		s := replyBuf.String()
 		if strings.TrimSpace(s) == "" {
@@ -148,7 +406,7 @@ func flushReplyBuf(force bool) {
 		}
 		if force {
 			replyBuf.Reset()
-			sendFeishuAsync(chatID, s)
+			sendFeishuAsync(cid, s)
 			return
 		}
 
@@ -156,7 +414,7 @@ func flushReplyBuf(force bool) {
 		if cutPos <= 0 {
 			if len(s) > 3500 {
 				replyBuf.Reset()
-				sendFeishuAsync(chatID, s)
+				sendFeishuAsync(cid, s)
 			}
 			return
 		}
@@ -177,7 +435,7 @@ func flushReplyBuf(force bool) {
 				}
 			}
 		}
-		sendFeishuAsync(chatID, segment)
+		sendFeishuAsync(cid, segment)
 	}
 }
 
@@ -230,13 +488,8 @@ func findCutPoint(s string) int {
 	return 0
 }
 
-func isCodeFenceClose(trimmed string) bool {
-	return trimmed == "```"
-}
-
-func isCodeFenceOpen(trimmed string) bool {
-	return strings.HasPrefix(trimmed, "```")
-}
+func isCodeFenceClose(trimmed string) bool { return trimmed == "```" }
+func isCodeFenceOpen(trimmed string) bool  { return strings.HasPrefix(trimmed, "```") }
 
 func endsWithSentence(s string) bool {
 	s = strings.TrimRight(s, " \t\n")
@@ -249,7 +502,8 @@ func endsWithSentence(s string) bool {
 }
 
 func onCommandResult(data json.RawMessage) {
-	if chatID == "" {
+	cid := getChatID()
+	if cid == "" {
 		return
 	}
 	var d struct {
@@ -262,11 +516,13 @@ func onCommandResult(data json.RawMessage) {
 		if d.IsError {
 			prefix = "❌ "
 		}
-		sendFeishuAsync(chatID, prefix+d.Text)
+		sendFeishuAsync(cid, prefix+d.Text)
 	}
 }
+
 func onSystemNotify(data json.RawMessage) {
-	if chatID == "" {
+	cid := getChatID()
+	if cid == "" {
 		return
 	}
 	var d struct {
@@ -293,99 +549,13 @@ func onSystemNotify(data json.RawMessage) {
 		text += d.Title + "\n"
 	}
 	text += d.Message
-	sendFeishuAsync(chatID, text)
-}
-
-func pollOnce() {
-	if appID == "" || chatID == "" {
-		return
-	}
-	// 用上次拉取的时间戳作为起点
-	lastTime := kvGet("feishu_last_msg_time")
-	if lastTime == "" {
-		// 首次启动，用当前时间（秒级时间戳，飞书 API 需要秒级字符串）
-		// 由于 wasm 环境没有 time 包，我们用一个标记让第一次 poll 跳过历史消息
-		lastTime = "0"
-		kvSet("feishu_last_msg_time", lastTime)
-	}
-
-	pullMessages(chatID, lastTime, func(msgs []feishuMessage) {
-		if len(msgs) == 0 {
-			return
-		}
-		for _, msg := range msgs {
-			// 跳过 bot 自己发的消息
-			if msg.Sender.SenderType == "app" {
-				updateLastTime(msg.CreateTime)
-				continue
-			}
-			if botOpenID != "" && msg.Sender.SenderID.OpenID == botOpenID {
-				updateLastTime(msg.CreateTime)
-				continue
-			}
-
-			// 只处理文本消息
-			if msg.MsgType != "text" {
-				updateLastTime(msg.CreateTime)
-				continue
-			}
-
-			// 解析消息内容
-			var content struct {
-				Text string `json:"text"`
-			}
-			if json.Unmarshal([]byte(msg.Body.Content), &content) != nil || content.Text == "" {
-				updateLastTime(msg.CreateTime)
-				continue
-			}
-
-			userText := strings.TrimSpace(content.Text)
-			// 去掉 @bot 的 mention 标记
-			userText = stripAtMention(userText)
-			if userText == "" {
-				updateLastTime(msg.CreateTime)
-				continue
-			}
-
-			logMsg(fmt.Sprintf("[chat:%s] %s: %s", msg.ChatID, msg.Sender.SenderID.OpenID, userText))
-
-			updateLastTime(msg.CreateTime)
-
-			deltaCount = 0
-			request("chat_send", map[string]interface{}{
-				"messageContent": userText,
-				"clientId":       "feishu-ai-bot",
-			})
-		}
-	})
-}
-
-// updateLastTime 更新最后处理的消息时间戳
-func updateLastTime(createTime string) {
-	stored := kvGet("feishu_last_msg_time")
-	if createTime > stored {
-		kvSet("feishu_last_msg_time", createTime)
-	}
-}
-
-// stripAtMention 去掉飞书消息中的 @bot mention
-// 飞书文本消息中 @bot 会以 @_user_1 等形式出现
-func stripAtMention(text string) string {
-	// 飞书 @mention 格式: @_user_N 或 @_all
-	for strings.Contains(text, "@_user_") {
-		start := strings.Index(text, "@_user_")
-		end := start + 7
-		for end < len(text) && text[end] >= '0' && text[end] <= '9' {
-			end++
-		}
-		text = text[:start] + text[end:]
-	}
-	return strings.TrimSpace(text)
+	sendFeishuAsync(cid, text)
 }
 
 // onMediaAttachment 处理 AI 发送的文件/图片附件
 func onMediaAttachment(data json.RawMessage) {
-	if chatID == "" {
+	cid := getChatID()
+	if cid == "" {
 		return
 	}
 	var d struct {
@@ -403,8 +573,6 @@ func onMediaAttachment(data json.RawMessage) {
 	}
 	a := d.Attachment
 
-	// 飞书上传文件需要先上传到飞书服务器获取 file_key，再发送消息
-	// 这里简化处理：发送文件名和说明文本
 	text := fmt.Sprintf("📎 %s", a.FileName)
 	if a.Caption != "" {
 		text += "\n" + a.Caption
@@ -412,18 +580,16 @@ func onMediaAttachment(data json.RawMessage) {
 	if a.Size > 0 {
 		text += fmt.Sprintf(" (%s)", humanSize(a.Size))
 	}
-	sendFeishuAsync(chatID, text)
+	sendFeishuAsync(cid, text)
 
-	// 尝试通过 file_proxy_post 上传到飞书
-	// 飞书上传图片 API: POST /im/v1/images (form-data: image_type=message_type, image=file)
 	if strings.HasPrefix(a.MimeType, "image/") {
-		uploadImageToFeishu(a)
+		uploadImageToFeishu(cid, a)
 	} else {
-		uploadFileToFeishu(a)
+		uploadFileToFeishu(cid, a)
 	}
 }
 
-func uploadImageToFeishu(a struct {
+func uploadImageToFeishu(chatID string, a struct {
 	NodeID   string `json:"nodeId"`
 	Path     string `json:"path"`
 	FileName string `json:"fileName"`
@@ -436,20 +602,12 @@ func uploadImageToFeishu(a struct {
 			return
 		}
 		url := feishuBaseURL + "/im/v1/images"
-		fields := map[string]string{
-			"image_type": "message",
-		}
+		fields := map[string]string{"image_type": "message"}
 		resp := request("file_proxy_post", map[string]interface{}{
-			"url":       url,
-			"fileField": "image",
-			"nodeId":    a.NodeID,
-			"path":      a.Path,
-			"fileName":  a.FileName,
-			"fields":    fields,
-			"appId":     "feishu-ai-bot",
-			"headers":   map[string]string{"Authorization": "Bearer " + token},
+			"url": url, "fileField": "image", "nodeId": a.NodeID,
+			"path": a.Path, "fileName": a.FileName, "fields": fields,
+			"appId": "feishu-ai-bot", "headers": map[string]string{"Authorization": "Bearer " + token},
 		})
-
 		var result struct {
 			RequestID string `json:"requestId"`
 			Error     string `json:"error"`
@@ -468,30 +626,23 @@ func uploadImageToFeishu(a struct {
 					} `json:"data"`
 				}
 				if json.Unmarshal([]byte(resp), &imgResp) == nil && imgResp.Code == 0 && imgResp.Data.ImageKey != "" {
-					// 发送图片消息
 					content := mustJSON(map[string]string{"image_key": imgResp.Data.ImageKey})
-					bodyMap := map[string]string{
-						"receive_id": chatID,
-						"msg_type":   "image",
-						"content":    content,
-					}
+					bodyMap := map[string]string{"receive_id": chatID, "msg_type": "image", "content": content}
 					bodyBytes, _ := json.Marshal(bodyMap)
 					sendURL := feishuBaseURL + "/im/v1/messages?receive_id_type=chat_id"
-					headers := fmt.Sprintf("Content-Type: application/json; charset=utf-8\nAuthorization: Bearer %s", token)
-					httpRequestAsync("POST", sendURL, string(bodyBytes), headers, func(resp string) {
+					hdrs := fmt.Sprintf("Content-Type: application/json; charset=utf-8\nAuthorization: Bearer %s", token)
+					httpRequestAsync("POST", sendURL, string(bodyBytes), hdrs, func(resp string) {
 						if !strings.Contains(resp, `"code":0`) {
 							logMsg("WARN: 飞书图片消息发送失败: " + resp)
 						}
 					})
-				} else {
-					logMsg("WARN: 飞书图片上传响应异常: " + resp)
 				}
 			}
 		}
 	})
 }
 
-func uploadFileToFeishu(a struct {
+func uploadFileToFeishu(chatID string, a struct {
 	NodeID   string `json:"nodeId"`
 	Path     string `json:"path"`
 	FileName string `json:"fileName"`
@@ -504,21 +655,12 @@ func uploadFileToFeishu(a struct {
 			return
 		}
 		url := feishuBaseURL + "/im/v1/files"
-		fields := map[string]string{
-			"file_type": "stream",
-			"file_name": a.FileName,
-		}
+		fields := map[string]string{"file_type": "stream", "file_name": a.FileName}
 		resp := request("file_proxy_post", map[string]interface{}{
-			"url":       url,
-			"fileField": "file",
-			"nodeId":    a.NodeID,
-			"path":      a.Path,
-			"fileName":  a.FileName,
-			"fields":    fields,
-			"appId":     "feishu-ai-bot",
-			"headers":   map[string]string{"Authorization": "Bearer " + token},
+			"url": url, "fileField": "file", "nodeId": a.NodeID,
+			"path": a.Path, "fileName": a.FileName, "fields": fields,
+			"appId": "feishu-ai-bot", "headers": map[string]string{"Authorization": "Bearer " + token},
 		})
-
 		var result struct {
 			RequestID string `json:"requestId"`
 			Error     string `json:"error"`
@@ -538,15 +680,11 @@ func uploadFileToFeishu(a struct {
 				}
 				if json.Unmarshal([]byte(resp), &fileResp) == nil && fileResp.Code == 0 && fileResp.Data.FileKey != "" {
 					content := mustJSON(map[string]string{"file_key": fileResp.Data.FileKey})
-					bodyMap := map[string]string{
-						"receive_id": chatID,
-						"msg_type":   "file",
-						"content":    content,
-					}
+					bodyMap := map[string]string{"receive_id": chatID, "msg_type": "file", "content": content}
 					bodyBytes, _ := json.Marshal(bodyMap)
 					sendURL := feishuBaseURL + "/im/v1/messages?receive_id_type=chat_id"
-					headers := fmt.Sprintf("Content-Type: application/json; charset=utf-8\nAuthorization: Bearer %s", token)
-					httpRequestAsync("POST", sendURL, string(bodyBytes), headers, func(resp string) {
+					hdrs := fmt.Sprintf("Content-Type: application/json; charset=utf-8\nAuthorization: Bearer %s", token)
+					httpRequestAsync("POST", sendURL, string(bodyBytes), hdrs, func(resp string) {
 						if !strings.Contains(resp, `"code":0`) {
 							logMsg("WARN: 飞书文件消息发送失败: " + resp)
 						}
