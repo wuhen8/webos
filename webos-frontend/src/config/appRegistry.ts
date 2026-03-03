@@ -155,7 +155,8 @@ export async function syncInstalledApps(): Promise<void> {
       // Skip background-only sideload apps (no frontend, e.g. telegram bot)
       const isSideload = app.appType === 'sideload'
       const hasWasm = !!manifest.wasmModule
-      const isBackgroundOnly = isSideload && hasWasm && !staticManifests[app.id]?.name
+      const isBackground = !!manifest.background
+      const isBackgroundOnly = isSideload && (isBackground || (hasWasm && !staticManifests[app.id]?.name))
 
       // Build full URL for docker webview apps
       let webviewUrl: string | undefined
