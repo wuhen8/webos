@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -160,6 +161,7 @@ func hostWSConnect(appID string) func(ctx context.Context, m api.Module, urlPtr,
 }
 
 // hostWSSend: wasm 调用 ws_send(connIdPtr, connIdLen, dataPtr, dataLen) → 0/1
+// 自动检测数据类型：如果首字节 < 0x20 且不是有效 JSON/文本开头，则发送 BinaryMessage
 func hostWSSend(appID string) func(ctx context.Context, m api.Module, connIdPtr, connIdLen, dataPtr, dataLen uint32) uint32 {
 	return func(ctx context.Context, m api.Module, connIdPtr, connIdLen, dataPtr, dataLen uint32) uint32 {
 		connID, _ := readWasmString(m, connIdPtr, connIdLen)
@@ -179,7 +181,15 @@ func hostWSSend(appID string) func(ctx context.Context, m api.Module, connIdPtr,
 		dataCopy := make([]byte, len(data))
 		copy(dataCopy, data)
 
-		if err := wc.send(dataCopy); err != nil {
+		// 自动检测：首字节是 '{', '[', 或可打印 ASCII → TextMessage，否则 BinaryMessage
+		isBinary := len(dataCopy) > 0 && dataCopy[0] != '{' && dataCopy[0] != '[' && dataCopy[0] < 0x20
+		var err error
+		if isBinary {
+			err = wc.sendBinary(dataCopy)
+		} else {
+			err = wc.send(dataCopy)
+		}
+		if err != nil {
 			return 1
 		}
 		return 0
@@ -254,7 +264,7 @@ func wsReadLoop(wc *wsConn) {
 			evtData["data"] = string(data)
 			evtData["binary"] = false
 		case websocket.BinaryMessage:
-			evtData["data"] = string(data) // wasm 侧按需处理
+			evtData["data"] = base64.StdEncoding.EncodeToString(data)
 			evtData["binary"] = true
 		case websocket.PingMessage, websocket.PongMessage:
 			continue
