@@ -149,6 +149,45 @@ func init() {
 			CategoryOrder: 30,
 			Args:          "[list | <消息> | @客户端ID <消息>]",
 		},
+		{
+			Name:          "jobs",
+			Description:   "列出所有定时任务",
+			Category:      "system",
+			CategoryLabel: "🔧 系统",
+			CategoryOrder: 30,
+		},
+		{
+			Name:          "job run",
+			Description:   "立即执行指定定时任务",
+			Category:      "system",
+			CategoryLabel: "🔧 系统",
+			CategoryOrder: 30,
+			Args:          "<任务ID>",
+		},
+		{
+			Name:          "job enable",
+			Description:   "启用指定定时任务",
+			Category:      "system",
+			CategoryLabel: "🔧 系统",
+			CategoryOrder: 30,
+			Args:          "<任务ID>",
+		},
+		{
+			Name:          "job disable",
+			Description:   "禁用指定定时任务",
+			Category:      "system",
+			CategoryLabel: "🔧 系统",
+			CategoryOrder: 30,
+			Args:          "<任务ID>",
+		},
+		{
+			Name:          "job delete",
+			Description:   "删除指定定时任务",
+			Category:      "system",
+			CategoryLabel: "🔧 系统",
+			CategoryOrder: 30,
+			Args:          "<任务ID>",
+		},
 	}
 }
 
@@ -250,6 +289,10 @@ func (s *Service) ExecuteCommand(convID, cmdName, cmdArgs string) CommandResult 
 		return s.cmdConv(cmdArgs)
 	case "notify":
 		return s.cmdNotify(cmdArgs)
+	case "jobs":
+		return s.cmdJobs()
+	case "job":
+		return s.cmdJob(cmdArgs)
 	default:
 		return CommandResult{
 			Text:    fmt.Sprintf("未知命令: /%s\n输入 /help 查看可用命令。", cmdName),
@@ -682,3 +725,95 @@ func (s *Service) cmdNotify(args string) CommandResult {
 	sink.OnSystemEvent("system_notify", data)
 	return CommandResult{Text: fmt.Sprintf("已广播通知: %s", args)}
 }
+
+func (s *Service) cmdJobs() CommandResult {
+	jobs := ActionListScheduledJobs()
+	if len(jobs) == 0 {
+		return CommandResult{Text: "当前没有定时任务。"}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("**定时任务 (%d)：**\n\n", len(jobs)))
+	sb.WriteString("| ID | 名称 | 类型 | 计划 | 状态 | 启用 |\n")
+	sb.WriteString("|---|---|---|---|---|---|\n")
+	for _, j := range jobs {
+		enabled := "✅"
+		if !j.Enabled {
+			enabled = "❌"
+		}
+		schedule := j.CronDesc
+		if j.ScheduleType == "once" {
+			if j.RunAt > 0 {
+				t := time.Unix(j.RunAt/1000, 0)
+				schedule = "一次性 " + t.Format("01-02 15:04")
+			} else {
+				schedule = "一次性"
+			}
+		}
+		if schedule == "" {
+			schedule = j.CronExpr
+		}
+		name := j.Name
+		if len(name) > 30 {
+			name = name[:30] + "..."
+		}
+		sb.WriteString(fmt.Sprintf("| `%s` | %s | %s | %s | %s | %s |\n",
+			j.ID, name, j.ScheduleType, schedule, j.LastStatus, enabled))
+	}
+	sb.WriteString("\n命令: `/job run|enable|disable|delete <ID>`")
+	return CommandResult{Text: sb.String()}
+}
+
+func (s *Service) cmdJob(args string) CommandResult {
+	parts := strings.SplitN(args, " ", 2)
+	sub := strings.TrimSpace(parts[0])
+	subArgs := ""
+	if len(parts) > 1 {
+		subArgs = strings.TrimSpace(parts[1])
+	}
+
+	switch sub {
+	case "run":
+		if subArgs == "" {
+			return CommandResult{Text: "用法: /job run <任务ID>", IsError: true}
+		}
+		if err := ActionRunScheduledJob(subArgs); err != nil {
+			return CommandResult{Text: "错误: " + err.Error(), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("定时任务 `%s` 已触发立即执行", subArgs)}
+
+	case "enable":
+		if subArgs == "" {
+			return CommandResult{Text: "用法: /job enable <任务ID>", IsError: true}
+		}
+		if err := ActionEnableScheduledJob(subArgs); err != nil {
+			return CommandResult{Text: "错误: " + err.Error(), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("定时任务 `%s` 已启用", subArgs)}
+
+	case "disable":
+		if subArgs == "" {
+			return CommandResult{Text: "用法: /job disable <任务ID>", IsError: true}
+		}
+		if err := ActionDisableScheduledJob(subArgs); err != nil {
+			return CommandResult{Text: "错误: " + err.Error(), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("定时任务 `%s` 已禁用", subArgs)}
+
+	case "delete":
+		if subArgs == "" {
+			return CommandResult{Text: "用法: /job delete <任务ID>", IsError: true}
+		}
+		if err := ActionDeleteScheduledJob(subArgs); err != nil {
+			return CommandResult{Text: "错误: " + err.Error(), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("定时任务 `%s` 已删除", subArgs)}
+
+	default:
+		return CommandResult{
+			Text:    "用法: /jobs 查看列表 | /job run|enable|disable|delete <ID>",
+			IsError: true,
+		}
+	}
+}
+

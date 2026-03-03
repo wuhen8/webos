@@ -102,6 +102,7 @@ type Service struct {
 // Called after executor is created (since SystemContext depends on executor.Status).
 func (s *Service) SetSystemContext(sc SystemContext) {
 	s.tools.sysCtx = sc
+	s.tools.svc = s // inject Service back-reference for slash_command tool
 	s.sysCtx = sc
 }
 

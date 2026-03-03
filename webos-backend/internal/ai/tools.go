@@ -78,6 +78,7 @@ type ToolRegistry struct {
 	fileSvc   *service.FileService
 	sandbox   *Sandbox
 	sysCtx    SystemContext
+	svc       *Service // back-reference for slash command execution
 
 	// File backup store: convID -> []fileBackup (ordered, most recent last)
 	backupMu sync.Mutex
@@ -198,7 +199,7 @@ func (r *ToolRegistry) registerAll() {
 	r.registerQueryTasks()
 	r.registerScheduledJobs()
 	r.registerSystemManage()
-	r.registerSystemOverview()
+	r.registerStringSearch()
 }
 
 func (r *ToolRegistry) registerShell() {
@@ -1028,9 +1029,12 @@ func (r *ToolRegistry) registerListFiles() {
 }
 
 func (r *ToolRegistry) registerOpenUI() {
-	r.register("open_ui", `在用户的桌面上执行 UI 操作。
-- open_app：打开指定应用，可通过 options 传递任意启动参数（透传给前端 defaultAppData）
-- open_path：打开指定的文件或目录（自动判断类型）
+	r.register("open_ui", `在 WebOS 前端浏览器界面中打开应用或文件。此工具仅操作 WebOS Web 桌面（浏览器中运行的 Web 应用），不控制宿主机操作系统的桌面、窗口或本地程序。
+如需操作宿主机系统桌面（如打开本地软件、控制系统窗口），请使用 shell 工具或相关 skill，不要使用此工具。
+
+操作类型：
+- open_app：在 WebOS 桌面打开指定 Web 应用，可通过 options 传递启动参数（透传给前端 defaultAppData）
+- open_path：在 WebOS 桌面打开指定的文件或目录（自动判断类型）
 
 常用 app_id 及其 options：
   fileManager  — { "initialPath": "/home" }
@@ -1481,131 +1485,63 @@ Cron 表达式为 6 字段格式：秒 分 时 日 月 周
 }
 
 func (r *ToolRegistry) registerSystemManage() {
-	r.register("system_manage", `系统管理工具。支持以下操作：
-- status：查看系统健康状态（内存、协程、任务数等）
-- config：查看当前 AI 配置
-- models：列出所有可用模型
-- switch_model：切换 AI 模型
-- compress：压缩当前对话上下文（生成摘要替代早期消息，减少 token 消耗）`, map[string]interface{}{
+	// Build dynamic command list for the tool description
+	var descBuilder strings.Builder
+	descBuilder.WriteString("执行斜杠命令。可用命令：\n")
+	for _, c := range commandRegistry {
+		if c.Hidden {
+			continue
+		}
+		descBuilder.WriteString(fmt.Sprintf("- /%s", c.Name))
+		if c.Args != "" {
+			descBuilder.WriteString(fmt.Sprintf(" %s", c.Args))
+		}
+		descBuilder.WriteString(fmt.Sprintf("：%s\n", c.Description))
+	}
+	descBuilder.WriteString("\n直接传入命令名和参数即可执行，与用户手动输入 /xxx 效果一致。")
+
+	r.register("system_manage", descBuilder.String(), map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"action": map[string]interface{}{
+			"command": map[string]interface{}{
 				"type":        "string",
-				"enum":        []string{"status", "config", "models", "switch_model", "compress"},
-				"description": "操作类型",
+				"description": "斜杠命令名称（不含 / 前缀），例如：help, status, model, models, config, compress, reset, tasks, cancel, conv list, conv switch, conv new, notify, restart, stop",
 			},
-			"model_ref": map[string]interface{}{
+			"args": map[string]interface{}{
 				"type":        "string",
-				"description": "模型引用（switch_model 时必填），格式：模型名 或 供应商名/模型名",
-			},
-			"conversation_id": map[string]interface{}{
-				"type":        "string",
-				"description": "对话ID（compress 时可选）。留空或不传则自动使用当前激活对话，只有用户明确指定了其他对话ID时才填写。不要自行编造ID。",
+				"description": "命令参数（可选），例如 /model 需要传模型引用，/cancel 需要传任务ID",
 			},
 		},
-		"required": []string{"action"},
+		"required": []string{"command"},
 	}, func(ctx context.Context, convID string, args json.RawMessage) (string, error) {
 		var p struct {
-			Action         string `json:"action"`
-			ModelRef       string `json:"model_ref"`
-			ConversationID string `json:"conversation_id"`
+			Command string `json:"command"`
+			Args    string `json:"args"`
 		}
 		if err := json.Unmarshal(args, &p); err != nil {
 			return "", err
 		}
 
-		switch p.Action {
-		case "status":
-			if r.sysCtx != nil {
-				return snapshotJSON(r.sysCtx), nil
-			}
-			return "错误: SystemContext 未初始化", nil
-
-		case "config":
-			model, maxTokens, maxToolRounds, skillsDir, providerCount, err := ActionGetConfig()
-			if err != nil {
-				return "错误: " + err.Error(), nil
-			}
-			info := map[string]interface{}{
-				"model":         model,
-				"maxTokens":     maxTokens,
-				"maxToolRounds": maxToolRounds,
-				"skillsDir":     skillsDir,
-				"providerCount": providerCount,
-			}
-			data, _ := json.MarshalIndent(info, "", "  ")
-			return string(data), nil
-
-		case "models":
-			models, err := ActionListModels()
-			if err != nil {
-				return "错误: " + err.Error(), nil
-			}
-			data, _ := json.MarshalIndent(models, "", "  ")
-			return string(data), nil
-
-		case "switch_model":
-			if p.ModelRef == "" {
-				return "错误: switch_model 需要 model_ref", nil
-			}
-			provName, modelName, _, err := ActionSwitchModel(p.ModelRef)
-			if err != nil {
-				return "错误: " + err.Error(), nil
-			}
-			// Persist the switch
-			applySwitchModelByRef(p.ModelRef)
-			return fmt.Sprintf("已切换到: %s / %s", provName, modelName), nil
-
-		case "compress":
-			cid := p.ConversationID
-			if cid == "" {
-				cid = convID
-			}
-			result, err := ActionCompress(cid)
-			if err != nil {
-				return "错误: " + err.Error(), nil
-			}
-			data, _ := json.MarshalIndent(result, "", "  ")
-			return string(data), nil
-
-		default:
-			return "错误: 不支持的 action: " + p.Action, nil
+		if r.svc == nil {
+			return "错误: Service 未初始化", nil
 		}
+
+		result := r.svc.ExecuteCommand(convID, p.Command, p.Args)
+
+		// Handle side effects
+		if result.ClearHistory || result.StopChat || result.SwitchModel != "" {
+			r.svc.HandleCommandResult(convID, result)
+		}
+
+		if result.IsError {
+			return "错误: " + result.Text, nil
+		}
+		return result.Text, nil
 	})
 }
 
-func (r *ToolRegistry) registerSystemOverview() {
-	r.register("system_overview", `获取系统全局状态快照。返回 AI executor 状态、后台任务、定时任务、系统资源、存储节点、消息队列等信息。
-用于了解当前系统整体运行情况，是"系统感知"的核心工具。`, map[string]interface{}{
-		"type":       "object",
-		"properties": map[string]interface{}{},
-	}, func(ctx context.Context, convID string, args json.RawMessage) (string, error) {
-		if r.sysCtx == nil {
-			return "错误: SystemContext 未初始化", nil
-		}
-		return snapshotJSON(r.sysCtx), nil
-	})
-}
 
-// applySwitchModelByRef persists a model switch from a ref string like "providerID/model" or just "model".
-func applySwitchModelByRef(ref string) {
-	_, _, switchRef, err := ActionSwitchModel(ref)
-	if err != nil || switchRef == "" {
-		return
-	}
-	parts := strings.SplitN(switchRef, "/", 2)
-	if len(parts) != 2 {
-		return
-	}
-	multi, err := loadMultiConfig()
-	if err != nil {
-		return
-	}
-	multi.ActiveProvider = parts[0]
-	multi.ActiveModel = parts[1]
-	b, _ := json.Marshal(multi)
-	database.SetPreference("ai_config", string(b))
-}
+
 
 func (r *ToolRegistry) registerStringSearch() {
 	r.register("string_search", `在文件或目录中搜索文本内容（类似 grep）。支持正则表达式，返回匹配的文件名、行号和上下文。
@@ -1678,11 +1614,11 @@ func (r *ToolRegistry) registerStringSearch() {
 		searchPath := resolveFilePath(p.Path)
 
 		type matchResult struct {
-			File       string
-			LineNum    int
-			MatchLine  string
-			CtxBefore  []string
-			CtxAfter   []string
+			File      string
+			LineNum   int
+			MatchLine string
+			CtxBefore []string
+			CtxAfter  []string
 		}
 
 		var results []matchResult
