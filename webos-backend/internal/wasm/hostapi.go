@@ -60,6 +60,7 @@ func registerHostModule(ctx context.Context, engine wazero.Runtime, appID string
 
 	builder.NewFunctionBuilder().WithFunc(hostLog(appID)).Export("log")
 	builder.NewFunctionBuilder().WithFunc(hostConfigGet(appID)).Export("config_get")
+	builder.NewFunctionBuilder().WithFunc(hostConfigSet(appID)).Export("config_set")
 	builder.NewFunctionBuilder().WithFunc(hostKVGet(appID)).Export("kv_get")
 	builder.NewFunctionBuilder().WithFunc(hostKVSet(appID)).Export("kv_set")
 	builder.NewFunctionBuilder().WithFunc(hostKVDelete(appID)).Export("kv_delete")
@@ -156,6 +157,23 @@ func hostConfigGet(appID string) func(ctx context.Context, m api.Module, keyPtr,
 			return 0
 		}
 		return writeToWasm(m, []byte(val))
+	}
+}
+func hostConfigSet(appID string) func(ctx context.Context, m api.Module, keyPtr, keyLen, valPtr, valLen uint32) uint32 {
+	return func(ctx context.Context, m api.Module, keyPtr, keyLen, valPtr, valLen uint32) uint32 {
+		key, ok := readWasmString(m, keyPtr, keyLen)
+		if !ok {
+			return 1
+		}
+		val, ok := readWasmString(m, valPtr, valLen)
+		if !ok {
+			return 1
+		}
+		if err := SetAppConfig(appID, key, val); err != nil {
+			log.Printf("[WASM:%s] config_set error: %v", appID, err)
+			return 1
+		}
+		return 0
 	}
 }
 
@@ -374,4 +392,24 @@ func GetAppConfig(appID, key string) (string, error) {
 		return "", fmt.Errorf("config key %s not found", key)
 	}
 	return fmt.Sprintf("%v", val), nil
+}
+// SetAppConfig updates a single key in the app's config JSON (installed_apps.config).
+func SetAppConfig(appID, key, val string) error {
+	db := database.DB()
+	var configJSON string
+	err := db.QueryRow("SELECT config FROM installed_apps WHERE id = ?", appID).Scan(&configJSON)
+	if err != nil {
+		return err
+	}
+	var cfg map[string]interface{}
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return err
+	}
+	cfg[key] = val
+	newJSON, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("UPDATE installed_apps SET config = ? WHERE id = ?", string(newJSON), appID)
+	return err
 }

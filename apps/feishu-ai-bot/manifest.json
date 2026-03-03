@@ -11,7 +11,7 @@
   "configSchema": [
     { "key": "feishu_app_id", "label": "飞书 App ID", "type": "text", "default": "" },
     { "key": "feishu_app_secret", "label": "飞书 App Secret", "type": "password", "default": "" },
-    { "key": "feishu_chat_id", "label": "飞书 Chat ID (可选，长连接模式自动获取)", "type": "text", "default": "" },
+    { "key": "feishu_chat_id", "label": "飞书 Chat ID (多个用逗号分隔，留空则自动授权首个用户)", "type": "text", "default": "" },
     { "key": "proxy", "label": "HTTP 代理 (如 http://127.0.0.1:6152)", "type": "text", "default": "" }
   ]
 }

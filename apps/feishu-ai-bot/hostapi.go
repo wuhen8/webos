@@ -13,6 +13,9 @@ func _hostLog(msgPtr, msgLen uint32)
 //go:wasmimport webos config_get
 func _hostConfigGet(keyPtr, keyLen uint32) uint64
 
+//go:wasmimport webos config_set
+func _hostConfigSet(keyPtr, keyLen, valPtr, valLen uint32) uint32
+
 //go:wasmimport webos kv_get
 func _hostKVGet(keyPtr, keyLen uint32) uint64
 
@@ -97,6 +100,12 @@ func configGet(key string) string {
 	b := []byte(key)
 	packed := _hostConfigGet(bytesPtr(b), uint32(len(b)))
 	return readSharedBuf(packed)
+}
+
+func configSet(key, val string) {
+	kb := []byte(key)
+	vb := []byte(val)
+	_hostConfigSet(bytesPtr(kb), uint32(len(kb)), bytesPtr(vb), uint32(len(vb)))
 }
 
 func kvGet(key string) string {

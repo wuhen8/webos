@@ -12,12 +12,13 @@ import (
 )
 
 var (
-	token       string
-	chatID      int // 从配置读取，所有 AI 回复都发到这个 chat
-	initialized bool
-	replyBuf    strings.Builder
-	deltaCount  int  // 用于节流 typing 状态，每 N 次 delta 发一次
-	inCodeBlock bool // 跟踪是否在 ``` 代码块内
+	token          string
+	allowedChatIDs map[int]bool // 授权的 chat_id 集合
+	activeChatID   int          // 当前活跃的 chat_id（AI 回复发到这里）
+	initialized    bool
+	replyBuf       strings.Builder
+	deltaCount     int
+	inCodeBlock    bool
 )
 
 func main() {}
@@ -32,18 +33,17 @@ func ensureInit() {
 		logMsg("ERROR: telegram_token not configured")
 		return
 	}
-	if s := configGet("telegram_chat_id"); s != "" {
-		if v, err := strconv.Atoi(s); err == nil {
-			chatID = v
-		}
-	}
-	if chatID == 0 {
-		logMsg("WARN: telegram_chat_id 未配置，进入 discovery 模式，收到消息后会广播 chat_id")
+
+	// 加载授权 chat_id 列表（支持逗号分隔多个）
+	allowedChatIDs = make(map[int]bool)
+	loadAllowedChatIDs()
+
+	if len(allowedChatIDs) == 0 {
+		logMsg("Telegram AI Bot 初始化完成 (token=...%s, 自动注册模式：首个发消息的用户将被自动授权)" + token[len(token)-4:])
 	} else {
-		logMsg(fmt.Sprintf("Telegram AI Bot 初始化完成 (token=...%s, chatID=%d)", token[len(token)-4:], chatID))
+		logMsg(fmt.Sprintf("Telegram AI Bot 初始化完成 (token=...%s, 授权用户=%d个)", token[len(token)-4:], len(allowedChatIDs)))
 	}
 
-	// 注册客户端上下文，让 AI 知道回复目标是 Telegram
 	request("register_client_context", map[string]interface{}{
 		"id":          "telegram-ai-bot",
 		"platform":    "telegram",
@@ -59,10 +59,38 @@ func ensureInit() {
 			"6. 回复尽量精炼，移动端阅读体验优先",
 	})
 
-	// 从 backend 获取命令列表，注册到 Telegram Bot Commands
-	if chatID != 0 {
+	if len(allowedChatIDs) > 0 {
 		registerBotCommands()
 	}
+}
+
+// loadAllowedChatIDs 从配置和 KV 加载授权 chat_id
+func loadAllowedChatIDs() {
+	// 从配置读取（用户手动设置的 + 自动注册的，都在同一个 config 字段）
+	if s := configGet("telegram_chat_id"); s != "" {
+		for _, part := range strings.Split(s, ",") {
+			part = strings.TrimSpace(part)
+			if v, err := strconv.Atoi(part); err == nil && v != 0 {
+				allowedChatIDs[v] = true
+			}
+		}
+	}
+}
+
+// saveAutoChatID 自动注册新的 chat_id
+func saveAutoChatID(cid int) {
+	allowedChatIDs[cid] = true
+	// 保存到 config（和 token、代理等配置在同一个地方，设置页面可见可编辑）
+	var ids []string
+	for id := range allowedChatIDs {
+		ids = append(ids, strconv.Itoa(id))
+	}
+	configSet("telegram_chat_id", strings.Join(ids, ","))
+}
+
+// isChatAllowed 检查 chat_id 是否已授权
+func isChatAllowed(cid int) bool {
+	return allowedChatIDs[cid]
 }
 
 //go:wasmexport on_event
@@ -103,7 +131,7 @@ func on_event(ptr uint32, size uint32) uint32 {
 }
 
 func onChatDelta(data json.RawMessage) {
-	if chatID == 0 {
+	if activeChatID == 0 {
 		return
 	}
 	var d struct {
@@ -112,27 +140,24 @@ func onChatDelta(data json.RawMessage) {
 	json.Unmarshal(data, &d)
 	replyBuf.WriteString(d.Content)
 
-	// 每 20 次 delta 刷新一次 typing 状态
 	deltaCount++
 	if deltaCount%20 == 0 {
-		sendTypingAction(chatID)
+		sendTypingAction(activeChatID)
 	}
 
-	// 每次 delta 都尝试切割
 	flushReplyBuf(false)
 }
 
 func onChatDone() {
-	if chatID == 0 {
+	if activeChatID == 0 {
 		return
 	}
-	// 强制刷出所有剩余内容
 	flushReplyBuf(true)
 	inCodeBlock = false
 }
 
 func onChatError(data json.RawMessage) {
-	if chatID == 0 {
+	if activeChatID == 0 {
 		return
 	}
 	var d struct {
@@ -141,7 +166,7 @@ func onChatError(data json.RawMessage) {
 	json.Unmarshal(data, &d)
 	flushReplyBuf(true)
 	inCodeBlock = false
-	sendTelegramAsync(chatID, "AI 错误: "+d.Error, nil)
+	sendTelegramAsync(activeChatID, "AI 错误: "+d.Error, nil)
 }
 
 // flushReplyBuf 从 buffer 中切出可安全发送的段落。
@@ -155,7 +180,7 @@ func flushReplyBuf(force bool) {
 		}
 		if force {
 			replyBuf.Reset()
-			sendTelegramAsync(chatID, s, nil)
+			sendTelegramAsync(activeChatID, s, nil)
 			return
 		}
 
@@ -164,7 +189,7 @@ func flushReplyBuf(force bool) {
 			// 没有安全切点，但如果 buffer 太大就强制切（防止无限积压）
 			if len(s) > 3500 {
 				replyBuf.Reset()
-				sendTelegramAsync(chatID, s, nil)
+				sendTelegramAsync(activeChatID, s, nil)
 			}
 			return
 		}
@@ -186,7 +211,7 @@ func flushReplyBuf(force bool) {
 				}
 			}
 		}
-		sendTelegramAsync(chatID, segment, nil)
+		sendTelegramAsync(activeChatID, segment, nil)
 	}
 }
 
@@ -270,7 +295,7 @@ func endsWithSentence(s string) bool {
 		strings.HasSuffix(s, "；") || strings.HasSuffix(s, "：")
 }
 func onCommandResult(data json.RawMessage) {
-	if chatID == 0 {
+	if activeChatID == 0 {
 		return
 	}
 	var d struct {
@@ -283,12 +308,12 @@ func onCommandResult(data json.RawMessage) {
 		if d.IsError {
 			prefix = "❌ "
 		}
-		sendTelegramAsync(chatID, prefix+d.Text, nil)
+		sendTelegramAsync(activeChatID, prefix+d.Text, nil)
 	}
 }
 
 func onSystemNotify(data json.RawMessage) {
-	if chatID == 0 {
+	if activeChatID == 0 {
 		return
 	}
 	var d struct {
@@ -315,7 +340,7 @@ func onSystemNotify(data json.RawMessage) {
 		text += d.Title + "\n"
 	}
 	text += d.Message
-	sendTelegramAsync(chatID, text, nil)
+	sendTelegramAsync(activeChatID, text, nil)
 }
 
 func pollOnce() {
@@ -355,39 +380,44 @@ func pollOnce() {
 			}
 			msg := update.Message
 
-			// Discovery 模式：chat_id 未配置，广播提示
-			if chatID == 0 {
-				userName := ""
-				if msg.From != nil {
-					userName = msg.From.FirstName
-				}
-				cidStr := strconv.Itoa(msg.Chat.ID)
-				logMsg(fmt.Sprintf("[discovery] 收到来自 %s 的消息, chat_id=%s", userName, cidStr))
+			incomingCID := msg.Chat.ID
+			userName := ""
+			if msg.From != nil {
+				userName = msg.From.FirstName
+			}
 
-				// 广播系统通知给所有客户端
-				request("broadcast_notify", map[string]interface{}{
-					"level":   "info",
-					"title":   "Telegram Chat ID",
-					"message": fmt.Sprintf("用户 [%s] 发来消息，Chat ID: %s，请在 Telegram Bot 设置中填入", userName, cidStr),
-					"source":  "telegram-ai-bot",
-				})
+			// 自动注册模式：没有任何授权用户时，第一个发消息的自动授权
+			if len(allowedChatIDs) == 0 {
+				saveAutoChatID(incomingCID)
+				logMsg(fmt.Sprintf("自动授权首个用户: %s (chat_id=%d)", userName, incomingCID))
+				sendTelegramAsync(incomingCID, fmt.Sprintf(
+					"✅ 你已被自动授权为 Bot 用户。\n\n你的 Chat ID: %d\n\n直接发消息即可开始对话。",
+					incomingCID,
+				), nil)
+				registerBotCommands()
+				continue
+			}
 
-				// 回复用户提示
-				sendTelegramAsync(msg.Chat.ID, fmt.Sprintf(
-					"⚙️ Bot 尚未配置 chat_id。\n\n你的 Chat ID 是: %s\n\n请在 WebOS 设置中将此 ID 填入 Telegram Bot 的 chat_id 配置项。",
+			// 未授权用户：返回提示
+			if !isChatAllowed(incomingCID) {
+				cidStr := strconv.Itoa(incomingCID)
+				logMsg(fmt.Sprintf("[未授权] %s (chat_id=%s)", userName, cidStr))
+				sendTelegramAsync(incomingCID, fmt.Sprintf(
+					"🚫 未授权访问。\n\n你的 Chat ID: %s\n\n请联系管理员将此 ID 添加到 Bot 配置中。",
 					cidStr,
 				), nil)
 				continue
 			}
 
 			userText := msg.Text
-			logMsg(fmt.Sprintf("[chat:%d] %s: %s", msg.Chat.ID, msg.From.FirstName, userText))
+			logMsg(fmt.Sprintf("[chat:%d] %s: %s", incomingCID, userName, userText))
 			if userText == "/start" {
-				sendTelegramAsync(msg.Chat.ID, "你好！我是 WebOS AI 助手。直接发消息给我就可以对话。", nil)
+				sendTelegramAsync(incomingCID, "你好！我是 WebOS AI 助手。直接发消息给我就可以对话。", nil)
 				continue
 			}
-			// 发送"正在输入"状态，然后转发给 AI
-			sendTypingAction(msg.Chat.ID)
+			// 设置活跃 chat_id，AI 回复会发到这里
+			activeChatID = incomingCID
+			sendTypingAction(incomingCID)
 			deltaCount = 0
 			request("chat_send", map[string]interface{}{
 				"messageContent": userText,
@@ -399,7 +429,7 @@ func pollOnce() {
 
 // onMediaAttachment 处理 AI 发送的文件/图片附件
 func onMediaAttachment(data json.RawMessage) {
-	if chatID == 0 {
+	if activeChatID == 0 {
 		return
 	}
 	var d struct {
@@ -417,7 +447,6 @@ func onMediaAttachment(data json.RawMessage) {
 	}
 	a := d.Attachment
 
-	// 根据 MIME 类型选择 Telegram API 和字段名
 	var apiMethod, fileField string
 	if strings.HasPrefix(a.MimeType, "image/") {
 		apiMethod = "sendPhoto"
@@ -430,13 +459,12 @@ func onMediaAttachment(data json.RawMessage) {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", token, apiMethod)
 
 	fields := map[string]string{
-		"chat_id": strconv.Itoa(chatID),
+		"chat_id": strconv.Itoa(activeChatID),
 	}
 	if a.Caption != "" {
 		fields["caption"] = a.Caption
 	}
 
-	// 通过 file_proxy_post 让后端直接读文件并 multipart 上传给 Telegram
 	resp := request("file_proxy_post", map[string]interface{}{
 		"url":       url,
 		"fileField": fileField,
@@ -454,16 +482,15 @@ func onMediaAttachment(data json.RawMessage) {
 	json.Unmarshal([]byte(resp), &result)
 	if result.Error != "" {
 		logMsg("ERROR: file_proxy_post failed: " + result.Error)
-		sendTelegramAsync(chatID, fmt.Sprintf("📎 %s (发送失败: %s)", a.FileName, result.Error), nil)
+		sendTelegramAsync(activeChatID, fmt.Sprintf("📎 %s (发送失败: %s)", a.FileName, result.Error), nil)
 		return
 	}
-	// 注册回调，处理异步上传结果
 	if result.RequestID != "" {
+		cid := activeChatID
 		httpCallbacks[result.RequestID] = func(resp string) {
-			// 检测两种错误格式：Telegram API 的 "ok":false 和 host 端的 "error":"..."
 			if strings.Contains(resp, `"ok":false`) || strings.Contains(resp, `"error"`) {
 				logMsg("ERROR: file upload failed: " + resp)
-				sendTelegramAsync(chatID, fmt.Sprintf("📎 %s (上传失败)", a.FileName), nil)
+				sendTelegramAsync(cid, fmt.Sprintf("📎 %s (上传失败)", a.FileName), nil)
 			}
 		}
 	}

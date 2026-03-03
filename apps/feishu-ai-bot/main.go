@@ -25,8 +25,12 @@ var (
 	wsConnID     string
 	wsConnecting bool
 	wsReady      bool
-	wsServiceID  int32 // 飞书下发的 service_id，心跳需要
+	wsServiceID  int32
 	tickCount    int
+
+	// 多用户授权
+	allowedChatIDs map[string]bool // 授权的 chat_id 集合
+	activeChatID   string          // 当前活跃的 chat_id（AI 回复发到这里）
 )
 
 func main() {}
@@ -47,6 +51,15 @@ func ensureInit() {
 
 	logMsg(fmt.Sprintf("飞书 AI Bot 初始化完成 (appID=%s...)", appID[:min(6, len(appID))]))
 
+	// 加载授权 chat_id 列表
+	allowedChatIDs = make(map[string]bool)
+	loadFeishuAllowedChatIDs()
+
+	if len(allowedChatIDs) == 0 {
+		logMsg("自动注册模式：首个发消息的用户将被自动授权")
+	} else {
+		logMsg(fmt.Sprintf("授权 chat_id: %d 个", len(allowedChatIDs)))
+	}
 	request("register_client_context", map[string]interface{}{
 		"id":          "feishu-ai-bot",
 		"platform":    "feishu",
@@ -394,6 +407,23 @@ func handleIMMessage(eventData json.RawMessage) {
 	if botOpenID != "" && ev.Sender.SenderID.OpenID == botOpenID {
 		return
 	}
+
+	incomingChatID := ev.Message.ChatID
+
+	// 自动注册模式：没有任何授权用户时，第一个发消息的自动授权
+	if len(allowedChatIDs) == 0 {
+		saveFeishuAutoChatID(incomingChatID)
+		logMsg(fmt.Sprintf("自动授权首个 chat_id: %s", incomingChatID))
+		sendFeishuAsync(incomingChatID, fmt.Sprintf("✅ 已自动授权。\n\n你的 Chat ID: %s\n\n直接发消息即可开始对话。", incomingChatID))
+	}
+
+	// 未授权用户：返回提示
+	if !isFeishuChatAllowed(incomingChatID) {
+		logMsg(fmt.Sprintf("[未授权] chat_id=%s", incomingChatID))
+		sendFeishuAsync(incomingChatID, fmt.Sprintf("🚫 未授权访问。\n\n你的 Chat ID: %s\n\n请联系管理员将此 ID 添加到飞书 Bot 配置中。", incomingChatID))
+		return
+	}
+
 	if ev.Message.MessageType != "text" {
 		return
 	}
@@ -411,8 +441,8 @@ func handleIMMessage(eventData json.RawMessage) {
 		return
 	}
 
-	currentChatID = ev.Message.ChatID
-	logMsg(fmt.Sprintf("[chat:%s] %s: %s", ev.Message.ChatID, ev.Sender.SenderID.OpenID, userText))
+	activeChatID = incomingChatID
+	logMsg(fmt.Sprintf("[chat:%s] %s: %s", incomingChatID, ev.Sender.SenderID.OpenID, userText))
 
 	deltaCount = 0
 	request("chat_send", map[string]interface{}{
@@ -421,7 +451,40 @@ func handleIMMessage(eventData json.RawMessage) {
 	})
 }
 
-var currentChatID string
+// ==================== 多用户授权管理 ====================
+
+func loadFeishuAllowedChatIDs() {
+	// 从配置读取（用户手动设置的 + 自动注册的，都在同一个 config 字段）
+	if s := configGet("feishu_chat_id"); s != "" {
+		for _, part := range strings.Split(s, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				allowedChatIDs[part] = true
+			}
+		}
+	}
+}
+
+func saveFeishuAutoChatID(cid string) {
+	allowedChatIDs[cid] = true
+	// 保存到 config（和 App ID、代理等配置在同一个地方，设置页面可见可编辑）
+	var ids []string
+	for id := range allowedChatIDs {
+		ids = append(ids, id)
+	}
+	configSet("feishu_chat_id", strings.Join(ids, ","))
+}
+
+func isFeishuChatAllowed(cid string) bool {
+	return allowedChatIDs[cid]
+}
+
+func getChatID() string {
+	if activeChatID != "" {
+		return activeChatID
+	}
+	return configGet("feishu_chat_id")
+}
 
 func stripAtMention(text string) string {
 	for strings.Contains(text, "@_user_") {
@@ -436,13 +499,6 @@ func stripAtMention(text string) string {
 }
 
 // ==================== AI 回复处理 ====================
-
-func getChatID() string {
-	if currentChatID != "" {
-		return currentChatID
-	}
-	return configGet("feishu_chat_id")
-}
 
 func onChatDelta(data json.RawMessage) {
 	cid := getChatID()

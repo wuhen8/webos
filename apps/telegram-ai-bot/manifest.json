@@ -10,7 +10,7 @@
   "permissions": ["kv", "net"],
   "configSchema": [
     { "key": "telegram_token", "label": "Telegram Bot Token", "type": "password", "default": "" },
-    { "key": "telegram_chat_id", "label": "Telegram Chat ID", "type": "text", "default": "" },
+    { "key": "telegram_chat_id", "label": "Telegram Chat ID (多个用逗号分隔，留空则自动授权首个用户)", "type": "text", "default": "" },
     { "key": "proxy", "label": "HTTP 代理 (如 http://127.0.0.1:6152)", "type": "text", "default": "" }
   ]
 }
