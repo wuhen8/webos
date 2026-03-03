@@ -93,6 +93,8 @@ func on_event(ptr uint32, size uint32) uint32 {
 		onCommandResult(ev.Data)
 	case "chat_media":
 		onMediaAttachment(ev.Data)
+	case "system_notify":
+		onSystemNotify(ev.Data)
 	case "tick":
 		ensureInit()
 		pollOnce()
@@ -283,6 +285,37 @@ func onCommandResult(data json.RawMessage) {
 		}
 		sendTelegramAsync(chatID, prefix+d.Text, nil)
 	}
+}
+
+func onSystemNotify(data json.RawMessage) {
+	if chatID == 0 {
+		return
+	}
+	var d struct {
+		Level   string `json:"level"`
+		Title   string `json:"title"`
+		Message string `json:"message"`
+		Source  string `json:"source"`
+	}
+	json.Unmarshal(data, &d)
+	if d.Message == "" {
+		return
+	}
+	icon := "ℹ️"
+	switch d.Level {
+	case "success":
+		icon = "✅"
+	case "warning":
+		icon = "⚠️"
+	case "error":
+		icon = "❌"
+	}
+	text := icon + " "
+	if d.Title != "" {
+		text += d.Title + "\n"
+	}
+	text += d.Message
+	sendTelegramAsync(chatID, text, nil)
 }
 
 func pollOnce() {

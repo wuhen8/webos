@@ -23,7 +23,46 @@ var (
 
 func main() {}
 
-null
+func ensureInit() {
+	if initialized {
+		return
+	}
+	initialized = true
+
+	appID = configGet("feishu_app_id")
+	appSecret = configGet("feishu_app_secret")
+	chatID = configGet("feishu_chat_id")
+
+	if appID == "" || appSecret == "" {
+		logMsg("ERROR: feishu_app_id 或 feishu_app_secret 未配置")
+		return
+	}
+	if chatID == "" {
+		logMsg("WARN: feishu_chat_id 未配置，飞书 Bot 需要 chat_id 才能拉取消息，请在飞书群设置中获取群 ID 并填入配置")
+		return
+	}
+
+	logMsg(fmt.Sprintf("飞书 AI Bot 初始化完成 (appID=%s..., chatID=%s)", appID[:min(6, len(appID))], chatID))
+
+	// 注册客户端上下文
+	request("register_client_context", map[string]interface{}{
+		"id":          "feishu-ai-bot",
+		"platform":    "feishu",
+		"displayName": "飞书 Bot",
+		"capabilities": []string{"markdown_basic", "code_blocks", "bold", "italic", "links"},
+		"constraints":  []string{"no_latex", "no_images_inline"},
+		"systemHint": "当前用户通过飞书客户端与你对话。请遵守以下格式规则：\n" +
+			"1. 使用简洁的文本回复\n" +
+			"2. 代码块使用 ``` 包裹\n" +
+			"3. 支持 **粗体**、*斜体*、`行内代码`\n" +
+			"4. 不要使用 LaTeX 公式\n" +
+			"5. 列表使用 - 或数字编号\n" +
+			"6. 回复尽量精炼",
+	})
+
+	// 获取 bot 自身信息（用于过滤自己发的消息）
+	fetchBotInfo()
+}
 
 //go:wasmexport on_event
 func on_event(ptr uint32, size uint32) uint32 {
@@ -53,6 +92,8 @@ func on_event(ptr uint32, size uint32) uint32 {
 		onCommandResult(ev.Data)
 	case "chat_media":
 		onMediaAttachment(ev.Data)
+	case "system_notify":
+		onSystemNotify(ev.Data)
 	case "tick":
 		ensureInit()
 		pollOnce()
@@ -223,6 +264,36 @@ func onCommandResult(data json.RawMessage) {
 		}
 		sendFeishuAsync(chatID, prefix+d.Text)
 	}
+}
+func onSystemNotify(data json.RawMessage) {
+	if chatID == "" {
+		return
+	}
+	var d struct {
+		Level   string `json:"level"`
+		Title   string `json:"title"`
+		Message string `json:"message"`
+		Source  string `json:"source"`
+	}
+	json.Unmarshal(data, &d)
+	if d.Message == "" {
+		return
+	}
+	icon := "ℹ️"
+	switch d.Level {
+	case "success":
+		icon = "✅"
+	case "warning":
+		icon = "⚠️"
+	case "error":
+		icon = "❌"
+	}
+	text := icon + " "
+	if d.Title != "" {
+		text += d.Title + "\n"
+	}
+	text += d.Message
+	sendFeishuAsync(chatID, text)
 }
 
 func pollOnce() {
