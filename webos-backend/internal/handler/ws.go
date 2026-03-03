@@ -125,7 +125,8 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 	// Register wsSink with SystemContext for broadcast
 	aiSink := &wsSink{writeJSON: wc.WriteJSON}
 	sysCtx := chatSvc.GetSystemContext()
-	sysCtx.Subscribe(connID, aiSink)
+	aiSinkID := "webos-web"
+	sysCtx.Subscribe(aiSinkID, aiSink)
 	// Send current executor status immediately
 	wc.WriteJSON(wsServerMsg{Type: "chat_status_update", Data: sysCtx.Snapshot().Executor})
 
@@ -158,7 +159,7 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 
 	// ── Cleanup on exit ──
 	defer func() {
-		chatSvc.GetSystemContext().Unsubscribe(connID)
+		chatSvc.GetSystemContext().Unsubscribe(aiSinkID)
 		taskUnsub()
 		service.GetScheduler().Unsubscribe(schedConnID)
 		for k, sub := range wc.Subs {
