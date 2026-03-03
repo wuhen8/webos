@@ -732,11 +732,8 @@ func InstallApp(ctx context.Context, appID string, userConfig map[string]interfa
 	// Build manifest from catalog entry
 	manifest := buildManifestFromCatalog(catalogApp)
 
-	// Normalize app_type: static/wasm → sideload
+	// Normalize app_type
 	dbAppType := appType
-	if appType == "static" || appType == "wasm" {
-		dbAppType = "sideload"
-	}
 
 	app := &InstalledApp{
 		ID:      appID,
@@ -754,7 +751,7 @@ func InstallApp(ctx context.Context, appID string, userConfig map[string]interfa
 		return InstallDockerApp(ctx, appID, catalogApp, userConfig, reporter)
 	case "shell":
 		return InstallShellApp(ctx, appID, catalogApp, userConfig, reporter)
-	case "static", "wasm", "sideload":
+	case "sideload":
 		if err := InstallWebAppFromCatalog(ctx, appID, catalogApp, reporter); err != nil {
 			return err
 		}

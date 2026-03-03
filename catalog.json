@@ -162,10 +162,9 @@
       "description": "基于 VS Code 内核的专业代码编辑器，支持语法高亮、智能提示、代码格式化等功能",
       "icon": "https://cdn.jsdelivr.net/gh/nicepkg/vscode-icons@master/icons/vscode.svg",
       "category": "开发工具",
-      "type": "static",
+      "type": "sideload",
       "version": "1.0.0",
       "author": "webos",
-      "accessMode": "static",
       "download": {
         "zipUrl": "https://webos.686860.xyz/webapps/monaco-editor.zip"
       }
@@ -176,10 +175,9 @@
       "description": "预览 Word、Excel、PDF、PPT 文档",
       "icon": "https://cdn.jsdelivr.net/gh/nicepkg/vscode-icons@master/icons/vscode.svg",
       "category": "Office工具",
-      "type": "static",
+      "type": "sideload",
       "version": "1.0.0",
       "author": "webos",
-      "accessMode": "static",
       "download": {
         "zipUrl": "https://webos.686860.xyz/webapps/office-viewer.zip"
       }
@@ -190,7 +188,7 @@
       "description": "Telegram 机器人接入 WebOS AI 助手，支持完整工具调用",
       "icon": "https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg",
       "category": "社交通讯",
-      "type": "wasm",
+      "type": "sideload",
       "version": "1.0.0",
       "author": "webos",
       "background": true,
@@ -211,7 +209,7 @@
       "description": "飞书机器人接入 WebOS AI 助手，支持完整工具调用",
       "icon": "https://sf3-cn.feishucdn.com/obj/feishu-static/lark/passport/img/logo-icon.png",
       "category": "社交通讯",
-      "type": "wasm",
+      "type": "sideload",
       "version": "1.0.0",
       "author": "webos",
       "background": true,
