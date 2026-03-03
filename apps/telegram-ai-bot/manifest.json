@@ -1,0 +1,16 @@
+{
+  "id": "telegram-ai-bot",
+  "name": "Telegram AI Bot",
+  "description": "Telegram 机器人接入 WebOS AI 助手，支持完整工具调用",
+  "version": "1.0.0",
+  "icon": "https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg",
+  "wasmModule": "bot.wasm",
+  "background": true,
+  "pollInterval": 3000,
+  "permissions": ["kv", "net"],
+  "configSchema": [
+    { "key": "telegram_token", "label": "Telegram Bot Token", "type": "password", "default": "" },
+    { "key": "telegram_chat_id", "label": "Telegram Chat ID", "type": "text", "default": "" },
+    { "key": "proxy", "label": "HTTP 代理 (如 http://127.0.0.1:6152)", "type": "text", "default": "" }
+  ]
+}

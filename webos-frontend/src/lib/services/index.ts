@@ -1,0 +1,6 @@
+export { fsService } from './fsService'
+export { terminalService } from './terminalService'
+export { dockerService } from './dockerService'
+export { taskService } from './taskService'
+export { exec } from './execService'
+export { appStoreService } from './appStoreService'

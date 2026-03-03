@@ -1,0 +1,393 @@
+.app {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: #f5f5f5;
+}
+
+/* 文件管理器样式 */
+.file-manager {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: white;
+}
+
+.header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+.breadcrumb-bar {
+  background: #fff;
+  padding: 12px 24px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.icon-btn {
+  background: #f0f0f0;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+}
+
+.breadcrumb-item span:first-child {
+  color: #667eea;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.breadcrumb-item span:first-child:hover {
+  background: #f0f0f0;
+}
+
+.separator {
+  color: #999;
+  margin: 0 4px;
+}
+
+.file-list {
+  flex: 1;
+  overflow: auto;
+  background: #fafafa;
+}
+
+.file-list-header {
+  display: grid;
+  grid-template-columns: 1fr 150px 250px;
+  gap: 16px;
+  padding: 12px 24px;
+  background: #f0f0f0;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #e0e0e0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.file-item {
+  display: grid;
+  grid-template-columns: 1fr 150px 250px;
+  gap: 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background 0.2s;
+  align-items: center;
+}
+
+.file-item:hover {
+  background: #f0f0f0;
+}
+
+.col-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.file-icon {
+  font-size: 20px;
+}
+
+.file-name-text {
+  font-size: 14px;
+  color: #333;
+}
+
+.col-size {
+  font-size: 14px;
+  color: #666;
+}
+
+.col-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  background: #f0f0f0;
+  color: #333;
+}
+
+.btn:hover {
+  background: #e0e0e0;
+}
+
+.btn-primary {
+  background: #667eea;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #5568d3;
+}
+
+.btn-success {
+  background: #10b981;
+  color: white;
+}
+
+.btn-success:hover {
+  background: #059669;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+.btn-small {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #f0f0f0;
+}
+
+.btn-small:hover {
+  background: #e0e0e0;
+}
+
+.btn-small.btn-danger:hover {
+  background: #ef4444;
+  color: white;
+}
+
+.loading,
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 16px;
+}
+
+/* 编辑器样式 */
+.editor-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+}
+
+.editor-header {
+  background: #252526;
+  color: #fff;
+  padding: 12px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.editor-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.file-name {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.file-path {
+  color: #858585;
+  font-size: 14px;
+}
+
+.editor-wrapper {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 模态框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-body input[type="text"],
+.modal-body input[type="file"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.modal-body input[type="text"]:focus {
+  border-color: #667eea;
+}
+
+.file-info {
+  margin-top: 10px;
+  padding: 10px;
+  background: #f0f0f0;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #666;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #e0e0e0;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .file-list-header,
+  .file-item {
+    grid-template-columns: 1fr 100px;
+  }
+
+  .col-actions {
+    display: none;
+  }
+
+  .file-item:hover .col-actions {
+    display: flex;
+    grid-column: span 2;
+    justify-content: center;
+    padding-top: 8px;
+  }
+
+  .header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* 滚动条样式 */
+.file-list::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.file-list::-webkit-scrollbar-track {
+  background: #f0f0f0;
+}
+
+.file-list::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+  border-radius: 4px;
+}
+
+.file-list::-webkit-scrollbar-thumb:hover {
+  background: #a0a0a0;
+}

@@ -1,0 +1,278 @@
+{
+  "apps": [
+    {
+      "id": "alist",
+      "name": "Alist",
+      "description": "支持多种存储的文件列表程序，支持 WebDAV",
+      "icon": "https://cdn.jsdelivr.net/gh/alist-org/logo@main/logo.svg",
+      "category": "文件管理",
+      "type": "docker",
+      "version": "3.41.0",
+      "author": "webos",
+      "accessMode": "webview",
+      "configSchema": [
+        { "key": "port", "label": "端口", "type": "number", "default": 5244 }
+      ],
+      "composeTemplate": "services:\n  alist:\n    image: xhofe/alist:{{version}}\n    container_name: webos-app-alist\n    restart: unless-stopped\n    ports:\n      - '{{port}}:5244'\n    volumes:\n      - ./data:/opt/alist/data\n    environment:\n      - PUID=0\n      - PGID=0\n    networks:\n      - webos-network\n\nnetworks:\n  webos-network:\n    external: true\n"
+    },
+    {
+      "id": "filebrowser",
+      "name": "File Browser",
+      "description": "轻量级 Web 文件管理器，支持文件上传、下载、编辑",
+      "icon": "https://raw.githubusercontent.com/filebrowser/logo/master/icon_raw.svg",
+      "category": "文件管理",
+      "type": "docker",
+      "version": "v2.31.2",
+      "author": "webos",
+      "accessMode": "webview",
+      "configSchema": [
+        { "key": "port", "label": "端口", "type": "number", "default": 8080 },
+        { "key": "root", "label": "根目录", "type": "text", "default": "/data" }
+      ],
+      "composeTemplate": "services:\n  filebrowser:\n    image: filebrowser/filebrowser:{{version}}\n    container_name: webos-app-filebrowser\n    restart: unless-stopped\n    ports:\n      - '{{port}}:80'\n    volumes:\n      - '{{root}}:/srv'\n      - ./database:/database\n    networks:\n      - webos-network\n\nnetworks:\n  webos-network:\n    external: true\n"
+    },
+    {
+      "id": "code-server",
+      "name": "Code Server",
+      "description": "浏览器中运行的 VS Code，随时随地编写代码",
+      "icon": "https://raw.githubusercontent.com/coder/code-server/main/src/browser/media/favicon.svg",
+      "category": "开发工具",
+      "type": "docker",
+      "version": "4.96.4",
+      "author": "webos",
+      "accessMode": "webview",
+      "configSchema": [
+        { "key": "port", "label": "端口", "type": "number", "default": 8443 },
+        { "key": "password", "label": "访问密码", "type": "text", "default": "changeme" }
+      ],
+      "composeTemplate": "services:\n  code-server:\n    image: codercom/code-server:{{version}}\n    container_name: webos-app-code-server\n    restart: unless-stopped\n    ports:\n      - '{{port}}:8080'\n    volumes:\n      - ./data:/home/coder\n    environment:\n      - PASSWORD={{password}}\n    networks:\n      - webos-network\n\nnetworks:\n  webos-network:\n    external: true\n"
+    },
+    {
+      "id": "portainer",
+      "name": "Portainer",
+      "description": "Docker 可视化管理工具，轻松管理容器和镜像",
+      "icon": "https://www.portainer.io/hubfs/portainer-logo-black.svg",
+      "category": "系统工具",
+      "type": "docker",
+      "version": "2.24.1",
+      "author": "webos",
+      "accessMode": "webview",
+      "configSchema": [
+        { "key": "port", "label": "端口", "type": "number", "default": 9000 }
+      ],
+      "composeTemplate": "services:\n  portainer:\n    image: portainer/portainer-ce:{{version}}\n    container_name: webos-app-portainer\n    restart: unless-stopped\n    ports:\n      - '{{port}}:9000'\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n      - ./data:/data\n    networks:\n      - webos-network\n\nnetworks:\n  webos-network:\n    external: true\n"
+    },
+    {
+      "id": "nginx-proxy-manager",
+      "name": "Nginx Proxy Manager",
+      "description": "可视化 Nginx 反向代理管理，支持 SSL 证书自动申请",
+      "icon": "https://nginxproxymanager.com/icon.png",
+      "category": "网络工具",
+      "type": "docker",
+      "version": "2.12.1",
+      "author": "webos",
+      "accessMode": "webview",
+      "configSchema": [
+        { "key": "port", "label": "管理端口", "type": "number", "default": 81 },
+        { "key": "httpPort", "label": "HTTP 端口", "type": "number", "default": 80 },
+        { "key": "httpsPort", "label": "HTTPS 端口", "type": "number", "default": 443 }
+      ],
+      "composeTemplate": "services:\n  nginx-proxy-manager:\n    image: jc21/nginx-proxy-manager:{{version}}\n    container_name: webos-app-nginx-proxy-manager\n    restart: unless-stopped\n    ports:\n      - '{{port}}:81'\n      - '{{httpPort}}:80'\n      - '{{httpsPort}}:443'\n    volumes:\n      - ./data:/data\n      - ./letsencrypt:/etc/letsencrypt\n    networks:\n      - webos-network\n\nnetworks:\n  webos-network:\n    external: true\n"
+    },
+    {
+      "id": "uptime-kuma",
+      "name": "Uptime Kuma",
+      "description": "自托管的服务监控工具，支持多种监控方式和通知渠道",
+      "icon": "https://uptime.kuma.pet/img/icon.svg",
+      "category": "系统工具",
+      "type": "docker",
+      "version": "1.23.16",
+      "author": "webos",
+      "accessMode": "webview",
+      "configSchema": [
+        { "key": "port", "label": "端口", "type": "number", "default": 3001 }
+      ],
+      "composeTemplate": "services:\n  uptime-kuma:\n    image: louislam/uptime-kuma:{{version}}\n    container_name: webos-app-uptime-kuma\n    restart: unless-stopped\n    ports:\n      - '{{port}}:3001'\n    volumes:\n      - ./data:/app/data\n    networks:\n      - webos-network\n\nnetworks:\n  webos-network:\n    external: true\n"
+    },
+    {
+      "id": "gitea",
+      "name": "Gitea",
+      "description": "轻量级自托管 Git 服务，类似 GitHub 的代码托管平台",
+      "icon": "https://about.gitea.com/gitea.png",
+      "category": "开发工具",
+      "type": "docker",
+      "version": "1.22.6",
+      "author": "webos",
+      "accessMode": "webview",
+      "configSchema": [
+        { "key": "port", "label": "Web 端口", "type": "number", "default": 3000 },
+        { "key": "sshPort", "label": "SSH 端口", "type": "number", "default": 2222 }
+      ],
+      "composeTemplate": "services:\n  gitea:\n    image: gitea/gitea:{{version}}\n    container_name: webos-app-gitea\n    restart: unless-stopped\n    ports:\n      - '{{port}}:3000'\n      - '{{sshPort}}:22'\n    volumes:\n      - ./data:/data\n    environment:\n      - USER_UID=1000\n      - USER_GID=1000\n    networks:\n      - webos-network\n\nnetworks:\n  webos-network:\n    external: true\n"
+    },
+    {
+      "id": "jellyfin",
+      "name": "Jellyfin",
+      "description": "免费开源的媒体服务器，管理和串流你的影音内容",
+      "icon": "https://jellyfin.org/images/logo.svg",
+      "category": "影音娱乐",
+      "type": "docker",
+      "version": "10.10.6",
+      "author": "webos",
+      "accessMode": "webview",
+      "configSchema": [
+        { "key": "port", "label": "端口", "type": "number", "default": 8096 },
+        { "key": "mediaDir", "label": "媒体目录", "type": "text", "default": "/data/media" }
+      ],
+      "composeTemplate": "services:\n  jellyfin:\n    image: jellyfin/jellyfin:{{version}}\n    container_name: webos-app-jellyfin\n    restart: unless-stopped\n    ports:\n      - '{{port}}:8096'\n    volumes:\n      - ./config:/config\n      - ./cache:/cache\n      - '{{mediaDir}}:/media'\n    networks:\n      - webos-network\n\nnetworks:\n  webos-network:\n    external: true\n"
+    },
+    {
+      "id": "freshrss",
+      "name": "FreshRSS",
+      "description": "自托管的 RSS 阅读器，支持多用户和扩展",
+      "icon": "https://freshrss.org/images/icon.svg",
+      "category": "效率工具",
+      "type": "docker",
+      "version": "1.25.0",
+      "author": "webos",
+      "accessMode": "webview",
+      "configSchema": [
+        { "key": "port", "label": "端口", "type": "number", "default": 8082 }
+      ],
+      "composeTemplate": "services:\n  freshrss:\n    image: freshrss/freshrss:{{version}}\n    container_name: webos-app-freshrss\n    restart: unless-stopped\n    ports:\n      - '{{port}}:80'\n    volumes:\n      - ./data:/var/www/FreshRSS/data\n      - ./extensions:/var/www/FreshRSS/extensions\n    environment:\n      - TZ=Asia/Shanghai\n      - CRON_MIN=1,31\n    networks:\n      - webos-network\n\nnetworks:\n  webos-network:\n    external: true\n"
+    },
+    {
+      "id": "memos",
+      "name": "Memos",
+      "description": "轻量级自托管备忘录，支持 Markdown 和标签管理",
+      "icon": "https://www.usememos.com/logo.png",
+      "category": "效率工具",
+      "type": "docker",
+      "version": "0.24.2",
+      "author": "webos",
+      "accessMode": "webview",
+      "configSchema": [
+        { "key": "port", "label": "端口", "type": "number", "default": 5230 }
+      ],
+      "composeTemplate": "services:\n  memos:\n    image: neosmemo/memos:{{version}}\n    container_name: webos-app-memos\n    restart: unless-stopped\n    ports:\n      - '{{port}}:5230'\n    volumes:\n      - ./data:/var/opt/memos\n    networks:\n      - webos-network\n\nnetworks:\n  webos-network:\n    external: true\n"
+    },
+    {
+      "id": "monaco-editor",
+      "name": "Monaco 代码编辑器",
+      "description": "基于 VS Code 内核的专业代码编辑器，支持语法高亮、智能提示、代码格式化等功能",
+      "icon": "https://cdn.jsdelivr.net/gh/nicepkg/vscode-icons@master/icons/vscode.svg",
+      "category": "开发工具",
+      "type": "static",
+      "version": "1.0.0",
+      "author": "webos",
+      "accessMode": "static",
+      "download": {
+        "zipUrl": "https://webos.686860.xyz/webapps/monaco-editor.zip"
+      }
+    },
+    {
+      "id": "office-viewer",
+      "name": "Office 文件预览",
+      "description": "预览 Word、Excel、PDF、PPT 文档",
+      "icon": "https://cdn.jsdelivr.net/gh/nicepkg/vscode-icons@master/icons/vscode.svg",
+      "category": "Office工具",
+      "type": "static",
+      "version": "1.0.0",
+      "author": "webos",
+      "accessMode": "static",
+      "download": {
+        "zipUrl": "https://webos.686860.xyz/webapps/office-viewer.zip"
+      }
+    },
+    {
+      "id": "telegram-ai-bot",
+      "name": "Telegram AI Bot",
+      "description": "Telegram 机器人接入 WebOS AI 助手，支持完整工具调用",
+      "icon": "https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg",
+      "category": "社交通讯",
+      "type": "wasm",
+      "version": "1.0.0",
+      "author": "webos",
+      "background": true,
+      "pollInterval": 3000,
+      "permissions": ["kv", "net"],
+      "configSchema": [
+        { "key": "telegram_token", "label": "Telegram Bot Token", "type": "password", "default": "" },
+        { "key": "telegram_chat_id", "label": "Telegram Chat ID", "type": "text", "default": "" },
+        { "key": "proxy", "label": "HTTP 代理 (如 http://127.0.0.1:6152)", "type": "text", "default": "" }
+      ],
+      "download": {
+        "zipUrl": "https://webos.686860.xyz/webapps/telegram-ai-bot.zip"
+      }
+    },
+    {
+      "id": "feishu-ai-bot",
+      "name": "飞书 AI Bot",
+      "description": "飞书机器人接入 WebOS AI 助手，支持完整工具调用",
+      "icon": "https://sf3-cn.feishucdn.com/obj/feishu-static/lark/passport/img/logo-icon.png",
+      "category": "社交通讯",
+      "type": "wasm",
+      "version": "1.0.0",
+      "author": "webos",
+      "background": true,
+      "pollInterval": 3000,
+      "permissions": ["kv", "net"],
+      "configSchema": [
+        { "key": "feishu_app_id", "label": "飞书 App ID", "type": "text", "default": "" },
+        { "key": "feishu_app_secret", "label": "飞书 App Secret", "type": "password", "default": "" },
+        { "key": "feishu_chat_id", "label": "飞书 Chat ID (群组 / 单聊)", "type": "text", "default": "" },
+        { "key": "proxy", "label": "HTTP 代理 (如 http://127.0.0.1:6152)", "type": "text", "default": "" }
+      ],
+      "download": {
+        "zipUrl": "https://webos.686860.xyz/webapps/feishu-ai-bot.zip"
+      }
+    }
+  ],
+  "skills": [
+    {
+      "id": "read_excel",
+      "name": "Excel 读取",
+      "description": "读取和分析 Excel 文件内容，支持 .xlsx 和 .xls 格式",
+      "icon": "https://img.icons8.com/color/96/microsoft-excel-2019.png",
+      "version": "1.0.0",
+      "author": "webos",
+      "zipUrl": "https://webos.686860.xyz/skills/read_excel.zip"
+    },
+    {
+      "id": "music-search",
+      "name": "音乐搜索下载",
+      "description": "从各大音乐网站下载音乐",
+      "icon": "https://img.icons8.com/color/96/music.png",
+      "version": "1.0.0",
+      "author": "webos",
+      "zipUrl": "https://webos.686860.xyz/skills/music-search.zip"
+    },
+    {
+      "id": "video-search",
+      "name": "视频搜索",
+      "description": "从各大视频网站获取视频",
+      "icon": "https://img.icons8.com/color/96/video.png",
+      "version": "1.0.0",
+      "author": "webos",
+      "zipUrl": "https://webos.686860.xyz/skills/video-search.zip"
+    },
+    {
+      "id": "searxng-search",
+      "name": "SearXNG 网络搜索",
+      "description": "使用自建 SearXNG 元搜索引擎进行网络搜索，支持多类别搜索（通用、图片、新闻、IT、科学等）",
+      "icon": "https://img.icons8.com/color/96/search--v1.png",
+      "version": "1.0.0",
+      "author": "webos",
+      "zipUrl": "https://webos.686860.xyz/skills/searxng-search.zip"
+    },
+    {
+      "id": "tmux-background",
+      "name": "tmux 后台任务",
+      "description": "使用 tmux 在后台执行耗时任务，支持进度查看和会话管理",
+      "icon": "https://img.icons8.com/color/96/console.png",
+      "version": "1.0.0",
+      "author": "webos",
+      "zipUrl": "https://webos.686860.xyz/skills/tmux-background.zip"
+    }
+  ]
+}

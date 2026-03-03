@@ -1,0 +1,45 @@
+.monaco-host * { margin: 0; padding: 0; box-sizing: border-box; }
+.monaco-host { display: flex; flex-direction: column; width: 100%; height: 100%; background: #1e1e1e; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+/* Toolbar */
+.monaco-host .toolbar {
+  height: 36px; min-height: 36px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: #252526; border-bottom: 1px solid #3c3c3c;
+  padding: 0 8px; gap: 2px; user-select: none;
+}
+.monaco-host .toolbar-left, .monaco-host .toolbar-right { display: flex; align-items: center; gap: 2px; }
+.monaco-host .toolbar-right { gap: 8px; font-size: 12px; color: #858585; }
+.monaco-host .tb-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border: none; background: transparent;
+  color: #cccccc; border-radius: 4px; cursor: pointer; padding: 0;
+}
+.monaco-host .tb-btn:hover { background: #3c3c3c; }
+.monaco-host .tb-btn:active { background: #505050; }
+.monaco-host .tb-btn.active { background: #37373d; color: #ffffff; }
+.monaco-host .tb-btn svg { width: 16px; height: 16px; fill: currentColor; }
+.monaco-host .tb-sep { width: 1px; height: 18px; background: #3c3c3c; margin: 0 4px; }
+.monaco-host .tb-info { padding: 0 6px; font-size: 12px; color: #858585; white-space: nowrap; }
+
+/* Editor */
+.monaco-host .editor-container { flex: 1; overflow: hidden; }
+
+/* Statusbar */
+.monaco-host .statusbar {
+  height: 24px; min-height: 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: #007acc; padding: 0 10px;
+  font-size: 12px; color: #ffffff; user-select: none;
+}
+.monaco-host .statusbar-left, .monaco-host .statusbar-right { display: flex; align-items: center; gap: 12px; }
+.monaco-host .sb-item { white-space: nowrap; }
+
+/* Loading */
+.monaco-host .loading-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #1e1e1e; color: #858585;
+  font-size: 14px; z-index: 100;
+}
+.monaco-host .loading-overlay.hidden { display: none; }

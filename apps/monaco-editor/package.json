@@ -1,0 +1,19 @@
+{
+  "name": "monaco-editor-static-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "zip": "vite build && cd dist && zip -r ../monaco-editor.zip ."
+  },
+  "dependencies": {
+    "monaco-editor": "^0.55.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11",
+    "typescript": "^5.7.2"
+  }
+}

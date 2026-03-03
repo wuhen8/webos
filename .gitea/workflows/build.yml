@@ -1,0 +1,119 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: https://gitea.686860.xyz/actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: https://gitea.686860.xyz/actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        run: npm install -g pnpm@9
+
+      - name: Cache pnpm store
+        uses: https://gitea.686860.xyz/actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store/v3
+          key: pnpm-${{ hashFiles('webos-frontend/pnpm-lock.yaml') }}
+          restore-keys: pnpm-
+
+      - name: Setup Go
+        uses: https://gitea.686860.xyz/actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Cache Go modules
+        uses: https://gitea.686860.xyz/actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ hashFiles('webos-backend/go.sum') }}
+          restore-keys: go-
+
+      - name: Build frontend
+        working-directory: webos-frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Copy dist to backend
+        run: |
+          rm -rf webos-backend/dist
+          cp -r webos-frontend/dist webos-backend/
+
+      - name: Cross-compile all platforms
+        working-directory: webos-backend
+        env:
+          GOPROXY: https://goproxy.cn,direct
+        run: |
+          mkdir -p ../release
+          TAG="${GITHUB_REF#refs/tags/v}"
+          platforms=(
+            "linux/amd64/linux-amd64/"
+            "linux/arm64/linux-arm64/"
+            "linux/arm/linux-arm/"
+            "darwin/amd64/darwin-amd64/"
+            "darwin/arm64/darwin-arm64/"
+            "windows/amd64/win-amd64/.exe"
+            "windows/arm64/win-arm64/.exe"
+          )
+          for p in "${platforms[@]}"; do
+            IFS='/' read -r os arch suffix ext <<< "$p"
+            echo "Building ${os}/${arch}..."
+            CGO_ENABLED=0 GOOS=${os} GOARCH=${arch} \
+              go build -ldflags "-s -w -X webos-backend/internal/service.Version=${TAG}" -o ../release/webos-${suffix}${ext} .
+          done
+          ls -lh ../release/
+
+      - name: Create Gitea Release
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          API_URL="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}/releases"
+          AUTH_HEADER="Authorization: token ${GITEA_TOKEN}"
+
+          upload_assets() {
+            local release_id=$1
+            local upload_url="${API_URL}/${release_id}/assets"
+            for file in release/*; do
+              filename=$(basename "$file")
+              echo "  Uploading ${filename}..."
+              curl -s -X POST "${upload_url}?name=${filename}" \
+                -H "${AUTH_HEADER}" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@${file}"
+            done
+          }
+
+          # ---- 1. 创建版本号 Release (v1.x.x) ----
+          echo "=== Creating versioned release: ${TAG} ==="
+          RELEASE_RESP=$(curl -s -X POST "${API_URL}" \
+            -H "${AUTH_HEADER}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\": \"${TAG}\", \"name\": \"${TAG}\", \"draft\": false, \"prerelease\": false}")
+
+          RELEASE_ID=$(echo "$RELEASE_RESP" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+
+          if [ -z "$RELEASE_ID" ]; then
+            echo "Failed to create release"
+            echo "$RELEASE_RESP"
+            exit 1
+          fi
+
+          echo "Versioned release created: ID=${RELEASE_ID}"
+          upload_assets "$RELEASE_ID"
+          echo "=== Versioned release done ==="
+
+          echo "All done."

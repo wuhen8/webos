@@ -1,0 +1,49 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["Build & Release"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Download all binaries from latest release
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          API_URL="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}/releases/latest"
+          RELEASE_JSON=$(curl -s -H "Authorization: token ${GITEA_TOKEN}" "$API_URL")
+
+          mkdir -p binaries
+          echo "$RELEASE_JSON" | grep -o '"browser_download_url":"[^"]*"' | cut -d'"' -f4 | while read -r url; do
+            filename=$(basename "$url")
+            echo "Downloading: $filename"
+            curl -sL -H "Authorization: token ${GITEA_TOKEN}" -o "binaries/${filename}" "$url"
+          done
+
+          ls -lh binaries/
+
+      - name: Upload to server
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p $SSH_PORT -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          SSH_OPTS="-i ~/.ssh/id_deploy -o StrictHostKeyChecking=accept-new"
+
+          ssh $SSH_OPTS -p $SSH_PORT "${SSH_USER}@${SSH_HOST}" "mkdir -p /www/webos/releases"
+          scp $SSH_OPTS -P $SSH_PORT binaries/* "${SSH_USER}@${SSH_HOST}:/www/webos/releases/"
+
+          rm -f ~/.ssh/id_deploy

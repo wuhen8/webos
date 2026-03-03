@@ -1,0 +1,17 @@
+{
+  "id": "feishu-ai-bot",
+  "name": "飞书 AI Bot",
+  "description": "飞书机器人接入 WebOS AI 助手，支持完整工具调用",
+  "version": "1.0.0",
+  "icon": "https://sf3-cn.feishucdn.com/obj/feishu-static/lark/passport/img/logo-icon.png",
+  "wasmModule": "bot.wasm",
+  "background": true,
+  "pollInterval": 3000,
+  "permissions": ["kv", "net"],
+  "configSchema": [
+    { "key": "feishu_app_id", "label": "飞书 App ID", "type": "text", "default": "" },
+    { "key": "feishu_app_secret", "label": "飞书 App Secret", "type": "password", "default": "" },
+    { "key": "feishu_chat_id", "label": "飞书 Chat ID (群组 / 单聊)", "type": "text", "default": "" },
+    { "key": "proxy", "label": "HTTP 代理 (如 http://127.0.0.1:6152)", "type": "text", "default": "" }
+  ]
+}

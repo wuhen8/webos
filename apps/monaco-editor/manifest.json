@@ -1,0 +1,25 @@
+{
+  "id": "monaco-editor",
+  "name": "Monaco 代码编辑器",
+  "description": "基于 VS Code 内核的专业代码编辑器，支持语法高亮、智能提示、代码格式化等功能",
+  "version": "1.0.0",
+  "styles": ["style.css"],
+  "icon": "https://cdn.jsdelivr.net/gh/nicepkg/vscode-icons@master/icons/vscode.svg",
+  "fileAssociations": [
+    {
+      "extensions": [
+        ".txt", ".js", ".jsx", ".ts", ".tsx", ".json", ".py", ".go", ".java",
+        ".cpp", ".c", ".h", ".hpp", ".css", ".scss", ".less", ".html", ".xml",
+        ".sql", ".sh", ".bash", ".zsh", ".yaml", ".yml", ".toml", ".ini",
+        ".conf", ".cfg", ".env", ".log", ".csv", ".rs", ".rb", ".php",
+        ".swift", ".kt", ".scala", ".lua", ".r", ".pl", ".dockerfile",
+        ".makefile", ".gitignore", ".md", ".markdown", ".vue", ".svelte",
+        ".graphql", ".gql", ".prisma", ".tf", ".hcl",
+        ".vlist", ".alist", ".m3u"
+      ],
+      "isDefault": true,
+      "label": "Monaco 代码编辑器",
+      "icon": "FileCode"
+    }
+  ]
+}
