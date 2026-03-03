@@ -16,7 +16,6 @@ import (
 	"unicode/utf8"
 
 	"webos-backend/internal/config"
-	"webos-backend/internal/database"
 	"webos-backend/internal/service"
 	"webos-backend/internal/storage"
 )
