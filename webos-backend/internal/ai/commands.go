@@ -143,11 +143,11 @@ func init() {
 		},
 		{
 			Name:          "notify",
-			Description:   "发送系统通知广播 / 查看已连接客户端",
+			Description:   "系统通知：list 查看客户端 / 直接发广播 / @id 定向发送",
 			Category:      "system",
 			CategoryLabel: "🔧 系统",
 			CategoryOrder: 30,
-			Args:          "[list | <消息内容>]",
+			Args:          "[list | <消息> | @客户端ID <消息>]",
 		},
 	}
 }
