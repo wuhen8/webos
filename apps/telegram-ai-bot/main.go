@@ -16,6 +16,7 @@ var (
 	allowedChatIDs map[int]bool // 授权的 chat_id 集合
 	activeChatID   int          // 当前活跃的 chat_id（AI 回复发到这里）
 	initialized    bool
+	polling        bool // 防止重复轮询
 	replyBuf       strings.Builder
 	deltaCount     int
 	inCodeBlock    bool
@@ -344,9 +345,10 @@ func onSystemNotify(data json.RawMessage) {
 }
 
 func pollOnce() {
-	if token == "" {
+	if token == "" || polling {
 		return
 	}
+	polling = true
 	lastUpdateID := 0
 	if s := kvGet("last_update_id"); s != "" {
 		if v, err := strconv.Atoi(s); err == nil {
@@ -359,6 +361,7 @@ func pollOnce() {
 		token, offset,
 	)
 	httpRequestAsync("GET", url, "", "", func(resp string) {
+		polling = false
 		if resp == "" || resp[0] != '{' {
 			if resp != "" {
 				logMsg("WARN: getUpdates non-JSON response: " + resp[:min(len(resp), 100)])
