@@ -26,7 +26,7 @@ export default function ScheduledTab() {
   const [scheduledEditId, setScheduledEditId] = useState<string | null>(null)
   const [scheduledForm, setScheduledForm] = useState({
     name: "",
-    jobType: "shell" as "shell" | "builtin",
+    jobType: "shell" as "shell" | "builtin" | "command",
     command: "",
     operation: "rebuild-index-local",
     scheduleMode: "interval" as "interval" | "daily" | "weekly" | "monthly" | "cron" | "once",
@@ -120,7 +120,7 @@ export default function ScheduledTab() {
     const scheduleType = isOnce ? "once" : "cron"
     const runAt = isOnce ? new Date(f.onceDateTime).getTime() : 0
     let config: string
-    if (f.jobType === "shell") {
+    if (f.jobType === "shell" || f.jobType === "command") {
       config = JSON.stringify({ command: f.command })
     } else {
       const op = f.operation
@@ -174,7 +174,7 @@ export default function ScheduledTab() {
     let opNodeId = "", opDstNodeId = "", opPaths = "", opPath = "", opTo = "", opOutput = "", opDest = ""
     try {
       const cfg = JSON.parse(job.config)
-      if (job.jobType === "shell") { command = cfg.command || "" }
+      if (job.jobType === "shell" || job.jobType === "command") { command = cfg.command || "" }
       else {
         operation = cfg.operation || "rebuild-index-local"; opNodeId = cfg.nodeId || ""; opDstNodeId = cfg.dstNodeId || ""
         opPaths = Array.isArray(cfg.paths) ? cfg.paths.join("\n") : ""; opPath = cfg.path || ""; opTo = cfg.to || ""; opOutput = cfg.output || ""; opDest = cfg.dest || ""
@@ -182,7 +182,7 @@ export default function ScheduledTab() {
     } catch {}
     setScheduledEditId(job.id)
     setScheduledForm({
-      name: job.name, jobType: job.jobType as "shell" | "builtin", command, operation,
+      name: job.name, jobType: job.jobType as "shell" | "builtin" | "command", command, operation,
       scheduleMode: parsed.scheduleMode, intervalValue: parsed.intervalValue ?? 60, intervalUnit: parsed.intervalUnit ?? "minutes",
       dailyHour: parsed.dailyHour ?? 0, dailyMinute: parsed.dailyMinute ?? 0,
       weeklyDays: parsed.weeklyDays ?? [1], weeklyHour: parsed.weeklyHour ?? 0, weeklyMinute: parsed.weeklyMinute ?? 0,
@@ -262,7 +262,7 @@ export default function ScheduledTab() {
                     {job.scheduleType === 'once' && <span className="text-[0.6rem] text-blue-400 bg-blue-100 px-1.5 py-0.5 rounded flex-shrink-0">一次性</span>}
                   </div>
                   <div className="mt-1 ml-10">
-                    <span className="text-[0.6875rem] text-gray-400 font-mono">{job.jobType === 'shell' ? 'Shell' : '内置'}: {configLabel}</span>
+                    <span className="text-[0.6875rem] text-gray-400 font-mono">{job.jobType === 'shell' ? 'Shell' : job.jobType === 'command' ? '命令' : '内置'}: {configLabel}</span>
                   </div>
                   <div className="flex items-center justify-between mt-1.5 ml-10">
                     <div className="flex items-center gap-1.5">
@@ -306,6 +306,7 @@ export default function ScheduledTab() {
               <label className="text-[0.75rem] text-gray-500 mb-1 block">类型</label>
               <div className="flex gap-2">
                 <button onClick={() => setScheduledForm(f => ({ ...f, jobType: "shell" }))} className={`px-3 py-1.5 text-[0.8125rem] rounded-md border transition-colors ${scheduledForm.jobType === 'shell' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>Shell 命令</button>
+                <button onClick={() => setScheduledForm(f => ({ ...f, jobType: "command" }))} className={`px-3 py-1.5 text-[0.8125rem] rounded-md border transition-colors ${scheduledForm.jobType === 'command' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>WebOS 命令</button>
                 <button onClick={() => setScheduledForm(f => ({ ...f, jobType: "builtin" }))} className={`px-3 py-1.5 text-[0.8125rem] rounded-md border transition-colors ${scheduledForm.jobType === 'builtin' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>内置操作</button>
               </div>
             </div>
@@ -313,6 +314,12 @@ export default function ScheduledTab() {
               <div>
                 <label className="text-[0.75rem] text-gray-500 mb-1 block">Shell 命令</label>
                 <input type="text" value={scheduledForm.command} onChange={(e) => setScheduledForm(f => ({ ...f, command: e.target.value }))} placeholder="例如: tar czf /backup/data.tar.gz /data" className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" />
+              </div>
+            ) : scheduledForm.jobType === "command" ? (
+              <div>
+                <label className="text-[0.75rem] text-gray-500 mb-1 block">WebOS 命令</label>
+                <input type="text" value={scheduledForm.command} onChange={(e) => setScheduledForm(f => ({ ...f, command: e.target.value }))} placeholder="例如: notify 你好 或 ai 检查服务器状态" className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" />
+                <p className="text-[0.6875rem] text-gray-400 mt-1">支持所有斜杠命令，如 notify、ai、status、jobs 等（无需 / 前缀）</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -425,7 +432,7 @@ export default function ScheduledTab() {
               </label>
               <div className="flex gap-2">
                 <button onClick={resetScheduledForm} className="px-3 py-1.5 text-[0.8125rem] bg-white hover:bg-gray-100 text-gray-700 rounded-md border border-gray-200 transition-colors">取消</button>
-                <button onClick={handleSaveScheduledJob} disabled={!scheduledForm.name.trim() || (scheduledForm.jobType === 'shell' && !scheduledForm.command.trim()) || (scheduledForm.scheduleMode === 'once' && !scheduledForm.onceDateTime)} className="px-3 py-1.5 text-[0.8125rem] bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-md transition-colors">{scheduledEditId ? '保存' : '添加'}</button>
+                <button onClick={handleSaveScheduledJob} disabled={!scheduledForm.name.trim() || ((scheduledForm.jobType === 'shell' || scheduledForm.jobType === 'command') && !scheduledForm.command.trim()) || (scheduledForm.scheduleMode === 'once' && !scheduledForm.onceDateTime)} className="px-3 py-1.5 text-[0.8125rem] bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-md transition-colors">{scheduledEditId ? '保存' : '添加'}</button>
               </div>
             </div>
           </div>
