@@ -83,7 +83,7 @@ export interface UnifiedTask {
 
 export type SortField = "pid" | "cpu" | "mem" | "rss" | "user" | "command" | "serviceName" | "activeState" | "subState" | "enabled"
 export type SortDir = "asc" | "desc"
-export type TabType = "overview" | "processes" | "tasks" | "services" | "wasm" | "scheduled"
+export type TabType = "overview" | "processes" | "tasks" | "services" | "wasm"
 
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B"

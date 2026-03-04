@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from "react"
 import { useWebSocketStore } from "@/stores"
 
-type Channel = "overview" | "processes" | "disks" | "tasks" | "services" | "scheduled"
+type Channel = "overview" | "processes" | "disks" | "tasks" | "services"
 
 interface UseSystemWebSocketOptions {
   channel: Channel
@@ -68,7 +68,6 @@ export function useSystemWebSocket({
       disks: disksHandler,
       tasks: tasksHandler,
       services: servicesHandler,
-      scheduled: () => {},
     }
     const handler = handlerMap[channel] || overviewHandler
     const unsub = subscribe(channel, interval, handler)

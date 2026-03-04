@@ -18,7 +18,6 @@ import {
   Zap,
   Cog,
   Box,
-  Clock,
 } from "lucide-react"
 
 import type { SystemOverview, ProcessInfo, ServiceInfo, UnifiedTask, WasmProcInfo, SortField, SortDir, TabType } from "./types"
@@ -27,7 +26,6 @@ import { ProcessPanel } from "./ProcessPanel"
 import { TaskPanel } from "./TaskPanel"
 import { ServicePanel } from "./ServicePanel"
 import { WasmPanel } from "./WasmPanel"
-import { ScheduledJobsPanel } from "./ScheduledJobsPanel"
 
 function TaskManagerContent() {
   const { toast } = useToast()
@@ -106,7 +104,7 @@ function TaskManagerContent() {
   const { connected } = useSystemWebSocket({
     channel: wsChannel,
     interval: refreshInterval,
-    enabled: autoRefresh && activeTab !== "wasm" && activeTab !== "scheduled",
+    enabled: autoRefresh && activeTab !== "wasm",
     onOverview: handleOverview,
     onProcesses: handleProcesses,
     onTasks: handleTasks,
@@ -264,12 +262,6 @@ function TaskManagerContent() {
               Wasm {wasmProcs.length > 0 && <span className="text-[0.625rem] opacity-60">({wasmProcs.length})</span>}
             </span>
           </button>
-          <button className={tabClass("scheduled")} onClick={() => setActiveTab("scheduled")}>
-            <span className="flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5" />
-              定时任务
-            </span>
-          </button>
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -312,8 +304,6 @@ function TaskManagerContent() {
           <ServicePanel services={services} onContextMenu={handleServiceContextMenu} />
         ) : activeTab === "wasm" ? (
           <WasmPanel procs={wasmProcs} onRefresh={fetchWasmProcs} />
-        ) : activeTab === "scheduled" ? (
-          <ScheduledJobsPanel />
         ) : (
           <ProcessPanel
             processes={filteredProcesses}
