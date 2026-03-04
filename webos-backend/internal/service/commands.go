@@ -55,13 +55,13 @@ func init() {
 		{Name: "conv list", Description: "列出所有对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15},
 		{Name: "conv switch", Description: "切换活跃对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15, Args: "<id>"},
 		{Name: "conv new", Description: "创建新对话并激活", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15},
-		{Name: "notify", Description: "系统通知：list 查看客户端 / 直接发广播 / @id 定向发送", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "[list | <消息> | @客户端ID <消息>]"},
+		{Name: "notify", Description: "系统通知：广播到所有客户端（Web/Telegram/飞书），@客户端ID 可定向推送，list 查看已连接客户端", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "[list | <消息> | @客户端ID <消息>]"},
 		{Name: "jobs", Description: "列出所有定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30},
 		{Name: "job run", Description: "立即执行指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
 		{Name: "job enable", Description: "启用指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
 		{Name: "job disable", Description: "禁用指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
 		{Name: "job delete", Description: "删除指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
-		{Name: "ai", Description: "给 AI 发送消息（等同于在聊天框输入）", Category: "chat", CategoryLabel: "💬 对话", CategoryOrder: 10, Args: "<消息内容>"},
+		{Name: "ai", Description: "AI 自驱动入口：给 AI 发消息触发思考和工具调用，可用于定时任务实现自动巡检、主动提醒等", Category: "chat", CategoryLabel: "💬 对话", CategoryOrder: 10, Args: "<消息内容>"},
 	}
 }
 
