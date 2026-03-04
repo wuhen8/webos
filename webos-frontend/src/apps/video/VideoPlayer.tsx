@@ -118,19 +118,21 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
         flip: true,
         controls,
         moreVideoAttr: { crossOrigin: 'anonymous' },
-        customType: isHls ? {
-          m3u8: (video: HTMLVideoElement, url: string) => {
-            if (Hls.isSupported()) {
-              const hls = new Hls()
-              hlsRef.current = hls
-              hls.loadSource(url)
-              hls.attachMedia(video)
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-              video.src = url
-            }
+        ...(isHls ? {
+          customType: {
+            m3u8: (video: HTMLVideoElement, url: string) => {
+              if (Hls.isSupported()) {
+                const hls = new Hls()
+                hlsRef.current = hls
+                hls.loadSource(url)
+                hls.attachMedia(video)
+              } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url
+              }
+            },
           },
-        } : undefined,
-        type: isHls ? 'm3u8' : undefined,
+          type: 'm3u8',
+        } : {}),
       })
 
       playerRef.current.on('error', () => setError('视频加载失败，请检查文件格式'))
