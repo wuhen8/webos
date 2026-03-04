@@ -73,13 +73,11 @@ export const manifest: AppConfig = {
       }
     }
 
-    // Regular video file
-    const isDirectUrl = file.path.startsWith('http://') || file.path.startsWith('https://')
-    const src = isDirectUrl ? file.path : await ctx.resolveMediaUrl(nodeId, file.path)
+    // Regular video file — store filePath+nodeId, resolve URL on-demand in player
     ctx.createWindow({
       type: 'video',
       title: file.name,
-      appData: { playlist: [{ label: file.name, url: src }] },
+      appData: { playlist: [{ label: file.name, url: '', filePath: file.path, nodeId }] },
     })
     return { ok: true }
   },

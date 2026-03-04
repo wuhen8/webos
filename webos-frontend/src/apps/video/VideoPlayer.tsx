@@ -1,10 +1,13 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import Artplayer from 'artplayer'
 import Hls from 'hls.js'
+import { resolveMediaUrl } from '@/lib/storageApi'
 
 export interface PlaylistItem {
   label: string
   url: string
+  filePath?: string
+  nodeId?: string
 }
 
 interface VideoPlayerProps {
@@ -18,6 +21,7 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [showPlaylist, setShowPlaylist] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
   const hlsRef = useRef<Hls | null>(null)
   const indexRef = useRef(currentIndex)
   indexRef.current = currentIndex
@@ -29,6 +33,7 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
     setCurrentIndex(index)
     setShowPlaylist(false)
     setError(null)
+    setResolvedUrl(null)
   }, [playlist.length])
 
   const playNext = useCallback(() => {
@@ -38,13 +43,41 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
     }
   }, [playlist.length, playIndex])
 
+  // Resolve URL on-demand: if filePath+nodeId present, resolve; otherwise use url directly
   useEffect(() => {
-    if (!artRef.current || !current) return
+    if (!current) return
+    let cancelled = false
+
+    if (current.filePath && current.nodeId) {
+      const isDirectUrl = current.filePath.startsWith('http://') || current.filePath.startsWith('https://')
+      if (isDirectUrl) {
+        setResolvedUrl(current.filePath)
+      } else {
+        resolveMediaUrl(current.nodeId, current.filePath).then(url => {
+          if (!cancelled) setResolvedUrl(url)
+        }).catch(() => {
+          if (!cancelled) setError('无法解析视频地址')
+        })
+      }
+    } else if (current.url) {
+      setResolvedUrl(current.url)
+    } else {
+      setError('无效的视频地址')
+    }
+
+    return () => { cancelled = true }
+  }, [current])
+
+  // Initialize player once URL is resolved
+  const playUrl = resolvedUrl
+
+  useEffect(() => {
+    if (!artRef.current || !playUrl) return
 
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null }
     if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null }
 
-    const isHls = /\.m3u8(\?|$)/i.test(current.url)
+    const isHls = /\.m3u8(\?|$)/i.test(playUrl)
 
     // Build controls array — add playlist button next to setting (right side)
     const controls: any[] = []
@@ -61,7 +94,7 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
     try {
       playerRef.current = new Artplayer({
         container: artRef.current,
-        url: current.url,
+        url: playUrl,
         volume: 0.7,
         autoplay: true,
         pip: true,
@@ -110,7 +143,7 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
       if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null }
       if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null }
     }
-  }, [current, playlist.length, playNext])
+  }, [playUrl, playlist.length, playNext])
 
   if (error) {
     return (
