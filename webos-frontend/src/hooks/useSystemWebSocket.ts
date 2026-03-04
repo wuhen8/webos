@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from "react"
 import { useWebSocketStore } from "@/stores"
 
-type Channel = "overview" | "processes" | "disks" | "tasks" | "services"
+type Channel = "overview" | "processes" | "disks" | "tasks" | "services" | "scheduled"
 
 interface UseSystemWebSocketOptions {
   channel: Channel
