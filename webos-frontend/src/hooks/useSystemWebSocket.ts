@@ -68,6 +68,7 @@ export function useSystemWebSocket({
       disks: disksHandler,
       tasks: tasksHandler,
       services: servicesHandler,
+      scheduled: () => {},
     }
     const handler = handlerMap[channel] || overviewHandler
     const unsub = subscribe(channel, interval, handler)
