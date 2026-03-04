@@ -100,6 +100,20 @@ func ListConversations() ([]AIConversationRow, error) {
 	return result, rows.Err()
 }
 
+// GetConversation retrieves a single conversation by ID.
+func GetConversation(id string) (*AIConversationRow, error) {
+	var r AIConversationRow
+	err := db.QueryRow("SELECT id, title, created_at, updated_at FROM ai_conversations WHERE id=?", id).
+		Scan(&r.ID, &r.Title, &r.CreatedAt, &r.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get conversation: %w", err)
+	}
+	return &r, nil
+}
+
 // DeleteConversation deletes a conversation and its messages and summaries.
 func DeleteConversation(id string) error {
 	// SQLite foreign key cascade requires PRAGMA foreign_keys=ON which may not be set.

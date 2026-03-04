@@ -320,6 +320,20 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID stri
 			sink.OnError(convID, fmt.Errorf("创建对话失败: %v", err))
 			return
 		}
+	} else {
+		// 如果是已存在的会话，检查是否需要自动更新标题
+		// 当标题为"新对话"且这是第一条用户消息时，用消息内容更新标题
+		conv, err := database.GetConversation(convID)
+		if err == nil && conv != nil && conv.Title == "新对话" {
+			msgCount, _ := database.MessageCount(convID)
+			if msgCount == 0 {
+				title := userMsg
+				if len(title) > 50 {
+					title = title[:50] + "..."
+				}
+				database.UpdateConversationTitle(convID, title)
+			}
+		}
 	}
 
 	// Register cancel func

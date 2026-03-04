@@ -55,17 +55,7 @@ var (
 )
 
 func sendFeishuAsync(chatID string, text string) {
-	for len(text) > feishuMaxMsgLen {
-		cut := feishuMaxMsgLen
-		if idx := strings.LastIndex(text[:cut], "\n"); idx > cut/2 {
-			cut = idx + 1
-		}
-		sendQueue = append(sendQueue, sendItem{chatID: chatID, text: text[:cut]})
-		text = text[cut:]
-	}
-	if text != "" {
-		sendQueue = append(sendQueue, sendItem{chatID: chatID, text: text})
-	}
+	sendQueue = append(sendQueue, sendItem{chatID: chatID, text: text})
 	drainSendQueue()
 }
 

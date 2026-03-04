@@ -55,6 +55,7 @@ func init() {
 		{Name: "conv list", Description: "列出所有对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15},
 		{Name: "conv switch", Description: "切换活跃对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15, Args: "<id>"},
 		{Name: "conv new", Description: "创建新对话并激活", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15},
+		{Name: "conv rename", Description: "重命名当前对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15, Args: "<新名称>"},
 		{Name: "notify", Description: "系统通知：广播到所有客户端（Web/Telegram/飞书），@客户端ID 可定向推送，list 查看已连接客户端", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "[list | <消息> | @客户端ID <消息>]"},
 		{Name: "jobs", Description: "列出所有定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30},
 		{Name: "job run", Description: "立即执行指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
@@ -421,8 +422,10 @@ func (ce *CommandExecutor) cmdConv(args string) CommandResult {
 		return ce.cmdConvSwitch(subArgs)
 	case "new":
 		return ce.cmdConvNew()
+	case "rename":
+		return ce.cmdConvRename(subArgs)
 	default:
-		return CommandResult{Text: "用法: /conv list | /conv switch <id> | /conv new", IsError: true}
+		return CommandResult{Text: "用法: /conv list | /conv switch <id> | /conv new | /conv rename <新名称>", IsError: true}
 	}
 }
 
@@ -489,6 +492,29 @@ func (ce *CommandExecutor) cmdConvNew() CommandResult {
 		}
 	}
 	return CommandResult{Text: fmt.Sprintf("已创建新对话: `%s`", convID)}
+}
+
+func (ce *CommandExecutor) cmdConvRename(newTitle string) CommandResult {
+	newTitle = strings.TrimSpace(newTitle)
+	if newTitle == "" {
+		return CommandResult{Text: "用法: /conv rename <新名称>", IsError: true}
+	}
+
+	// 获取当前激活会话ID
+	var convID string
+	if ce.ConvSwitcher != nil {
+		convID = ce.ConvSwitcher.GetActiveConvID()
+	}
+	if convID == "" {
+		return CommandResult{Text: "当前没有激活的对话", IsError: true}
+	}
+
+	// 更新会话标题
+	if err := database.UpdateConversationTitle(convID, newTitle); err != nil {
+		return CommandResult{Text: "重命名失败: " + err.Error(), IsError: true}
+	}
+
+	return CommandResult{Text: fmt.Sprintf("已将对话 `%s` 重命名为: %s", convID, newTitle)}
 }
 
 func (ce *CommandExecutor) cmdAI(convID, args string) CommandResult {

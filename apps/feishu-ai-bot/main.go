@@ -538,39 +538,14 @@ func onChatError(data json.RawMessage) {
 
 func flushReplyBuf(force bool) {
 	cid := getChatID()
-	for {
-		s := replyBuf.String()
-		if strings.TrimSpace(s) == "" {
-			replyBuf.Reset()
-			return
-		}
-		if force {
-			replyBuf.Reset()
-			sendFeishuAsync(cid, s)
-			return
-		}
-		cutPos := findCutPoint(s)
-		if cutPos <= 0 {
-			if len(s) > 3500 {
-				replyBuf.Reset()
-				sendFeishuAsync(cid, s)
-			}
-			return
-		}
-		segment := s[:cutPos]
+	s := replyBuf.String()
+	if strings.TrimSpace(s) == "" {
 		replyBuf.Reset()
-		replyBuf.WriteString(s[cutPos:])
-		for _, line := range strings.SplitAfter(segment, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if inCodeBlock {
-				if trimmed == "```" {
-					inCodeBlock = false
-				}
-			} else if strings.HasPrefix(trimmed, "```") {
-				inCodeBlock = true
-			}
-		}
-		sendFeishuAsync(cid, segment)
+		return
+	}
+	if force {
+		replyBuf.Reset()
+		sendFeishuAsync(cid, s)
 	}
 }
 
