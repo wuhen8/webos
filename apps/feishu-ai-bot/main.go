@@ -121,7 +121,7 @@ func on_event(ptr uint32, size uint32) uint32 {
 		ensureInit()
 		onTick()
 	default:
-		logMsg("未知事件: " + ev.Type)
+
 	}
 	return 0
 }
