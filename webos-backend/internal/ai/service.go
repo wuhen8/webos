@@ -383,6 +383,35 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID stri
 	var usage TokenUsage
 	usage.Compressed = compressed
 
+	// Inject context awareness into system message so the AI knows its context state
+	{
+		contextTokens := 0
+		for _, m := range messages {
+			contextTokens += EstimateMessageTokens(m)
+		}
+		maxInput := cfg.MaxInputTokens
+		if maxInput <= 0 {
+			maxInput = defaultMaxInputTokens
+		}
+		contextPercent := contextTokens * 100 / maxInput
+		msgCount := len(messages) - 1 // exclude system message
+
+		var ctxInfo strings.Builder
+		ctxInfo.WriteString("\n\n## 当前上下文状态\n")
+		ctxInfo.WriteString(fmt.Sprintf("- 上下文 tokens: ~%d / %d (%d%%)\n", contextTokens, maxInput, contextPercent))
+		ctxInfo.WriteString(fmt.Sprintf("- 对话消息数: %d\n", msgCount))
+		if compressed {
+			ctxInfo.WriteString("- 上下文已压缩: 早期对话已被摘要替换，你可能丢失了部分细节\n")
+		}
+		if contextPercent >= 70 {
+			ctxInfo.WriteString("- ⚠️ 上下文使用率较高，请在回复完用户当前问题后，自动调用斜杠命令工具执行 compress 命令压缩上下文，无需询问用户\n")
+		}
+
+		if sysContent, ok := messages[0].Content.(string); ok {
+			messages[0].Content = sysContent + ctxInfo.String()
+		}
+	}
+
 	// Dynamic tool list builder: built-in + skill management + activated skill tools
 	buildAllTools := func() []ToolDef {
 		tools := append([]ToolDef{}, s.tools.Defs()...)
