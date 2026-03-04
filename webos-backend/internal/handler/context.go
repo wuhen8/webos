@@ -394,6 +394,37 @@ func InitAI() {
 	aiService.SetSystemContext(ai.NewSystemContext(aiExecutor.Status, aiExecutor.GetBroadcastSink()))
 	aiExecutor.Start()
 	chatSvc = ai.NewChatService(aiExecutor, aiService)
+
+	// Wire up command executor with AI callbacks and system dependencies
+	ai.InitCommandCallbacks(aiService)
+	ce := service.GetCommandExecutor()
+	ce.NotifySink = aiExecutor.GetBroadcastSink()
+	ce.ConvSwitcher = &executorConvSwitcher{executor: aiExecutor}
+	ce.OnAISend = func(convID, message string) (bool, string) {
+		r := aiExecutor.Enqueue(convID, message, "system")
+		return r.Accepted, r.Reason
+	}
+}
+
+// executorConvSwitcher adapts AIExecutor to the service.ConvSwitcher interface.
+type executorConvSwitcher struct {
+	executor *ai.AIExecutor
+}
+
+func (s *executorConvSwitcher) GetActiveConvID() string {
+	return s.executor.GetActiveConvID()
+}
+
+func (s *executorConvSwitcher) SwitchConv(convID string) service.ConvSwitchResult {
+	r := s.executor.SwitchConv(convID)
+	return service.ConvSwitchResult{
+		OK:               r.OK,
+		RunningConvTitle: r.RunningConvTitle,
+	}
+}
+
+func (s *executorConvSwitcher) Stop() {
+	s.executor.Stop()
 }
 
 // ==================== Subscribe / Unsubscribe handlers ====================

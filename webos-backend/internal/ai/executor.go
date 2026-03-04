@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"webos-backend/internal/database"
+	"webos-backend/internal/service"
 )
 
 // BroadcastSink implements ChatSink and forwards events to all registered sub-sinks.
@@ -158,13 +159,14 @@ func (e *AIExecutor) executeCommand(convID, cmdName, cmdArgs, clientID string) {
 		"command": cmdName, "state": "running",
 	})
 
-	result := e.service.ExecuteCommand(convID, cmdName, cmdArgs)
+	ce := service.GetCommandExecutor()
+	result := ce.ExecuteCommand(convID, cmdName, cmdArgs)
 
 	sendToClient("chat_command_progress", map[string]interface{}{
 		"command": cmdName, "state": "done",
 	})
 
-	e.service.HandleCommandResult(convID, result)
+	ce.HandleCommandResult(convID, result)
 
 	sendToClient("chat_command_result", map[string]interface{}{
 		"conversationId": convID,

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"webos-backend/internal/cli"
 	"webos-backend/internal/config"
 	"webos-backend/internal/database"
 	"webos-backend/internal/handler"
@@ -44,6 +45,12 @@ func requestHostname(r *http.Request) string {
 }
 
 func main() {
+	// CLI mode: webos <command> [args...]
+	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
+		cli.Run(os.Args[1:])
+		return
+	}
+
 	// 初始化 SQLite 数据库
 	if err := database.Init(config.ConfigDir()); err != nil {
 		fmt.Printf("Fatal: failed to initialize database: %v\n", err)
@@ -141,6 +148,9 @@ func main() {
 
 	// System notification broadcast — uses API token auth
 	api.POST("/notify", handler.ExternalNotifyHandler)
+
+	// 本地命令执行 — 仅 localhost 免认证
+	api.POST("/command", handler.CommandHandler)
 
 	// 统一 WebSocket（首条消息认证）
 	r.GET("/api/ws", func(c *gin.Context) {

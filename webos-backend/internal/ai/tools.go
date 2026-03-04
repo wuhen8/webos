@@ -77,7 +77,6 @@ type ToolRegistry struct {
 	fileSvc   *service.FileService
 	sandbox   *Sandbox
 	sysCtx    SystemContext
-	svc       *Service // back-reference for slash command execution
 
 	// File backup store: convID -> []fileBackup (ordered, most recent last)
 	backupMu sync.Mutex
@@ -1360,18 +1359,42 @@ func (r *ToolRegistry) registerScheduledJobs() {
 - enable：启用任务
 - disable：禁用任务
 
+支持三种任务类型（job_type）：
+- "shell"（默认）：执行 Linux shell 命令，command 填 shell 命令
+- "command"：执行 WebOS 斜杠命令（如 /notify、/status 等），command 填命令内容
+- "builtin"：执行系统内置操作，需要设置 operation 字段，可选参数通过 node_id/dst_node_id/paths/path/to/output/dest 传入
+
+builtin 可用的 operation：
+- "rebuild-index-local"：重建所有本地存储节点的文件索引
+- "rebuild-index-s3"：重建所有 S3 存储节点的文件索引
+- "clean-uploads"：清理过期的上传会话
+- "copy"：定时复制文件，需要 node_id、paths、to，跨节点还需 dst_node_id
+- "compress"：定时压缩文件，需要 node_id、paths、output
+- "extract"：定时解压文件，需要 node_id、path，可选 dest
+
 支持两种调度类型（schedule_type）：
 - "cron"（默认）：周期性任务，需要 cron_expr
-- "once"：一次性任务，需要 run_at（毫秒时间戳），执行完后自动删除
+- "once"：一次性任务，需要 run_at，执行完后自动删除
 
 Cron 表达式为 6 字段格式：秒 分 时 日 月 周
 示例：
 - "0 0 3 * * *" = 每天凌晨 3:00
 - "0 */30 * * * *" = 每 30 分钟
-- "0 0 0 * * 1" = 每周一 0:00
 - "0 0 9,18 * * *" = 每天 9:00 和 18:00
 
-一次性任务示例：schedule_type="once", run_at=1709366400000`, map[string]interface{}{
+场景判断：
+- 用户说"每天/每周/每小时..."等含重复语义 → schedule_type="cron"
+- 用户说"3点提醒我/下午帮我/5分钟后..."等一次性语义 → schedule_type="once"
+- 用户要求发通知、提醒、广播等 → job_type="command", command="notify ..."
+- 用户要求执行脚本、系统命令等 → job_type="shell"
+- 用户要求索引、清理、备份文件等系统维护 → job_type="builtin"
+
+示例：
+- "每天3点重建索引" → cron + builtin, operation="rebuild-index-local"
+- "3点提醒我修 bug" → once + command, command="notify 该修 bug 了"
+- "每小时清理过期上传" → cron + builtin, operation="clean-uploads"
+- "5分钟后执行备份脚本" → once + shell, run_at="+5m"
+- "每天把 photos 复制到备份节点" → cron + builtin, operation="copy"`, map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"action": map[string]interface{}{
@@ -1387,6 +1410,11 @@ Cron 表达式为 6 字段格式：秒 分 时 日 月 周
 				"type":        "string",
 				"description": "任务名称（create/update 时使用）",
 			},
+			"job_type": map[string]interface{}{
+				"type":        "string",
+				"enum":        []string{"shell", "command", "builtin"},
+				"description": "任务类型：shell=Linux 命令（默认），command=WebOS 斜杠命令，builtin=系统内置操作",
+			},
 			"schedule_type": map[string]interface{}{
 				"type":        "string",
 				"enum":        []string{"cron", "once"},
@@ -1398,11 +1426,45 @@ Cron 表达式为 6 字段格式：秒 分 时 日 月 周
 			},
 			"run_at": map[string]interface{}{
 				"type":        "string",
-				"description": "一次性任务的执行时间。支持两种格式：1) 相对时间如 '+30s'、'+5m'、'+2h'（秒/分/时后执行）；2) 绝对时间如 '2026-03-02 20:30:30'（schedule_type=once 时必填）",
+				"description": "一次性任务的执行时间。支持：'+30s'/'+5m'/'+2h'（相对）或 '2026-03-02 20:30'（绝对）",
 			},
 			"command": map[string]interface{}{
 				"type":        "string",
-				"description": "要定时执行的 shell 命令（create/update 时使用）",
+				"description": "shell 或 command 类型的命令内容（job_type=shell 时为 Linux 命令，job_type=command 时为斜杠命令如 '/notify xxx' 或 'notify xxx'）",
+			},
+			"operation": map[string]interface{}{
+				"type":        "string",
+				"enum":        []string{"rebuild-index-local", "rebuild-index-s3", "clean-uploads", "copy", "compress", "extract"},
+				"description": "builtin 操作名称（job_type=builtin 时必填）",
+			},
+			"node_id": map[string]interface{}{
+				"type":        "string",
+				"description": "存储节点 ID（builtin 的 copy/compress/extract 操作使用）",
+			},
+			"dst_node_id": map[string]interface{}{
+				"type":        "string",
+				"description": "目标存储节点 ID（builtin copy 跨节点复制时使用）",
+			},
+			"paths": map[string]interface{}{
+				"type":        "array",
+				"items":       map[string]interface{}{"type": "string"},
+				"description": "文件路径列表（builtin copy/compress 使用）",
+			},
+			"path": map[string]interface{}{
+				"type":        "string",
+				"description": "单个文件路径（builtin extract 使用）",
+			},
+			"to": map[string]interface{}{
+				"type":        "string",
+				"description": "目标路径（builtin copy 使用）",
+			},
+			"output": map[string]interface{}{
+				"type":        "string",
+				"description": "输出文件路径（builtin compress 使用）",
+			},
+			"dest": map[string]interface{}{
+				"type":        "string",
+				"description": "解压目标目录（builtin extract 使用，默认为压缩文件所在目录）",
 			},
 			"silent": map[string]interface{}{
 				"type":        "boolean",
@@ -1412,20 +1474,66 @@ Cron 表达式为 6 字段格式：秒 分 时 日 月 周
 		"required": []string{"action"},
 	}, func(ctx context.Context, convID string, args json.RawMessage) (string, error) {
 		var p struct {
-			Action       string `json:"action"`
-			JobID        string `json:"job_id"`
-			Name         string `json:"name"`
-			ScheduleType string `json:"schedule_type"`
-			CronExpr     string `json:"cron_expr"`
-			RunAt        string `json:"run_at"`
-			Command      string `json:"command"`
-			Silent       bool   `json:"silent"`
+			Action       string   `json:"action"`
+			JobID        string   `json:"job_id"`
+			Name         string   `json:"name"`
+			JobType      string   `json:"job_type"`
+			ScheduleType string   `json:"schedule_type"`
+			CronExpr     string   `json:"cron_expr"`
+			RunAt        string   `json:"run_at"`
+			Command      string   `json:"command"`
+			Operation    string   `json:"operation"`
+			NodeID       string   `json:"node_id"`
+			DstNodeID    string   `json:"dst_node_id"`
+			Paths        []string `json:"paths"`
+			Path         string   `json:"path"`
+			To           string   `json:"to"`
+			Output       string   `json:"output"`
+			Dest         string   `json:"dest"`
+			Silent       bool     `json:"silent"`
 		}
 		if err := json.Unmarshal(args, &p); err != nil {
 			return "", err
 		}
+		if p.JobType == "" {
+			p.JobType = "shell"
+		}
 		if p.ScheduleType == "" {
 			p.ScheduleType = "cron"
+		}
+
+		// Build config JSON based on job_type
+		buildConfig := func() string {
+			switch p.JobType {
+			case "builtin":
+				cfg := map[string]interface{}{"operation": p.Operation}
+				if p.NodeID != "" {
+					cfg["nodeId"] = p.NodeID
+				}
+				if p.DstNodeID != "" {
+					cfg["dstNodeId"] = p.DstNodeID
+				}
+				if len(p.Paths) > 0 {
+					cfg["paths"] = p.Paths
+				}
+				if p.Path != "" {
+					cfg["path"] = p.Path
+				}
+				if p.To != "" {
+					cfg["to"] = p.To
+				}
+				if p.Output != "" {
+					cfg["output"] = p.Output
+				}
+				if p.Dest != "" {
+					cfg["dest"] = p.Dest
+				}
+				b, _ := json.Marshal(cfg)
+				return string(b)
+			default: // shell, command
+				b, _ := json.Marshal(map[string]string{"command": p.Command})
+				return string(b)
+			}
 		}
 
 		switch p.Action {
@@ -1438,17 +1546,23 @@ Cron 表达式为 6 字段格式：秒 分 时 日 月 周
 			return string(data), nil
 
 		case "create":
-			jobID, err := ActionCreateScheduledJob(p.Name, p.CronExpr, p.Command, p.Silent, p.ScheduleType, p.RunAt, r.fileSvc)
+			configJSON := buildConfig()
+			jobID, err := ActionCreateScheduledJob(p.Name, p.JobType, p.CronExpr, configJSON, p.Silent, p.ScheduleType, p.RunAt, r.fileSvc)
 			if err != nil {
 				return "错误: " + err.Error(), nil
 			}
-			if p.ScheduleType == "once" {
-				return fmt.Sprintf("一次性任务已创建:\n- ID: %s\n- 名称: %s\n- 执行时间: %s\n- 命令: %s", jobID, p.Name, p.RunAt, p.Command), nil
+			detail := p.Command
+			if p.JobType == "builtin" {
+				detail = p.Operation
 			}
-			return fmt.Sprintf("定时任务已创建:\n- ID: %s\n- 名称: %s\n- 计划: %s\n- 命令: %s", jobID, p.Name, p.CronExpr, p.Command), nil
+			if p.ScheduleType == "once" {
+				return fmt.Sprintf("一次性任务已创建:\n- ID: %s\n- 名称: %s\n- 类型: %s\n- 执行时间: %s\n- 内容: %s", jobID, p.Name, p.JobType, p.RunAt, detail), nil
+			}
+			return fmt.Sprintf("定时任务已创建:\n- ID: %s\n- 名称: %s\n- 类型: %s\n- 计划: %s\n- 内容: %s", jobID, p.Name, p.JobType, p.CronExpr, detail), nil
 
 		case "update":
-			if err := ActionUpdateScheduledJob(p.JobID, p.Name, p.CronExpr, p.Command, p.Silent, p.ScheduleType, p.RunAt, r.fileSvc); err != nil {
+			configJSON := buildConfig()
+			if err := ActionUpdateScheduledJob(p.JobID, p.Name, p.JobType, p.CronExpr, configJSON, p.Silent, p.ScheduleType, p.RunAt, r.fileSvc); err != nil {
 				return "错误: " + err.Error(), nil
 			}
 			return fmt.Sprintf("定时任务 %s 已更新", p.JobID), nil
@@ -1487,7 +1601,7 @@ func (r *ToolRegistry) registerSystemManage() {
 	// Build dynamic command list for the tool description
 	var descBuilder strings.Builder
 	descBuilder.WriteString("执行斜杠命令。可用命令：\n")
-	for _, c := range commandRegistry {
+	for _, c := range service.GetCommandRegistry() {
 		if c.Hidden {
 			continue
 		}
@@ -1521,15 +1635,12 @@ func (r *ToolRegistry) registerSystemManage() {
 			return "", err
 		}
 
-		if r.svc == nil {
-			return "错误: Service 未初始化", nil
-		}
-
-		result := r.svc.ExecuteCommand(convID, p.Command, p.Args)
+		ce := service.GetCommandExecutor()
+		result := ce.ExecuteCommand(convID, p.Command, p.Args)
 
 		// Handle side effects
 		if result.ClearHistory || result.StopChat || result.SwitchModel != "" {
-			r.svc.HandleCommandResult(convID, result)
+			ce.HandleCommandResult(convID, result)
 		}
 
 		if result.IsError {

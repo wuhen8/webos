@@ -6,13 +6,11 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 
-	"webos-backend/internal/config"
 	"webos-backend/internal/database"
 	"webos-backend/internal/service"
 )
@@ -249,9 +247,12 @@ func ActionListScheduledJobs() []service.JobStatus {
 }
 
 // ActionCreateScheduledJob creates a new scheduled job. Returns the job ID.
-func ActionCreateScheduledJob(name, cronExpr, command string, silent bool, scheduleType string, runAtStr string, fileSvc service.FileCopier) (string, error) {
-	if name == "" || command == "" {
-		return "", actionErr("name 和 command 不能为空")
+func ActionCreateScheduledJob(name, jobType, cronExpr, configJSON string, silent bool, scheduleType string, runAtStr string, fileSvc service.FileCopier) (string, error) {
+	if name == "" {
+		return "", actionErr("name 不能为空")
+	}
+	if jobType == "" {
+		jobType = "shell"
 	}
 	if scheduleType == "" {
 		scheduleType = "cron"
@@ -279,19 +280,18 @@ func ActionCreateScheduledJob(name, cronExpr, command string, silent bool, sched
 		}
 	}
 	jobID := "ai_" + genID()[:12]
-	cfg, _ := json.Marshal(map[string]string{"command": command})
-	if err := service.DBCreateJob(jobID, name, "shell", string(cfg), cronExpr, true, silent, scheduleType, runAt); err != nil {
+	if err := service.DBCreateJob(jobID, name, jobType, configJSON, cronExpr, true, silent, scheduleType, runAt); err != nil {
 		return "", actionErr("创建失败: " + err.Error())
 	}
 	job := service.ScheduledJob{
 		ID:           jobID,
 		Name:         name,
 		CronExpr:     cronExpr,
-		Run:          service.MakeJobRunFunc(jobID, "shell", string(cfg), silent, service.NewSystemService(), fileSvc),
+		Run:          service.MakeJobRunFunc(jobID, jobType, configJSON, silent, service.NewSystemService(), fileSvc),
 		Silent:       silent,
 		Enabled:      true,
-		JobType:      "shell",
-		Config:       string(cfg),
+		JobType:      jobType,
+		Config:       configJSON,
 		ScheduleType: scheduleType,
 		RunAt:        runAt,
 	}
@@ -300,17 +300,20 @@ func ActionCreateScheduledJob(name, cronExpr, command string, silent bool, sched
 }
 
 // ActionUpdateScheduledJob updates an existing scheduled job.
-func ActionUpdateScheduledJob(jobID, name, cronExpr, command string, silent bool, scheduleType string, runAtStr string, fileSvc service.FileCopier) error {
+func ActionUpdateScheduledJob(jobID, name, jobType, cronExpr, configJSON string, silent bool, scheduleType string, runAtStr string, fileSvc service.FileCopier) error {
 	if jobID == "" {
 		return actionErr("job_id 不能为空")
+	}
+	if jobType == "" {
+		jobType = "shell"
 	}
 	if scheduleType == "" {
 		scheduleType = "cron"
 	}
 	var runAt int64
 	if scheduleType == "once" {
-		if name == "" || command == "" {
-			return actionErr("name 和 command 不能为空")
+		if name == "" {
+			return actionErr("name 不能为空")
 		}
 		if runAtStr != "" {
 			var err error
@@ -321,20 +324,19 @@ func ActionUpdateScheduledJob(jobID, name, cronExpr, command string, silent bool
 		}
 		cronExpr = ""
 	} else {
-		if name == "" || command == "" || cronExpr == "" {
-			return actionErr("name、command 和 cron_expr 不能为空")
+		if name == "" || cronExpr == "" {
+			return actionErr("name 和 cron_expr 不能为空")
 		}
 		if _, err := service.ParseCron(cronExpr); err != nil {
 			return actionErr(fmt.Sprintf("无效的 cron 表达式 '%s': %v", cronExpr, err))
 		}
 	}
-	cfg, _ := json.Marshal(map[string]string{"command": command})
-	if err := service.DBUpdateJob(jobID, name, "shell", string(cfg), cronExpr, true, silent, scheduleType, runAt); err != nil {
+	if err := service.DBUpdateJob(jobID, name, jobType, configJSON, cronExpr, true, silent, scheduleType, runAt); err != nil {
 		return actionErr("更新失败: " + err.Error())
 	}
-	runFn := service.MakeJobRunFunc(jobID, "shell", string(cfg), silent, service.NewSystemService(), fileSvc)
+	runFn := service.MakeJobRunFunc(jobID, jobType, configJSON, silent, service.NewSystemService(), fileSvc)
 	sched := service.GetScheduler()
-	sched.UpdateJob(jobID, name, cronExpr, "shell", string(cfg), runFn)
+	sched.UpdateJob(jobID, name, cronExpr, jobType, configJSON, runFn)
 	sched.SetSilent(jobID, silent)
 	sched.SetOnceSchedule(jobID, scheduleType, runAt)
 	return nil
@@ -419,124 +421,4 @@ func parseRunAt(s string) (int64, error) {
 		}
 	}
 	return t.UnixMilli(), nil
-}
-
-// ---------------------------------------------------------------------------
-// AI config actions (used by /config, /models, /model)
-// ---------------------------------------------------------------------------
-
-// ActionGetConfig returns the current AI config summary.
-func ActionGetConfig() (model string, maxTokens, maxToolRounds int, skillsDir string, providerCount int, err error) {
-	cfg, e := loadAIConfig()
-	if e != nil {
-		err = actionErr("AI 未配置: " + e.Error())
-		return
-	}
-	multi, _ := loadMultiConfig()
-	model = cfg.Model
-	maxTokens = cfg.MaxTokens
-	maxToolRounds = cfg.MaxToolRounds
-	skillsDir = config.SkillsDir()
-	if multi != nil {
-		providerCount = len(multi.Providers)
-	}
-	return
-}
-// ModelInfo describes a model within a provider.
-type ModelInfo struct {
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-	Active   bool   `json:"active"`
-}
-
-// ActionListModels returns all available models across providers.
-func ActionListModels() ([]ModelInfo, error) {
-	multi, err := loadMultiConfig()
-	if err != nil {
-		return nil, actionErr("AI 未配置: " + err.Error())
-	}
-	var result []ModelInfo
-	for _, p := range multi.Providers {
-		for _, m := range p.Models {
-			result = append(result, ModelInfo{
-				Provider: p.Name,
-				Model:    m,
-				Active:   p.ID == multi.ActiveProvider && m == multi.ActiveModel,
-			})
-		}
-	}
-	return result, nil
-}
-
-// ActionSwitchModel switches the active model. Returns (providerName, modelName, providerID/modelName ref) or error.
-func ActionSwitchModel(ref string) (providerName, modelName, switchRef string, err error) {
-	if ref == "" {
-		cfg, e := loadAIConfig()
-		if e != nil {
-			err = actionErr("AI 未配置")
-			return
-		}
-		modelName = cfg.Model
-		return
-	}
-
-	multi, e := loadMultiConfig()
-	if e != nil {
-		err = actionErr("AI 未配置: " + e.Error())
-		return
-	}
-
-	var targetProvider *AIProvider
-	var targetModel string
-
-	if strings.Contains(ref, "/") {
-		parts := strings.SplitN(ref, "/", 2)
-		provName := strings.TrimSpace(parts[0])
-		modName := strings.TrimSpace(parts[1])
-		for i := range multi.Providers {
-			if strings.EqualFold(multi.Providers[i].Name, provName) || multi.Providers[i].ID == provName {
-				targetProvider = &multi.Providers[i]
-				break
-			}
-		}
-		if targetProvider == nil {
-			err = actionErr(fmt.Sprintf("未找到供应商: %s", provName))
-			return
-		}
-		found := false
-		for _, m := range targetProvider.Models {
-			if strings.EqualFold(m, modName) {
-				targetModel = m
-				found = true
-				break
-			}
-		}
-		if !found {
-			err = actionErr(fmt.Sprintf("供应商 %s 中未找到模型: %s", targetProvider.Name, modName))
-			return
-		}
-	} else {
-		modName := strings.TrimSpace(ref)
-		for i := range multi.Providers {
-			for _, m := range multi.Providers[i].Models {
-				if strings.EqualFold(m, modName) {
-					targetProvider = &multi.Providers[i]
-					targetModel = m
-					break
-				}
-			}
-			if targetProvider != nil {
-				break
-			}
-		}
-		if targetProvider == nil {
-			err = actionErr(fmt.Sprintf("未找到模型: %s", modName))
-			return
-		}
-	}
-
-	providerName = targetProvider.Name
-	modelName = targetModel
-	switchRef = targetProvider.ID + "/" + targetModel
-	return
 }

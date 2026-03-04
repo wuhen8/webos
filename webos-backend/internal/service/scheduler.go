@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -550,6 +551,10 @@ type shellConfig struct {
 	Command string `json:"command"`
 }
 
+type commandConfig struct {
+	Command string `json:"command"` // slash command text, e.g. "notify 定时备份完成" or "status"
+}
+
 type builtinConfig struct {
 	Operation string   `json:"operation"`
 	NodeID    string   `json:"nodeId,omitempty"`
@@ -616,6 +621,37 @@ func MakeJobRunFunc(jobID, jobType, cfg string, silent bool, systemSvc SystemExe
 		var bc builtinConfig
 		json.Unmarshal([]byte(cfg), &bc)
 		return makeBuiltinRun(jobID, bc, submitFn, fileSvc)
+	case "command":
+		var cc commandConfig
+		json.Unmarshal([]byte(cfg), &cc)
+		return func() {
+			cmdText := strings.TrimPrefix(cc.Command, "/")
+			submitFn("scheduled_command", "定时: /"+cmdText, func(ctx context.Context, r *ProgressReporter) (string, error) {
+				ce := GetCommandExecutor()
+				name, args, ok := ParseCommand("/" + cmdText)
+				if !ok {
+					msg := "无效的命令: " + cmdText
+					DBUpdateJobStatus(jobID, "failed", msg)
+					GetScheduler().SetJobResult(jobID, "failed", msg)
+					return "", fmt.Errorf("%s", msg)
+				}
+				result := ce.ExecuteCommand("", name, args)
+				if result.IsError {
+					DBUpdateJobStatus(jobID, "failed", result.Text)
+					GetScheduler().SetJobResult(jobID, "failed", result.Text)
+					return "", fmt.Errorf("%s", result.Text)
+				}
+				// Handle side effects (e.g. model switch persistence)
+				ce.HandleCommandResult("", result)
+				msg := result.Text
+				if len(msg) > 200 {
+					msg = msg[:200]
+				}
+				DBUpdateJobStatus(jobID, "success", msg)
+				GetScheduler().SetJobResult(jobID, "success", msg)
+				return "完成", nil
+			})
+		}
 	default:
 		return func() {}
 	}

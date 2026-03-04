@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"webos-backend/internal/database"
+	"webos-backend/internal/service"
 )
 
 // ChatService provides protocol-agnostic chat operations.
@@ -47,8 +48,8 @@ func (cs *ChatService) SendMessage(convID, content, clientID string) EnqueueResu
 }
 
 // Commands returns all available slash commands.
-func (cs *ChatService) Commands() []CommandDef {
-	return ListCommands()
+func (cs *ChatService) Commands() []service.CommandDef {
+	return service.ListCommands()
 }
 
 // GetMessages returns messages for a conversation.
