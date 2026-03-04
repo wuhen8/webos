@@ -375,7 +375,15 @@ export default function ChatContent() {
       }
       if (event.type === 'conv_switched') {
         if (event.convSwitched) {
-          setActiveConvId(event.convSwitched.convId)
+          const newId = event.convSwitched.convId
+          setActiveConvId(newId)
+          // If we're in a "new chat" state (no convId yet), bind the newly created
+          // conversation to the current view so responses appear here instead of
+          // requiring the user to click the sidebar entry.
+          if (!convIdRef.current && newId) {
+            convIdRef.current = newId
+            setConvId(newId)
+          }
           loadConversations()
         }
         return
