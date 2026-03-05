@@ -99,13 +99,20 @@ interface MountContext {
   file: { name: string; path: string; nodeId?: string; size?: number; extension?: string } | null
 }
 
-let editorInstance: monaco.editor.IStandaloneCodeEditor | null = null
-let disposed = false
+// --- Per-window state management (fix multi-window issues) ---
+interface EditorState {
+  editor: monaco.editor.IStandaloneCodeEditor
+  disposed: boolean
+  filePath: string | null
+  nodeId: string
+  isModified: boolean
+}
+
+const editorStates = new Map<string, EditorState>()
 
 export async function mount(ctx: MountContext) {
-  const { container, sdk, file } = ctx
+  const { container, sdk, file, windowId } = ctx
   const doc = document
-  disposed = false
 
   // Build DOM structure
   const root = doc.createElement('div')
@@ -198,17 +205,23 @@ export async function mount(ctx: MountContext) {
     tabSize: 2,
   })
 
-  editorInstance = editor
-
-  let isModified = false
+  // Register per-window state
+  const state: EditorState = {
+    editor,
+    disposed: false,
+    filePath,
+    nodeId,
+    isModified: false,
+  }
+  editorStates.set(windowId, state)
 
   // --- Save ---
   async function save() {
-    if (disposed) return
+    if (state.disposed) return
     const value = editor.getValue()
     try {
       await sdk.fs.write(nodeId, filePath, value)
-      isModified = false
+      state.isModified = false
       sdk.window.setTitle(getFileName(filePath!))
       updateStatusbar()
     } catch (err: any) {
@@ -216,12 +229,22 @@ export async function mount(ctx: MountContext) {
     }
   }
 
-  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, save)
+  // Use DOM keydown instead of Monaco addCommand (fixes multi-window shortcut issue)
+  function handleKeydown(e: KeyboardEvent) {
+    if (state.disposed) return
+    // Ctrl+S on Windows/Linux, Cmd+S on Mac
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault()
+      e.stopPropagation()
+      save()
+    }
+  }
+  root.addEventListener('keydown', handleKeydown)
 
   // Track modifications
   editor.onDidChangeModelContent(() => {
-    if (!isModified) {
-      isModified = true
+    if (!state.isModified) {
+      state.isModified = true
       sdk.window.setTitle(`● ${getFileName(filePath!)}`)
     }
     updateStatusbar()
@@ -229,7 +252,7 @@ export async function mount(ctx: MountContext) {
 
   // Auto-save on blur
   editor.onDidBlurEditorWidget(() => {
-    if (isModified) {
+    if (state.isModified) {
       setTimeout(save, 300)
     }
   })
@@ -342,7 +365,7 @@ export async function mount(ctx: MountContext) {
     const col = pos?.column ?? 1
     cursorInfo.textContent = `${ln}:${col}`
     sbCursor.textContent = `Ln ${ln}, Col ${col}`
-    sbModified.textContent = isModified ? '● 未保存' : '已保存'
+    sbModified.textContent = state.isModified ? '● 未保存' : '已保存'
   }
 
   editor.onDidChangeCursorPosition(() => updateStatusbar())
@@ -350,10 +373,11 @@ export async function mount(ctx: MountContext) {
 }
 
 export function unmount(ctx: MountContext) {
-  disposed = true
-  if (editorInstance) {
-    editorInstance.dispose()
-    editorInstance = null
+  const state = editorStates.get(ctx.windowId)
+  if (state) {
+    state.disposed = true
+    state.editor.dispose()
+    editorStates.delete(ctx.windowId)
   }
   ctx.container.innerHTML = ''
 }

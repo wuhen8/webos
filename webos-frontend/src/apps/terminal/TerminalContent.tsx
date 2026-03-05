@@ -85,9 +85,11 @@ interface SingleTerminalProps {
   isWindowActive: boolean
   initialCommand?: string
   onModifierConsumed?: () => void
+  /** 底部预留空间（用于工具栏） */
+  bottomPadding?: number
 }
 
-const SingleTerminal = forwardRef<SingleTerminalHandle, SingleTerminalProps>(function SingleTerminal({ tabId, visible, isWindowActive, initialCommand, onModifierConsumed }, ref) {
+const SingleTerminal = forwardRef<SingleTerminalHandle, SingleTerminalProps>(function SingleTerminal({ tabId, visible, isWindowActive, initialCommand, onModifierConsumed, bottomPadding = 0 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
@@ -309,13 +311,30 @@ const SingleTerminal = forwardRef<SingleTerminalHandle, SingleTerminalProps>(fun
     }
   }, [visible, isWindowActive])
 
+  // Refit when bottom padding changes (toolbar show/hide)
+  useEffect(() => {
+    if (visible && xtermRef.current) {
+      setTimeout(() => {
+        try {
+          fitAddonRef.current?.fit()
+        } catch {}
+      }, 50)
+    }
+  }, [visible, bottomPadding])
+
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 bg-[#1e1e1e] overflow-hidden"
-      style={{ visibility: visible ? 'visible' : 'hidden' }}
+      className="absolute bg-[#1e1e1e] overflow-hidden"
+      style={{
+        visibility: visible ? 'visible' : 'hidden',
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: bottomPadding,
+      }}
     >
-      <div ref={termRef} className="h-full w-full" style={{ padding: '0.25rem 0.25rem 0 0.25rem' }} />
+      <div ref={termRef} className="h-full w-full" style={{ padding: '0.25rem' }} />
     </div>
   )
 })
@@ -333,7 +352,7 @@ function QuickActionsBar({ onSend, onModifier, activeModifier, visible }: {
 
   return (
     <div
-      className="absolute bottom-3 left-0 right-0 flex justify-center z-10 transition-all duration-200 ease-out"
+      className="absolute bottom-2 left-0 right-0 flex justify-center z-10 transition-all duration-200 ease-out"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? 'translateY(0)' : 'translateY(0.75rem)',
@@ -463,6 +482,7 @@ export default function TerminalContent({ windowId, isActive }: TerminalContentP
             ref={(h) => { if (h) terminalRefs.current.set(windowId, h); else terminalRefs.current.delete(windowId) }}
             tabId={windowId} visible={true} isWindowActive={isActive}
             onModifierConsumed={handleModifierConsumed}
+            bottomPadding={showToolbar ? 48 : 0}
           />
           <QuickActionsBar onSend={handleSendInput} onModifier={handleModifier} activeModifier={activeModifier} visible={showToolbar} />
         </div>
@@ -546,6 +566,7 @@ export default function TerminalContent({ windowId, isActive }: TerminalContentP
             isWindowActive={isActive}
             initialCommand={tab.initialCommand}
             onModifierConsumed={handleModifierConsumed}
+            bottomPadding={showToolbar ? 48 : 0}
           />
         ))}
         <QuickActionsBar onSend={handleSendInput} onModifier={handleModifier} activeModifier={activeModifier} visible={showToolbar} />
