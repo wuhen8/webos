@@ -31,7 +31,7 @@ func init() {
 		Platform:     "web",
 		DisplayName:  "Web UI",
 		Capabilities: []string{"markdown", "code_blocks", "images", "html", "tables", "latex"},
-		SystemHint:   "", // web UI has no special formatting needs
+		SystemHint:   "用户通过 Web 浏览器访问，支持完整 Markdown 渲染（代码块、表格、LaTeX 公式、图片）。可使用 ui_action 工具在前端打开文件或应用。",
 	})
 }
 

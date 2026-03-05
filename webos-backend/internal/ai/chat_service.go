@@ -43,6 +43,7 @@ func NewChatService(executor *AIExecutor, service *Service) *ChatService {
 }
 
 // SendMessage enqueues a message (or executes a command if it starts with /).
+// clientID identifies the caller — used for both ClientContext lookup and sink routing.
 func (cs *ChatService) SendMessage(convID, content, clientID string) EnqueueResult {
 	return cs.executor.Enqueue(convID, content, clientID)
 }

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"webos-backend/internal/ai"
 	"webos-backend/internal/auth"
 	"webos-backend/internal/service"
 
@@ -122,10 +123,18 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 		wc.WriteJSON(wsServerMsg{Type: "scheduled_job_changed", Data: status})
 	})
 
-	// Register wsSink with SystemContext for broadcast
+	// Register per-connection ClientContext (inherits web capabilities) and sink.
+	// Each tab/refresh gets its own identity so sink routing and SystemHint both work.
+	ai.RegisterClientContext(&ai.ClientContext{
+		ID:           connID,
+		Platform:     "web",
+		DisplayName:  "Web UI",
+		Capabilities: []string{"markdown", "code_blocks", "images", "html", "tables", "latex"},
+		SystemHint:   ai.GetClientContext("web").SystemHint,
+	})
 	aiSink := &wsSink{writeJSON: wc.WriteJSON}
 	sysCtx := chatSvc.GetSystemContext()
-	aiSinkID := "web"
+	aiSinkID := connID
 	sysCtx.Subscribe(aiSinkID, aiSink)
 	// Send current executor status immediately
 	wc.WriteJSON(wsServerMsg{Type: "chat_status_update", Data: sysCtx.Snapshot().Executor})
@@ -160,6 +169,7 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 	// ── Cleanup on exit ──
 	defer func() {
 		chatSvc.GetSystemContext().Unsubscribe(aiSinkID)
+		ai.UnregisterClientContext(connID)
 		taskUnsub()
 		service.GetScheduler().Unsubscribe(schedConnID)
 		for k, sub := range wc.Subs {

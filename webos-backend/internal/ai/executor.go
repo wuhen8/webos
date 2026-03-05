@@ -147,10 +147,14 @@ type EnqueueMsg struct {
 	Content string
 }
 // executeCommand runs a slash command in an independent goroutine (never queued).
-// Results are broadcast to all sinks (WebSocket, WASM, etc.).
-func (e *AIExecutor) executeCommand(convID, cmdName, cmdArgs, clientID string) {
+// sinkID is the connection-level ID for directed routing.
+// - non-empty: send to that sink only; silently discard if the sink is gone (don't spam others)
+// - empty: broadcast to all (only used by system-internal calls)
+func (e *AIExecutor) executeCommand(convID, cmdName, cmdArgs, sinkID string) {
 	sendToClient := func(msgType string, data interface{}) {
-		if clientID == "" || !e.broadcastSink.SendToSystemEvent(clientID, msgType, data) {
+		if sinkID != "" {
+			e.broadcastSink.SendToSystemEvent(sinkID, msgType, data)
+		} else {
 			e.broadcastSink.OnSystemEvent(msgType, data)
 		}
 	}
@@ -243,6 +247,7 @@ func loadActiveConvID() string {
 
 // Enqueue persists a message to the database queue and wakes the consumer.
 // Only accepts messages for the active conversation. Empty convID means "use active".
+// clientID identifies the caller — used for both ClientContext lookup (DB) and sink routing.
 // Returns rejection info if convID doesn't match the active conversation.
 func (e *AIExecutor) Enqueue(convID, content, clientID string) EnqueueResult {
 	e.mu.Lock()

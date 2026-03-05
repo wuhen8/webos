@@ -106,10 +106,10 @@ func handleChatSend(c *WSConn, raw json.RawMessage) {
 	}
 	json.Unmarshal(raw, &p)
 
-	// Default to "web" for WebSocket clients
+	// Use connID as clientID — each WS connection has its own ClientContext and sink
 	clientID := p.ClientID
 	if clientID == "" {
-		clientID = "web"
+		clientID = c.ConnID
 	}
 
 	result := chatSvc.SendMessage(p.ConversationID, p.MessageContent, clientID)

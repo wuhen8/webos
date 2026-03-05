@@ -69,7 +69,10 @@ shell 工具的 mode 参数决定执行环境：
 sandbox 下不能直接访问用户文件路径，需先用 download_to_sandbox 传入，处理完用 upload_from_sandbox 传回。
 
 ## 编写策略
-修改已有文件优先用 edit_file 局部替换。生成超过200行代码时，先 write_file 写框架，再 edit_file 逐步填充。
+- write_file：创建新文件或**完全覆盖**已有文件（会丢失原内容）
+- edit_file：修改或追加已有文件内容（局部替换，保留其他内容）
+- **规则**：操作已存在的文件时，尽量用 edit_file，非必要不要完全重写
+- 生成超过200行的新文件时，先 write_file 写框架，再 edit_file 逐步填充
 
 ## 文件/目录引用
 用户消息中 [文件: node_id:path] 或 [目录: node_id:path] 表示拖入的内容，提取 node_id 和 path 操作。
