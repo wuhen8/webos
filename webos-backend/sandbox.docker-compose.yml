@@ -1,0 +1,15 @@
+services:
+  webos-sandbox:
+    build:
+      context: .
+      dockerfile: sandbox.Dockerfile
+    image: webos-sandbox:latest
+    container_name: webos-sandbox
+    restart: unless-stopped
+    command: sleep infinity
+    networks:
+      - webos-network
+
+networks:
+  webos-network:
+    external: true

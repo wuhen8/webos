@@ -53,22 +53,22 @@ func SetRequestBridge(fn func(string, json.RawMessage) ([]byte, error)) {
 	RequestBridge.mu.Unlock()
 }
 
-// registerHostModule creates the "webos" host module with all host functions.
-// Reactor 模式下不再需要 recv_event — 事件通过导出函数 on_event 推送。
-func registerHostModule(ctx context.Context, engine wazero.Runtime, appID string, perms []string) error {
+// registerHostModule creates the "webos" host module with all syscalls.
+// 全局只注册一次。每个 host function 通过 m.Name() 获取调用者 appID（类似 PID）。
+func registerHostModule(ctx context.Context, engine wazero.Runtime) error {
 	builder := engine.NewHostModuleBuilder("webos")
 
-	builder.NewFunctionBuilder().WithFunc(hostLog(appID)).Export("log")
-	builder.NewFunctionBuilder().WithFunc(hostConfigGet(appID)).Export("config_get")
-	builder.NewFunctionBuilder().WithFunc(hostConfigSet(appID)).Export("config_set")
-	builder.NewFunctionBuilder().WithFunc(hostKVGet(appID)).Export("kv_get")
-	builder.NewFunctionBuilder().WithFunc(hostKVSet(appID)).Export("kv_set")
-	builder.NewFunctionBuilder().WithFunc(hostKVDelete(appID)).Export("kv_delete")
-	builder.NewFunctionBuilder().WithFunc(hostHTTPRequest(appID)).Export("http_request")
-	builder.NewFunctionBuilder().WithFunc(hostRequest(appID)).Export("request")
-	builder.NewFunctionBuilder().WithFunc(hostWSConnect(appID)).Export("ws_connect")
-	builder.NewFunctionBuilder().WithFunc(hostWSSend(appID)).Export("ws_send")
-	builder.NewFunctionBuilder().WithFunc(hostWSClose(appID)).Export("ws_close")
+	builder.NewFunctionBuilder().WithFunc(hostLog).Export("log")
+	builder.NewFunctionBuilder().WithFunc(hostConfigGet).Export("config_get")
+	builder.NewFunctionBuilder().WithFunc(hostConfigSet).Export("config_set")
+	builder.NewFunctionBuilder().WithFunc(hostKVGet).Export("kv_get")
+	builder.NewFunctionBuilder().WithFunc(hostKVSet).Export("kv_set")
+	builder.NewFunctionBuilder().WithFunc(hostKVDelete).Export("kv_delete")
+	builder.NewFunctionBuilder().WithFunc(hostHTTPRequest).Export("http_request")
+	builder.NewFunctionBuilder().WithFunc(hostRequest).Export("request")
+	builder.NewFunctionBuilder().WithFunc(hostWSConnect).Export("ws_connect")
+	builder.NewFunctionBuilder().WithFunc(hostWSSend).Export("ws_send")
+	builder.NewFunctionBuilder().WithFunc(hostWSClose).Export("ws_close")
 
 	_, err := builder.Instantiate(ctx)
 	return err
@@ -135,157 +135,152 @@ func writeToWasm(m api.Module, data []byte) uint64 {
 	return 0
 }
 
-// ==================== Host functions ====================
+// ==================== Host functions (syscalls) ====================
+// 所有 host function 通过 m.Name() 获取调用者 appID，类似内核通过 PID 鉴权。
 
-func hostLog(appID string) func(ctx context.Context, m api.Module, msgPtr, msgLen uint32) {
-	return func(ctx context.Context, m api.Module, msgPtr, msgLen uint32) {
-		msg, ok := readWasmString(m, msgPtr, msgLen)
-		if ok {
-			fmt.Printf("[WASM:%s] %s\n", appID, msg)
-		}
+func hostLog(ctx context.Context, m api.Module, msgPtr, msgLen uint32) {
+	appID := m.Name()
+	msg, ok := readWasmString(m, msgPtr, msgLen)
+	if ok {
+		fmt.Printf("[WASM:%s] %s\n", appID, msg)
 	}
 }
 
-func hostConfigGet(appID string) func(ctx context.Context, m api.Module, keyPtr, keyLen uint32) uint64 {
-	return func(ctx context.Context, m api.Module, keyPtr, keyLen uint32) uint64 {
-		key, ok := readWasmString(m, keyPtr, keyLen)
-		if !ok {
-			return 0
+func hostConfigGet(ctx context.Context, m api.Module, keyPtr, keyLen uint32) uint64 {
+	appID := m.Name()
+	key, ok := readWasmString(m, keyPtr, keyLen)
+	if !ok {
+		return 0
+	}
+	val, err := GetAppConfig(appID, key)
+	if err != nil {
+		return 0
+	}
+	return writeToWasm(m, []byte(val))
+}
+
+func hostConfigSet(ctx context.Context, m api.Module, keyPtr, keyLen, valPtr, valLen uint32) uint32 {
+	appID := m.Name()
+	key, ok := readWasmString(m, keyPtr, keyLen)
+	if !ok {
+		return 1
+	}
+	val, ok := readWasmString(m, valPtr, valLen)
+	if !ok {
+		return 1
+	}
+	if err := SetAppConfig(appID, key, val); err != nil {
+		log.Printf("[WASM:%s] config_set error: %v", appID, err)
+		return 1
+	}
+	return 0
+}
+
+func hostKVGet(ctx context.Context, m api.Module, keyPtr, keyLen uint32) uint64 {
+	appID := m.Name()
+	key, ok := readWasmString(m, keyPtr, keyLen)
+	if !ok {
+		return 0
+	}
+	val, err := kvGet(appID, key)
+	if err != nil {
+		return 0
+	}
+	return writeToWasm(m, val)
+}
+
+func hostKVSet(ctx context.Context, m api.Module, keyPtr, keyLen, valPtr, valLen uint32) uint32 {
+	appID := m.Name()
+	key, ok := readWasmString(m, keyPtr, keyLen)
+	if !ok {
+		return 1
+	}
+	val, ok := m.Memory().Read(valPtr, valLen)
+	if !ok {
+		return 1
+	}
+	if err := kvSet(appID, key, val); err != nil {
+		return 1
+	}
+	return 0
+}
+
+func hostKVDelete(ctx context.Context, m api.Module, keyPtr, keyLen uint32) uint32 {
+	appID := m.Name()
+	key, ok := readWasmString(m, keyPtr, keyLen)
+	if !ok {
+		return 1
+	}
+	if err := kvDelete(appID, key); err != nil {
+		return 1
+	}
+	return 0
+}
+
+func hostHTTPRequest(ctx context.Context, m api.Module, methodPtr, methodLen, urlPtr, urlLen, bodyPtr, bodyLen, headersPtr, headersLen uint32) uint64 {
+	appID := m.Name()
+	method, _ := readWasmString(m, methodPtr, methodLen)
+	rawURL, _ := readWasmString(m, urlPtr, urlLen)
+	body, _ := m.Memory().Read(bodyPtr, bodyLen)
+	headersStr, _ := readWasmString(m, headersPtr, headersLen)
+
+	if method == "" {
+		method = "GET"
+	}
+
+	// 生成 requestID，立即返回给 WASM
+	reqID := fmt.Sprintf("req_%d", httpRequestCounter.Add(1))
+
+	// 拷贝 body（内存引用在 goroutine 里可能失效）
+	bodyCopy := make([]byte, len(body))
+	copy(bodyCopy, body)
+
+	// 异步执行 HTTP 请求
+	go func() {
+		var bodyReader io.Reader
+		if len(bodyCopy) > 0 {
+			bodyReader = strings.NewReader(string(bodyCopy))
 		}
-		val, err := GetAppConfig(appID, key)
+
+		req, err := http.NewRequest(method, rawURL, bodyReader)
 		if err != nil {
-			return 0
+			pushHTTPResponse(appID, reqID, `{"error":"`+err.Error()+`"}`)
+			return
 		}
-		return writeToWasm(m, []byte(val))
-	}
-}
-func hostConfigSet(appID string) func(ctx context.Context, m api.Module, keyPtr, keyLen, valPtr, valLen uint32) uint32 {
-	return func(ctx context.Context, m api.Module, keyPtr, keyLen, valPtr, valLen uint32) uint32 {
-		key, ok := readWasmString(m, keyPtr, keyLen)
-		if !ok {
-			return 1
-		}
-		val, ok := readWasmString(m, valPtr, valLen)
-		if !ok {
-			return 1
-		}
-		if err := SetAppConfig(appID, key, val); err != nil {
-			log.Printf("[WASM:%s] config_set error: %v", appID, err)
-			return 1
-		}
-		return 0
-	}
-}
-
-func hostKVGet(appID string) func(ctx context.Context, m api.Module, keyPtr, keyLen uint32) uint64 {
-	return func(ctx context.Context, m api.Module, keyPtr, keyLen uint32) uint64 {
-		key, ok := readWasmString(m, keyPtr, keyLen)
-		if !ok {
-			return 0
-		}
-		val, err := kvGet(appID, key)
-		if err != nil {
-			return 0
-		}
-		return writeToWasm(m, val)
-	}
-}
-
-func hostKVSet(appID string) func(ctx context.Context, m api.Module, keyPtr, keyLen, valPtr, valLen uint32) uint32 {
-	return func(ctx context.Context, m api.Module, keyPtr, keyLen, valPtr, valLen uint32) uint32 {
-		key, ok := readWasmString(m, keyPtr, keyLen)
-		if !ok {
-			return 1
-		}
-		val, ok := m.Memory().Read(valPtr, valLen)
-		if !ok {
-			return 1
-		}
-		if err := kvSet(appID, key, val); err != nil {
-			return 1
-		}
-		return 0
-	}
-}
-
-func hostKVDelete(appID string) func(ctx context.Context, m api.Module, keyPtr, keyLen uint32) uint32 {
-	return func(ctx context.Context, m api.Module, keyPtr, keyLen uint32) uint32 {
-		key, ok := readWasmString(m, keyPtr, keyLen)
-		if !ok {
-			return 1
-		}
-		if err := kvDelete(appID, key); err != nil {
-			return 1
-		}
-		return 0
-	}
-}
-
-func hostHTTPRequest(appID string) func(ctx context.Context, m api.Module, methodPtr, methodLen, urlPtr, urlLen, bodyPtr, bodyLen, headersPtr, headersLen uint32) uint64 {
-	return func(ctx context.Context, m api.Module, methodPtr, methodLen, urlPtr, urlLen, bodyPtr, bodyLen, headersPtr, headersLen uint32) uint64 {
-		method, _ := readWasmString(m, methodPtr, methodLen)
-		rawURL, _ := readWasmString(m, urlPtr, urlLen)
-		body, _ := m.Memory().Read(bodyPtr, bodyLen)
-		headersStr, _ := readWasmString(m, headersPtr, headersLen)
-
-		if method == "" {
-			method = "GET"
-		}
-
-		// 生成 requestID，立即返回给 WASM
-		reqID := fmt.Sprintf("req_%d", httpRequestCounter.Add(1))
-
-		// 拷贝 body（内存引用在 goroutine 里可能失效）
-		bodyCopy := make([]byte, len(body))
-		copy(bodyCopy, body)
-
-		// 异步执行 HTTP 请求
-		go func() {
-			var bodyReader io.Reader
-			if len(bodyCopy) > 0 {
-				bodyReader = strings.NewReader(string(bodyCopy))
-			}
-
-			req, err := http.NewRequest(method, rawURL, bodyReader)
-			if err != nil {
-				pushHTTPResponse(appID, reqID, `{"error":"`+err.Error()+`"}`)
-				return
-			}
-			if headersStr != "" {
-				for _, line := range strings.Split(headersStr, "\n") {
-					parts := strings.SplitN(line, ":", 2)
-					if len(parts) == 2 {
-						req.Header.Set(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-					}
+		if headersStr != "" {
+			for _, line := range strings.Split(headersStr, "\n") {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					req.Header.Set(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
 				}
 			}
+		}
 
-			client := &http.Client{Timeout: 10 * time.Second}
+		client := &http.Client{Timeout: 10 * time.Second}
 
-			// 按 app 粒度读取代理配置
-			if proxyURL, err := GetAppConfig(appID, "proxy"); err == nil && proxyURL != "" {
-				if u, err := url.Parse(proxyURL); err == nil {
-					client.Transport = &http.Transport{Proxy: http.ProxyURL(u)}
-				}
+		// 按 app 粒度读取代理配置
+		if proxyURL, err := GetAppConfig(appID, "proxy"); err == nil && proxyURL != "" {
+			if u, err := url.Parse(proxyURL); err == nil {
+				client.Transport = &http.Transport{Proxy: http.ProxyURL(u)}
 			}
+		}
 
-			resp, err := client.Do(req)
-			if err != nil {
-				pushHTTPResponse(appID, reqID, `{"error":"`+err.Error()+`"}`)
-				return
-			}
-			defer resp.Body.Close()
-			respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
-			if err != nil {
-				pushHTTPResponse(appID, reqID, `{"error":"`+err.Error()+`"}`)
-				return
-			}
-			pushHTTPResponse(appID, reqID, string(respBody))
-		}()
+		resp, err := client.Do(req)
+		if err != nil {
+			pushHTTPResponse(appID, reqID, `{"error":"`+err.Error()+`"}`)
+			return
+		}
+		defer resp.Body.Close()
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+		if err != nil {
+			pushHTTPResponse(appID, reqID, `{"error":"`+err.Error()+`"}`)
+			return
+		}
+		pushHTTPResponse(appID, reqID, string(respBody))
+	}()
 
-		// 返回 requestID 给 WASM
-		return writeToWasm(m, []byte(reqID))
-	}
+	// 返回 requestID 给 WASM
+	return writeToWasm(m, []byte(reqID))
 }
 
 // pushHTTPResponse 把异步 HTTP 结果通过 PushEvent 推给 WASM
@@ -300,53 +295,53 @@ func pushHTTPResponse(appID, reqID, body string) {
 	GetRuntime().PushEvent(appID, evt)
 }
 
-func hostRequest(appID string) func(ctx context.Context, m api.Module, typePtr, typeLen, payloadPtr, payloadLen uint32) uint64 {
-	return func(ctx context.Context, m api.Module, typePtr, typeLen, payloadPtr, payloadLen uint32) uint64 {
-		msgType, _ := readWasmString(m, typePtr, typeLen)
-		if msgType == "" {
-			return writeToWasm(m, []byte(`{"error":"empty message type"}`))
-		}
+func hostRequest(ctx context.Context, m api.Module, typePtr, typeLen, payloadPtr, payloadLen uint32) uint64 {
+	appID := m.Name()
+	msgType, _ := readWasmString(m, typePtr, typeLen)
+	if msgType == "" {
+		return writeToWasm(m, []byte(`{"error":"empty message type"}`))
+	}
 
-		var payload json.RawMessage
-		if payloadLen > 0 {
-			raw, ok := m.Memory().Read(payloadPtr, payloadLen)
-			if ok {
-				payload = json.RawMessage(raw)
-			}
+	var payload json.RawMessage
+	if payloadLen > 0 {
+		raw, ok := m.Memory().Read(payloadPtr, payloadLen)
+		if ok {
+			payload = json.RawMessage(raw)
 		}
-		if payload == nil {
-			payload = json.RawMessage("{}")
-		}
+	}
+	if payload == nil {
+		payload = json.RawMessage("{}")
+	}
 
-		// Check sync handlers first (query-type requests that return data immediately)
-		SyncHandlers.mu.RLock()
-		syncFn := SyncHandlers.handlers[msgType]
-		SyncHandlers.mu.RUnlock()
-		if syncFn != nil {
-			resp, err := syncFn(payload)
-			if err != nil {
-				errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
-				return writeToWasm(m, errJSON)
-			}
-			return writeToWasm(m, resp)
-		}
-
-		// Fall back to async request bridge
-		RequestBridge.mu.RLock()
-		reqFn := RequestBridge.Request
-		RequestBridge.mu.RUnlock()
-
-		if reqFn == nil {
-			return writeToWasm(m, []byte(`{"error":"request bridge not available"}`))
-		}
-
-		resp, err := reqFn(msgType, payload)
+	// Check sync handlers first (query-type requests that return data immediately)
+	SyncHandlers.mu.RLock()
+	syncFn := SyncHandlers.handlers[msgType]
+	SyncHandlers.mu.RUnlock()
+	if syncFn != nil {
+		resp, err := syncFn(payload)
 		if err != nil {
 			errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
 			return writeToWasm(m, errJSON)
 		}
 		return writeToWasm(m, resp)
 	}
+
+	// Fall back to async request bridge
+	RequestBridge.mu.RLock()
+	reqFn := RequestBridge.Request
+	RequestBridge.mu.RUnlock()
+
+	if reqFn == nil {
+		return writeToWasm(m, []byte(`{"error":"request bridge not available"}`))
+	}
+
+	resp, err := reqFn(msgType, payload)
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
+		return writeToWasm(m, errJSON)
+	}
+	_ = appID // appID available for future permission checks
+	return writeToWasm(m, resp)
 }
 
 // ==================== KV storage ====================
@@ -393,6 +388,7 @@ func GetAppConfig(appID, key string) (string, error) {
 	}
 	return fmt.Sprintf("%v", val), nil
 }
+
 // SetAppConfig updates a single key in the app's config JSON (installed_apps.config).
 func SetAppConfig(appID, key, val string) error {
 	db := database.DB()

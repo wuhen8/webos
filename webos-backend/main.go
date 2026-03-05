@@ -73,10 +73,10 @@ func main() {
 	// Reconcile static apps (sync disk → DB)
 	service.ReconcileWebApps()
 
-	// Initialize wasm runtime and start background wasm apps
+	// Initialize wasm runtime and start background wasm apps (async)
 	wasmRT := wasm.GetRuntime()
 	handler.InitWasmBridge()
-	wasmRT.StartBackgroundApps()
+	go wasmRT.StartBackgroundApps()
 
 	// Wire up CleanStaleUploads for scheduled jobs
 	service.CleanStaleUploadsFn = handler.CleanStaleUploads

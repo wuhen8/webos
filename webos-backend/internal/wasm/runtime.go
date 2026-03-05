@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"webos-backend/internal/config"
@@ -31,31 +32,38 @@ const (
 
 // ProcInfo holds status info for a managed wasm process.
 type ProcInfo struct {
-	AppID string    `json:"appId"`
-	Name  string    `json:"name"`
-	State ProcState `json:"state"`
-	Error string    `json:"error,omitempty"`
+	AppID       string    `json:"appId"`
+	Name        string    `json:"name"`
+	State       ProcState `json:"state"`
+	Error       string    `json:"error,omitempty"`
+	Memory      int64     `json:"memory"`      // WASM 内存大小（字节）
+	EventCount  int64     `json:"eventCount"`  // 处理的事件数（近似 CPU 使用）
+	LastUpdated int64     `json:"lastUpdated"` // 更新时间戳
 }
 
 // proc is an internal handle for a running wasm reactor process.
 type proc struct {
-	appID   string
-	name    string
-	state   ProcState
-	lastErr string
-	mod     api.Module   // 模块引用，常驻内存
-	onEvent api.Function // 缓存 on_event 导出函数
-	engine  wazero.Runtime
-	mu      sync.Mutex // 保护 on_event 调用（wasm 单线程）
-	stopCh  chan struct{}          // 关闭信号
-	ctx     context.Context        // 进程级 context，stop 时取消
-	cancel  context.CancelFunc
+	appID      string
+	name       string
+	state      ProcState
+	lastErr    string
+	mod        api.Module   // 模块引用，常驻内存
+	onEvent    api.Function // 缓存 on_event 导出函数
+	mu         sync.Mutex // 保护 on_event 调用（wasm 单线程）
+	stopCh     chan struct{}          // 关闭信号
+	ctx        context.Context        // 进程级 context，stop 时取消
+	cancel     context.CancelFunc
+	eventCount int64     // 处理的事件计数
+	startTime  int64     // 启动时间戳
 }
 
 // Runtime manages all wasm processes.
+// 全局唯一的 wazero.Runtime（内核），每个 App 是一个轻量 Module（进程）。
 type Runtime struct {
 	mu     sync.RWMutex
-	procs  map[string]*proc // appId → proc
+	procs  map[string]*proc   // appId → proc
+	engine wazero.Runtime     // 全局共享的 wazero 引擎（内核）
+	perms  map[string][]string // appId → permissions（权限表）
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -72,13 +80,33 @@ var (
 func GetRuntime() *Runtime {
 	rtOnce.Do(func() {
 		ctx, cancel := context.WithCancel(context.Background())
+		engine := wazero.NewRuntime(ctx)
+		wasi_snapshot_preview1.MustInstantiate(ctx, engine)
+		if err := registerHostModule(ctx, engine); err != nil {
+			log.Fatalf("[WASM] failed to register host module: %v", err)
+		}
 		globalRuntime = &Runtime{
 			procs:  make(map[string]*proc),
+			engine: engine,
+			perms:  make(map[string][]string),
 			ctx:    ctx,
 			cancel: cancel,
 		}
 	})
 	return globalRuntime
+}
+
+// CheckPermission checks if an app has a given permission.
+func (r *Runtime) CheckPermission(appID, perm string) bool {
+	r.mu.RLock()
+	perms := r.perms[appID]
+	r.mu.RUnlock()
+	for _, p := range perms {
+		if p == perm {
+			return true
+		}
+	}
+	return false
 }
 
 func WebAppsDir() string {
@@ -98,7 +126,7 @@ func loadManifest(appID string) (*AppManifest, error) {
 }
 
 // StartProc starts a wasm app in Reactor mode.
-// 流程：创建 runtime → 注册宿主模块 → InstantiateModule(空启动) → _initialize → 缓存 on_event
+// 流程：编译 wasm → 在共享引擎中实例化 Module → _initialize → 缓存 on_event
 func (r *Runtime) StartProc(appID string) error {
 	r.mu.Lock()
 	if p, ok := r.procs[appID]; ok && p.state == ProcRunning {
@@ -123,10 +151,11 @@ func (r *Runtime) StartProc(appID string) error {
 	}
 
 	p := &proc{
-		appID:  appID,
-		name:   manifest.Name,
-		state:  ProcStarting,
-		stopCh: make(chan struct{}),
+		appID:     appID,
+		name:      manifest.Name,
+		state:     ProcStarting,
+		stopCh:    make(chan struct{}),
+		startTime: time.Now().UnixMilli(),
 	}
 	p.ctx, p.cancel = context.WithCancel(r.ctx)
 	r.procs[appID] = p
@@ -134,25 +163,19 @@ func (r *Runtime) StartProc(appID string) error {
 
 	log.Printf("[WASM] starting reactor: %s", appID)
 
-	// 每个 wasm 进程独立的 wazero runtime，完全隔离
-	engine := wazero.NewRuntime(r.ctx)
-	wasi_snapshot_preview1.MustInstantiate(r.ctx, engine)
+	// 注册权限到全局权限表
+	r.mu.Lock()
+	r.perms[appID] = manifest.Permissions
+	r.mu.Unlock()
 
-	if err := registerHostModule(r.ctx, engine, appID, manifest.Permissions); err != nil {
-		engine.Close(context.Background())
-		r.setProcState(p, ProcFailed, err.Error())
-		return fmt.Errorf("register host module: %w", err)
-	}
-
-	compiled, err := engine.CompileModule(r.ctx, wasmBytes)
+	compiled, err := r.engine.CompileModule(r.ctx, wasmBytes)
 	if err != nil {
-		engine.Close(context.Background())
 		r.setProcState(p, ProcFailed, "compile: "+err.Error())
 		return fmt.Errorf("compile: %w", err)
 	}
 
 	// Reactor 模式：WithStartFunctions() 空启动，不自动运行 _start
-	mod, err := engine.InstantiateModule(r.ctx, compiled,
+	mod, err := r.engine.InstantiateModule(r.ctx, compiled,
 		wazero.NewModuleConfig().
 			WithName(appID).
 			WithStartFunctions(). // 空 — 不自动运行 _start
@@ -161,7 +184,6 @@ func (r *Runtime) StartProc(appID string) error {
 			WithArgs(appID),
 	)
 	if err != nil {
-		engine.Close(context.Background())
 		r.setProcState(p, ProcFailed, "instantiate: "+err.Error())
 		return fmt.Errorf("instantiate: %w", err)
 	}
@@ -170,7 +192,6 @@ func (r *Runtime) StartProc(appID string) error {
 	if initFn := mod.ExportedFunction("_initialize"); initFn != nil {
 		if _, err := initFn.Call(r.ctx); err != nil {
 			mod.Close(context.Background())
-			engine.Close(context.Background())
 			r.setProcState(p, ProcFailed, "_initialize: "+err.Error())
 			return fmt.Errorf("_initialize: %w", err)
 		}
@@ -184,7 +205,6 @@ func (r *Runtime) StartProc(appID string) error {
 
 	p.mod = mod
 	p.onEvent = onEvent
-	p.engine = engine
 	r.setProcState(p, ProcRunning, "")
 
 	// 通知 handler 层注册事件 sink
@@ -265,6 +285,8 @@ func (r *Runtime) PushEvent(appID string, data []byte) {
 	if _, err := p.onEvent.Call(p.ctx, uint64(ptr), uint64(needed)); err != nil {
 		log.Printf("[WASM:%s] PushEvent error: %v", appID, err)
 	}
+	// 统计事件处理次数
+	atomic.AddInt64(&p.eventCount, 1)
 }
 
 func (r *Runtime) setProcState(p *proc, state ProcState, errMsg string) {
@@ -307,18 +329,19 @@ func (r *Runtime) StopProc(appID string) {
 	// 停止定时器
 	close(p.stopCh)
 
-	// 关闭模块和引擎
+	// 关闭模块（引擎全局共享，不在这里关闭）
 	p.mu.Lock()
 	if p.mod != nil {
 		p.mod.Close(context.Background())
 		p.mod = nil
 	}
-	if p.engine != nil {
-		p.engine.Close(context.Background())
-		p.engine = nil
-	}
 	p.onEvent = nil
 	p.mu.Unlock()
+
+	// 从权限表中移除
+	r.mu.Lock()
+	delete(r.perms, appID)
+	r.mu.Unlock()
 
 	r.setProcState(p, ProcStopped, "")
 	log.Printf("[WASM] stopped: %s", appID)
@@ -335,13 +358,21 @@ func (r *Runtime) ListProcs() []ProcInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	list := make([]ProcInfo, 0, len(r.procs))
+	now := time.Now().UnixMilli()
 	for _, p := range r.procs {
-		list = append(list, ProcInfo{
-			AppID: p.appID,
-			Name:  p.name,
-			State: p.state,
-			Error: p.lastErr,
-		})
+		info := ProcInfo{
+			AppID:       p.appID,
+			Name:        p.name,
+			State:       p.state,
+			Error:       p.lastErr,
+			EventCount:  p.eventCount,
+			LastUpdated: now,
+		}
+		// 获取 WASM 内存大小
+		if p.mod != nil && p.mod.Memory() != nil {
+			info.Memory = int64(p.mod.Memory().Size())
+		}
+		list = append(list, info)
 	}
 	return list
 }
@@ -377,6 +408,9 @@ func (r *Runtime) Close() {
 
 	for _, id := range ids {
 		r.StopProc(id)
+	}
+	if r.engine != nil {
+		r.engine.Close(context.Background())
 	}
 	r.cancel()
 }
