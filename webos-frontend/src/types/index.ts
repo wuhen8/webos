@@ -173,6 +173,7 @@ export interface WindowState {
   position: { x: number; y: number }
   size: { width: number; height: number }
   preMaximize?: { x: number; y: number; width: number; height: number }
+  parentId?: string             // 父窗口 ID（子窗口跟随父窗口最小化/关闭）
 }
 
 // 剪贴板状态

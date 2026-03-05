@@ -18,6 +18,7 @@ export const actions: Record<string, MenuActionHandler> = {
       singleton: true,
       appId: 'fileManager',
       parentPid: ctx.pid,
+      parentId: ctx.windowId,
     })
   },
 }

@@ -29,4 +29,5 @@ export interface FileActionsContext {
   closeGlobalMenu: () => void
   findOrCreateEditorWindow: ReturnType<typeof import("@/apps/editor/store").useEditorStore.getState>["findOrCreateEditorWindow"]
   fileInputRef: React.RefObject<HTMLInputElement>
+  windowId: string
 }

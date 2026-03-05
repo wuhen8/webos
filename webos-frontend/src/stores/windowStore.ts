@@ -30,6 +30,7 @@ interface WindowStore {
     singleton?: boolean
     appId?: string
     parentPid?: string
+    parentId?: string
   }) => string
   openWebviewWindow: (url: string, title: string, appId?: string) => void
   reloadWebview: (id: string) => void
@@ -92,15 +93,20 @@ export const useWindowStore = create<WindowStore>((set, get) => {
       set((state) => {
         const target = state.windows.find(w => w.id === id)
         if (target?.isActive && !target?.isMinimized) return state
+        // 收集子窗口 ID，恢复时一起取消最小化
+        const childIds = new Set(state.windows.filter(w => w.parentId === id).map(w => w.id))
         const newZIndex = state.nextZIndex + 1
         return {
           nextZIndex: newZIndex,
-          windows: state.windows.map(w => ({
-            ...w,
-            isActive: w.id === id,
-            zIndex: w.id === id ? newZIndex : w.zIndex,
-            isMinimized: w.id === id ? false : w.isMinimized,
-          })),
+          windows: state.windows.map(w => {
+            if (w.id === id) {
+              return { ...w, isActive: true, zIndex: newZIndex, isMinimized: false }
+            }
+            if (childIds.has(w.id)) {
+              return { ...w, isMinimized: false }
+            }
+            return { ...w, isActive: false }
+          }),
         }
       })
     },
@@ -110,6 +116,12 @@ export const useWindowStore = create<WindowStore>((set, get) => {
       const win = state.windows.find(w => w.id === id)
       if (!win) return
 
+      // 先关闭所有子窗口
+      const children = state.windows.filter(w => w.parentId === id)
+      for (const child of children) {
+        get().closeWindow(child.id, true)
+      }
+
       const processStore = useProcessStore.getState()
       const process = processStore.getProcess(win.pid)
 
@@ -118,9 +130,11 @@ export const useWindowStore = create<WindowStore>((set, get) => {
       if (!force && process) {
         const config = getAppConfig(process.appId)
         if (config.backgroundable) {
+          // 子窗口也跟随最小化
+          const childIds = new Set(get().windows.filter(w => w.parentId === id).map(w => w.id))
           set((s) => ({
             windows: s.windows.map(w =>
-              w.id === id ? { ...w, isMinimized: true, isActive: false } : w
+              w.id === id || childIds.has(w.id) ? { ...w, isMinimized: true, isActive: false } : w
             ),
           }))
           return
@@ -143,11 +157,15 @@ export const useWindowStore = create<WindowStore>((set, get) => {
     },
 
     minimizeWindow: (id) => {
-      set((state) => ({
-        windows: state.windows.map(w =>
-          w.id === id ? { ...w, isMinimized: true, isActive: false } : w
-        ),
-      }))
+      set((state) => {
+        // 收集所有子窗口 ID
+        const childIds = new Set(state.windows.filter(w => w.parentId === id).map(w => w.id))
+        return {
+          windows: state.windows.map(w =>
+            w.id === id || childIds.has(w.id) ? { ...w, isMinimized: true, isActive: false } : w
+          ),
+        }
+      })
     },
 
     maximizeWindow: (id) => {
@@ -339,7 +357,7 @@ export const useWindowStore = create<WindowStore>((set, get) => {
     },
 
     openChildWindow: (options) => {
-      const { type, title, component, size, position, initialState, singleton, appId, parentPid } = options
+      const { type, title, component, size, position, initialState, singleton, appId, parentPid, parentId } = options
       const state = get()
       const processStore = useProcessStore.getState()
 
@@ -375,6 +393,7 @@ export const useWindowStore = create<WindowStore>((set, get) => {
         pid,
         title,
         ...(appId && { appId }),
+        ...(parentId && { parentId }),
         isMinimized: false,
         isMaximized: false,
         isActive: true,

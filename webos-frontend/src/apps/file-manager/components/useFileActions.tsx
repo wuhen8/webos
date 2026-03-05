@@ -8,13 +8,14 @@ import { useSettingsStore } from "@/stores/settingsStore"
 import { useTaskStore } from "@/stores/taskStore"
 import ShareDialogContent from "../ShareDialogContent"
 import FileInfoContent from "../FileInfoContent"
+import OpenWithDialogContent from "./OpenWithDialog"
 import type { FileActionsContext } from "./types"
 
 export function useFileActions(ctx: FileActionsContext) {
   const {
     files, filesRef, selectedFiles, setSelectedFiles, currentPath, activeNodeId,
     clipboard, setClipboard, loadFiles, navigateTo, toast, showConfirm,
-    closeGlobalMenu, findOrCreateEditorWindow, fileInputRef,
+    closeGlobalMenu, findOrCreateEditorWindow, fileInputRef, windowId,
   } = ctx
 
   const [inlineCreate, setInlineCreate] = useState<"file" | "folder" | null>(null)
@@ -271,6 +272,7 @@ export function useFileActions(ctx: FileActionsContext) {
       size: { width: 420, height: 330 },
       initialState: { nodeId: activeNodeId, path: file.path, fileName: file.name },
       appId: 'fileManager',
+      parentId: windowId,
     })
   }
 
@@ -282,6 +284,7 @@ export function useFileActions(ctx: FileActionsContext) {
       size: { width: 380, height: 340 },
       initialState: { nodeId: activeNodeId, path: file.path, fileName: file.name, isDir: file.isDir, extension: file.extension },
       appId: 'fileManager',
+      parentId: windowId,
     })
   }
 
@@ -320,6 +323,19 @@ export function useFileActions(ctx: FileActionsContext) {
       case 'fm.offlineDownload': break // handled by parent
       case 'fm.refresh': loadFiles(); break
       case 'fm.paste': handlePaste(); break
+      case 'fm.openWithDialog':
+        if (targetFile && !targetFile.isDir) {
+          useWindowStore.getState().openChildWindow({
+            type: 'openWithDialog',
+            title: `打开方式 - ${targetFile.name}`,
+            component: (ctx: any) => <OpenWithDialogContent windowId={ctx.win.id} />,
+            size: { width: 400, height: 380 },
+            initialState: { ext: targetFile.extension.toLowerCase(), fileName: targetFile.name, path: targetFile.path },
+            appId: 'fileManager',
+            parentId: windowId,
+          })
+        }
+        break
       default:
         if (action.startsWith('fm.openWith.')) {
           const appId = action.replace('fm.openWith.', '')

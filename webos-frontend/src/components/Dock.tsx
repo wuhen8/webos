@@ -65,7 +65,10 @@ function Dock() {
     if (isTouchDevice()) setHoveredIndex(null)
     const appWindows = windows.filter(w => w.type === appId || w.appId === appId)
     if (appWindows.length > 0) {
-      const sorted = [...appWindows].sort((a, b) => b.zIndex - a.zIndex)
+      // 优先激活主窗口（非子窗口），避免激活到子窗口
+      const mainWindows = appWindows.filter(w => !w.parentId)
+      const candidates = mainWindows.length > 0 ? mainWindows : appWindows
+      const sorted = [...candidates].sort((a, b) => b.zIndex - a.zIndex)
       activateWindow(sorted[0].id)
     } else {
       // Check for background processes (no windows)
@@ -275,6 +278,8 @@ function Dock() {
   })
 
   // Running but unpinned apps (right of separator)
+  // 过滤掉子窗口，子窗口不单独出现在 Dock
+  const topLevelWindows = windows.filter(w => !w.parentId)
   const pinnedIds = new Set(dockApps.map(a => a.id))
   const runningUnpinnedApps = new Map<string, typeof windows[0][]>()
   // Include apps that have processes (even without windows, for backgroundable apps)
@@ -286,7 +291,7 @@ function Dock() {
       }
     }
   }
-  for (const win of windows) {
+  for (const win of topLevelWindows) {
     const appId = win.appId || win.type
     if (!pinnedIds.has(appId) && appId !== 'webview') {
       if (!runningUnpinnedApps.has(appId)) {
@@ -311,7 +316,7 @@ function Dock() {
 
   // Minimized windows (that aren't already represented)
   const representedAppIds = new Set([...pinnedIds, ...runningUnpinnedApps.keys()])
-  const minimizedWindows = windows.filter(w => w.isMinimized && !representedAppIds.has(w.appId || w.type))
+  const minimizedWindows = topLevelWindows.filter(w => w.isMinimized && !representedAppIds.has(w.appId || w.type))
 
   const hasSeparator = runningUnpinnedItems.length > 0 || minimizedWindows.length > 0
   const totalPinnedCount = pinnedItems.length

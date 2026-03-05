@@ -256,7 +256,7 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
   const actions = useFileActions({
     files, filesRef, selectedFiles, setSelectedFiles, currentPath, activeNodeId,
     clipboard, setClipboard, loadFiles, navigateTo, toast, showConfirm,
-    closeGlobalMenu, findOrCreateEditorWindow, fileInputRef,
+    closeGlobalMenu, findOrCreateEditorWindow, fileInputRef, windowId,
   })
 
   // Inline create focus
@@ -441,6 +441,7 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
         open={showOfflineDownload} onOpenChange={setShowOfflineDownload}
         activeNodeId={activeNodeId} currentPath={currentPath} toast={toast}
       />
+
     </div>
   )
 }

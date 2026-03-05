@@ -22,6 +22,7 @@ export const actions: Record<string, MenuActionHandler> = {
       singleton: true,
       appId: 'terminal',
       parentPid: ctx.pid,
+      parentId: ctx.windowId,
     })
   },
 }

@@ -125,13 +125,6 @@ function EditorContent({ win }: EditorContentProps) {
       const isMac = navigator.platform.toUpperCase().includes('MAC')
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
 
-      // Cmd/Ctrl+S - Save
-      if (cmdOrCtrl && e.key === 's') {
-        e.preventDefault()
-        handleSave()
-        return
-      }
-
       // Shift+Alt+F - Format
       if (e.shiftKey && e.altKey && e.key === 'f') {
         e.preventDefault()
@@ -154,7 +147,7 @@ function EditorContent({ win }: EditorContentProps) {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [win.id, handleSave, toast])
+  }, [win.id, toast])
 
   return (
     <div className="flex flex-col h-full bg-gradient-to-b from-slate-50/50 to-white/30">

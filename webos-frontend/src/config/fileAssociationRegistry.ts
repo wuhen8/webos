@@ -129,24 +129,21 @@ export function buildOpenWithMenuItems(ext?: string): ContextMenuEntry[] {
     const isCurrentDefault = appId === currentDefault
     return {
       id: `open-with-${appId}`,
-      label: (assoc?.label || config.name) + (isCurrentDefault ? ' ✓' : ''),
+      label: (assoc?.label || config.name) + (isCurrentDefault ? ' (默认)' : ''),
       icon: assoc?.icon || config.icon,
       action: `fm.openWith.${appId}`,
     }
   })
 
-  // 添加"始终使用 xxx 打开"条目
+  // 添加"其他..."选项
   if (ext && apps.length > 0) {
     items.push({ id: 'open-with-divider', type: 'divider' })
-    for (const { appId, config } of apps) {
-      const assoc = config.fileAssociations?.[0]
-      items.push({
-        id: `set-default-${appId}`,
-        label: `始终使用${assoc?.label || config.name}打开 ${ext.toLowerCase()} 文件`,
-        icon: assoc?.icon || config.icon,
-        action: `fm.setDefaultApp.${appId}`,
-      })
-    }
+    items.push({
+      id: 'open-with-more',
+      label: '其他...',
+      icon: 'Settings',
+      action: 'fm.openWithDialog',
+    })
   }
 
   return items
