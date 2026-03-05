@@ -2,14 +2,20 @@ import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { request as wsRequest } from "@/stores/webSocketStore"
 import { Square, Play, RotateCw } from "lucide-react"
-import type { WasmProcInfo } from "./types"
+import type { WasmProcInfo, SortField } from "./types"
 
 export function WasmPanel({
   procs,
   onRefresh,
+  sortField,
+  handleSort,
+  SortIcon,
 }: {
   procs: WasmProcInfo[]
   onRefresh: () => void
+  sortField: SortField
+  handleSort: (f: SortField) => void
+  SortIcon: React.FC<{ field: SortField }>
 }) {
   const { toast } = useToast()
   const [loading, setLoading] = useState<string | null>(null)
@@ -47,7 +53,15 @@ export function WasmPanel({
     }
   }
 
-  const thClass = "px-2 py-1.5 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap"
+  const thClass = "px-2 py-1.5 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-700 transition-colors select-none whitespace-nowrap"
+
+  const formatBytes = (bytes: number) => {
+    if (!bytes || bytes === 0) return "—"
+    const k = 1024
+    const sizes = ["B", "KB", "MB", "GB"]
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return (bytes / Math.pow(k, i)).toFixed(1) + " " + sizes[i]
+  }
 
   return (
     <div className="h-full flex flex-col gap-2">
@@ -66,9 +80,21 @@ export function WasmPanel({
         <table className="w-full text-[0.6875rem]">
           <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 border-b border-slate-100">
             <tr>
-              <th className={thClass}>应用 ID</th>
-              <th className={thClass}>名称</th>
-              <th className={thClass} style={{ width: 80 }}>状态</th>
+              <th className={thClass} onClick={() => handleSort("appId")}>
+                <span className="flex items-center gap-1">应用 ID <SortIcon field="appId" /></span>
+              </th>
+              <th className={thClass} onClick={() => handleSort("name")}>
+                <span className="flex items-center gap-1">名称 <SortIcon field="name" /></span>
+              </th>
+              <th className={thClass} onClick={() => handleSort("state")} style={{ width: 80 }}>
+                <span className="flex items-center gap-1">状态 <SortIcon field="state" /></span>
+              </th>
+              <th className={thClass} onClick={() => handleSort("memory")} style={{ width: 70 }}>
+                <span className="flex items-center gap-1">内存 <SortIcon field="memory" /></span>
+              </th>
+              <th className={thClass} onClick={() => handleSort("eventCount")} style={{ width: 60 }}>
+                <span className="flex items-center gap-1">事件 <SortIcon field="eventCount" /></span>
+              </th>
               <th className={thClass}>错误信息</th>
               <th className={thClass} style={{ width: 120 }}>操作</th>
             </tr>
@@ -82,6 +108,12 @@ export function WasmPanel({
                   <span className={`inline-block px-1.5 py-0.5 rounded text-[0.625rem] font-medium ${stateColor(p.state)}`}>
                     {stateLabel(p.state)}
                   </span>
+                </td>
+                <td className="px-2 py-1.5 text-slate-600">
+                  {formatBytes(p.memory || 0)}
+                </td>
+                <td className="px-2 py-1.5 text-slate-600">
+                  {p.eventCount !== undefined ? p.eventCount.toLocaleString() : "—"}
                 </td>
                 <td className="px-2 py-1.5 text-red-500 truncate max-w-[12.5rem] text-[0.625rem]" title={p.error || ""}>
                   {p.error || "—"}
@@ -126,7 +158,7 @@ export function WasmPanel({
             ))}
             {procs.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center py-8 text-slate-400 text-[0.75rem]">
+                <td colSpan={7} className="text-center py-8 text-slate-400 text-[0.75rem]">
                   暂无 Wasm 进程
                 </td>
               </tr>

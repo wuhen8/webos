@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { useWindowStore, useUIStore, useAuthStore } from '@/stores'
-import { useEditorStore } from '@/apps/editor/store'
 import { registerSystemShortcut } from './useKeyboardDispatcher'
 
 /**
@@ -27,12 +26,6 @@ function buildSystemShortcuts() {
     closeWindow,
   } = useWindowStore.getState()
 
-  const {
-    openNewEditor,
-    saveEditorContent,
-    formatEditor,
-  } = useEditorStore.getState()
-
   const { closeGlobalMenu } = useUIStore.getState()
   const { logout } = useAuthStore.getState()
 
@@ -56,7 +49,8 @@ function buildSystemShortcuts() {
       } else if (aw.type === 'terminal') {
         openWindow('terminal', { forceNew: true })
       } else if (aw.type === 'editor') {
-        openNewEditor()
+        // Let editor handle its own Cmd+N for new tab
+        openWindow('editor', { forceNew: true })
       } else {
         openWindow('fileManager', { forceNew: true })
       }
@@ -78,24 +72,6 @@ function buildSystemShortcuts() {
     action: () => {
       const aw = useWindowStore.getState().windows.find(w => w.isActive)
       if (aw) minimizeWindow(aw.id)
-    },
-  })
-
-  // ⌘S — Save (editor only)
-  reg({
-    key: 's', meta: true, global: true,
-    action: () => {
-      const aw = useWindowStore.getState().windows.find(w => w.isActive)
-      if (aw?.type === 'editor') saveEditorContent(aw.id)
-    },
-  })
-
-  // ⇧⌥F — Format code (editor only)
-  reg({
-    key: 'f', shift: true, alt: true, global: true,
-    action: () => {
-      const aw = useWindowStore.getState().windows.find(w => w.isActive)
-      if (aw?.type === 'editor') formatEditor(aw.id)
     },
   })
 

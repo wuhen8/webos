@@ -10,7 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
-import { useWindowStore } from '@/stores'
+import { useWindowStore } from '@/stores/windowStore'
 import { useCurrentProcess } from '@/hooks/useCurrentProcess'
 import { fsApi } from '@/lib/storageApi'
 

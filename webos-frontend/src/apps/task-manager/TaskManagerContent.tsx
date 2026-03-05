@@ -36,6 +36,8 @@ function TaskManagerContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [sortField, setSortField] = useState<SortField>("cpu")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
+  const [wasmSortField, setWasmSortField] = useState<SortField>("appId")
+  const [wasmSortDir, setWasmSortDir] = useState<SortDir>("asc")
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [refreshInterval, setRefreshInterval] = useState(3000)
   const [prevNetwork, setPrevNetwork] = useState<SystemOverview["network"] | null>(null)
@@ -193,9 +195,23 @@ function TaskManagerContent() {
     }
   }
 
+  const handleWasmSort = (field: SortField) => {
+    if (wasmSortField === field) {
+      setWasmSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    } else {
+      setWasmSortField(field)
+      setWasmSortDir("desc")
+    }
+  }
+
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-30" />
     return sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+  }
+
+  const WasmSortIcon = ({ field }: { field: SortField }) => {
+    if (wasmSortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-30" />
+    return wasmSortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
   }
 
   const filteredProcesses = processes
@@ -216,6 +232,18 @@ function TaskManagerContent() {
         default: return 0
       }
     })
+
+  const sortedWasmProcs = [...wasmProcs].sort((a, b) => {
+    const dir = wasmSortDir === "asc" ? 1 : -1
+    switch (wasmSortField) {
+      case "appId": return a.appId.localeCompare(b.appId) * dir
+      case "name": return (a.name || a.appId).localeCompare(b.name || b.appId) * dir
+      case "state": return a.state.localeCompare(b.state) * dir
+      case "memory": return ((a.memory || 0) - (b.memory || 0)) * dir
+      case "eventCount": return ((a.eventCount || 0) - (b.eventCount || 0)) * dir
+      default: return 0
+    }
+  })
 
   const cpuUsage = parseFloat(overview?.cpuUsage || "0")
   const memUsage = parseFloat(overview?.memory?.usagePercent || "0")
@@ -303,7 +331,13 @@ function TaskManagerContent() {
         ) : activeTab === "services" ? (
           <ServicePanel services={services} onContextMenu={handleServiceContextMenu} />
         ) : activeTab === "wasm" ? (
-          <WasmPanel procs={wasmProcs} onRefresh={fetchWasmProcs} />
+          <WasmPanel
+            procs={sortedWasmProcs}
+            onRefresh={fetchWasmProcs}
+            sortField={wasmSortField}
+            handleSort={handleWasmSort}
+            SortIcon={WasmSortIcon}
+          />
         ) : (
           <ProcessPanel
             processes={filteredProcesses}

@@ -1,5 +1,6 @@
 import { request as wsRequest, registerReconnectHook } from '@/stores/webSocketStore'
 import { useTaskStore } from '@/stores/taskStore'
+import { syncInstalledApps } from './appSyncService'
 
 // Installed apps change handlers (for dynamic dock sync)
 const installedAppsHandlers = new Set<(apps: any[]) => void>()
@@ -20,7 +21,7 @@ useTaskStore.subscribe((state, prevState) => {
         }
       }).catch(() => {})
       // Re-sync dynamic app registry
-      import('@/config/appRegistry').then(({ syncInstalledApps }) => syncInstalledApps()).catch(() => {})
+      syncInstalledApps().catch(() => {})
       break
     }
   }
@@ -34,7 +35,7 @@ registerReconnectHook(() => {
     }
   }).catch(() => {})
   // Also re-sync dynamic app registry
-  import('@/config/appRegistry').then(({ syncInstalledApps }) => syncInstalledApps()).catch(() => {})
+  syncInstalledApps().catch(() => {})
 })
 
 export const appStoreService = {

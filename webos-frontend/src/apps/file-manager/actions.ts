@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import type { MenuActionHandler } from '@/types'
-import { useWindowStore } from '@/stores'
+import { useWindowStore } from '@/stores/windowStore'
 import { lazyLoad } from '@/config/lazyLoad'
 
 const ShareManagerContent = lazyLoad(() => import('./ShareManagerContent'))

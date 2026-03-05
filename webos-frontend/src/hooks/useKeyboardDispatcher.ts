@@ -90,6 +90,9 @@ export function registerWindowShortcuts(windowId: string, defs: ShortcutDef[]): 
 // ─── Dispatcher core ───
 
 function dispatch(e: KeyboardEvent) {
+  // If application already handled the event, don't process system shortcuts
+  if (e.defaultPrevented) return
+
   const activeEl = document.activeElement
   const inEditable = isEditableElement(activeEl)
 
@@ -132,7 +135,8 @@ export function useKeyboardDispatcher() {
   useEffect(() => {
     if (authPhase !== 'authenticated') return
 
-    document.addEventListener('keydown', dispatch, true)
-    return () => document.removeEventListener('keydown', dispatch, true)
+    // Use bubble phase to let applications handle events first
+    document.addEventListener('keydown', dispatch, false)
+    return () => document.removeEventListener('keydown', dispatch, false)
   }, [authPhase])
 }

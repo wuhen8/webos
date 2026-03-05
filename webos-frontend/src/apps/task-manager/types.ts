@@ -61,6 +61,9 @@ export interface WasmProcInfo {
   name: string
   state: "running" | "stopped" | "failed" | "starting"
   error?: string
+  memory?: number      // WASM 内存大小（字节）
+  eventCount?: number  // 处理的事件数
+  lastUpdated?: number // 更新时间戳
 }
 
 export interface UnifiedTask {
@@ -81,7 +84,7 @@ export interface UnifiedTask {
   silent?: boolean
 }
 
-export type SortField = "pid" | "cpu" | "mem" | "rss" | "user" | "command" | "serviceName" | "activeState" | "subState" | "enabled"
+export type SortField = "pid" | "cpu" | "mem" | "rss" | "user" | "command" | "serviceName" | "activeState" | "subState" | "enabled" | "appId" | "name" | "state" | "memory" | "eventCount"
 export type SortDir = "asc" | "desc"
 export type TabType = "overview" | "processes" | "tasks" | "services" | "wasm"
 

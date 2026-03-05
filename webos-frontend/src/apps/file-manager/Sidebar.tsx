@@ -26,7 +26,7 @@ import { getContextMenu } from "@/config/appRegistry"
 import { getStorageNodes } from "@/lib/storageApi"
 import { request as wsRequest } from "@/stores/webSocketStore"
 import { fsService } from "@/lib/services"
-import { useWindowStore } from "@/stores"
+import { useWindowStore } from "@/stores/windowStore"
 
 export interface MountedIso {
   name: string

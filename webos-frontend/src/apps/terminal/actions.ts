@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import type { MenuActionHandler } from '@/types'
-import { useWindowStore } from '@/stores'
+import { useWindowStore } from '@/stores/windowStore'
 import { useTerminalStore } from './store'
 import SnippetManager from './SnippetManager'
 

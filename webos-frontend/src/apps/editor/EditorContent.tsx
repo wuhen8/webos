@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import FmEdit from "@/components/FmEdit"
 import type { FmEditApi } from "@/components/FmEdit"
 import {
@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { WindowState, EditorTab, FileInfo } from "@/types"
-import { useWindowStore, useProcessStore, useSettingsStore, wrapStateRef, dragTabRef } from "@/stores"
+import { useProcessStore, useSettingsStore, wrapStateRef, dragTabRef } from "@/stores"
+import { useWindowStore } from "@/stores/windowStore"
 import { useCurrentProcess } from "@/hooks/useCurrentProcess"
 import { useEditorStore } from "./store"
 import { getFileType } from "@/lib/utils"
@@ -117,6 +118,43 @@ function EditorContent({ win }: EditorContentProps) {
     if (result.ok) toast({ title: "切换换行", description: result.message })
     else toast({ title: "提示", description: result.message, variant: "destructive" })
   }
+
+  // Handle application-level keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().includes('MAC')
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
+
+      // Cmd/Ctrl+S - Save
+      if (cmdOrCtrl && e.key === 's') {
+        e.preventDefault()
+        handleSave()
+        return
+      }
+
+      // Shift+Alt+F - Format
+      if (e.shiftKey && e.altKey && e.key === 'f') {
+        e.preventDefault()
+        const result = await useEditorStore.getState().formatEditor(win.id)
+        if (result.ok) {
+          toast({ title: "格式化", description: result.message })
+        } else {
+          toast({ title: "格式化失败", description: result.message, variant: "destructive" })
+        }
+        return
+      }
+
+      // Cmd/Ctrl+N - New tab
+      if (cmdOrCtrl && e.key === 'n') {
+        e.preventDefault()
+        useEditorStore.getState().addNewEditorTab(win.id)
+        return
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [win.id, handleSave, toast])
 
   return (
     <div className="flex flex-col h-full bg-gradient-to-b from-slate-50/50 to-white/30">

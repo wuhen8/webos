@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useToast } from "@/hooks/use-toast"
-import { useWebSocketStore, useWindowStore } from "@/stores"
+import { useWebSocketStore } from "@/stores"
+import { useWindowStore } from "@/stores/windowStore"
 import { useUIStore } from "@/stores/uiStore"
 import { exec, dockerService } from "@/lib/services"
 import ComposeCreator from "./ComposeCreator"

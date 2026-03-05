@@ -1,6 +1,6 @@
 import { lazyLoad } from '@/config/lazyLoad'
 import type { AppRenderer } from '@/config/componentRegistry'
-import { useWindowStore } from '@/stores'
+import { useWindowStore } from '@/stores/windowStore'
 
 const WebviewContent = lazyLoad(() => import('./WebviewContent'))
 

@@ -314,7 +314,8 @@ func onCommandResult(data json.RawMessage) {
 }
 
 func onSystemNotify(data json.RawMessage) {
-	if activeChatID == 0 {
+	// 广播给所有已授权的 chat_id
+	if len(allowedChatIDs) == 0 {
 		return
 	}
 	var d struct {
@@ -341,7 +342,10 @@ func onSystemNotify(data json.RawMessage) {
 		text += d.Title + "\n"
 	}
 	text += d.Message
-	sendTelegramAsync(activeChatID, text, nil)
+	// 发送给所有已授权的用户
+	for cid := range allowedChatIDs {
+		sendTelegramAsync(cid, text, nil)
+	}
 }
 
 func pollOnce() {
