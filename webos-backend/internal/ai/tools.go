@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -279,10 +280,6 @@ func hostShell(parent context.Context, command string, timeout int, onOutput fun
 	ctx, cancel := context.WithTimeout(parent, time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	// 检测后台进程：如果命令包含 &，启用空闲超时机制
-	hasBackgroundProcess := strings.Contains(command, "&")
-	idleTimeout := 3 * time.Second // 3秒无输出则认为后台进程已启动完成
-
 	cmd := exec.CommandContext(ctx, service.UserShell(), "-c", command)
 	setProcAttr(cmd)
 
@@ -298,16 +295,12 @@ func hostShell(parent context.Context, command string, timeout int, onOutput fun
 		cmd.Stderr = io.MultiWriter(&stderr, stderrPW)
 
 		var scanWg sync.WaitGroup
-		var lastOutputTime sync.Map // 记录最后输出时间
-		lastOutputTime.Store("time", time.Now())
-
 		scanWg.Add(2)
 		go func() {
 			defer scanWg.Done()
 			scanner := bufio.NewScanner(stdoutPR)
 			scanner.Buffer(make([]byte, 64*1024), 256*1024)
 			for scanner.Scan() {
-				lastOutputTime.Store("time", time.Now())
 				onOutput("stdout", scanner.Text()+"\n")
 			}
 		}()
@@ -316,97 +309,36 @@ func hostShell(parent context.Context, command string, timeout int, onOutput fun
 			scanner := bufio.NewScanner(stderrPR)
 			scanner.Buffer(make([]byte, 64*1024), 256*1024)
 			for scanner.Scan() {
-				lastOutputTime.Store("time", time.Now())
 				onOutput("stderr", scanner.Text()+"\n")
 			}
 		}()
 
-		// 启动命令
+		// Context cancellation watcher: close pipes and kill process when context is cancelled.
+		cancelDone := make(chan struct{})
+		go func() {
+			select {
+			case <-ctx.Done():
+				stdoutPW.Close()
+				stderrPW.Close()
+				if cmd.Process != nil {
+					syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+				}
+			case <-cancelDone:
+			}
+		}()
+		defer close(cancelDone)
+
 		if err := cmd.Start(); err != nil {
 			return nil, err
 		}
 
-		// 如果是后台进程，启动空闲超时监控
 		cmdDone := make(chan error, 1)
 		go func() {
 			cmdDone <- cmd.Wait()
 		}()
 
-		if hasBackgroundProcess {
-			// 后台进程模式：监控空闲超时
-			idleTicker := time.NewTicker(500 * time.Millisecond)
-			defer idleTicker.Stop()
-
-			for {
-				select {
-				case err := <-cmdDone:
-					// 命令正常结束
-					stdoutPW.Close()
-					stderrPW.Close()
-					scanWg.Wait()
-
-					exitCode := 0
-					if err != nil {
-						if exitErr, ok := err.(*exec.ExitError); ok {
-							exitCode = exitErr.ExitCode()
-						} else if ctx.Err() != nil {
-							if parent.Err() != nil {
-								return &ExecResult{Stderr: "已取消", ExitCode: -1}, nil
-							}
-							return &ExecResult{Stderr: "执行超时", ExitCode: -1}, nil
-						} else {
-							return nil, err
-						}
-					}
-
-					outStr := stdout.String()
-					errStr := stderr.String()
-					const maxLen = 50000
-					if len(outStr) > maxLen {
-						outStr = outStr[:maxLen] + "\n... (输出已截断)"
-					}
-					if len(errStr) > maxLen {
-						errStr = errStr[:maxLen] + "\n... (输出已截断)"
-					}
-					return &ExecResult{Stdout: outStr, Stderr: errStr, ExitCode: exitCode}, nil
-
-				case <-idleTicker.C:
-					// 检查空闲超时
-					if lastTime, ok := lastOutputTime.Load("time"); ok {
-						if time.Since(lastTime.(time.Time)) > idleTimeout {
-							// 空闲超时，关闭管道
-							stdoutPW.Close()
-							stderrPW.Close()
-							scanWg.Wait()
-
-							outStr := stdout.String()
-							errStr := stderr.String()
-							const maxLen = 50000
-							if len(outStr) > maxLen {
-								outStr = outStr[:maxLen] + "\n... (输出已截断)"
-							}
-							if len(errStr) > maxLen {
-								errStr = errStr[:maxLen] + "\n... (输出已截断)"
-							}
-							return &ExecResult{Stdout: outStr, Stderr: errStr, ExitCode: 0}, nil
-						}
-					}
-
-				case <-ctx.Done():
-					// 超时或取消
-					stdoutPW.Close()
-					stderrPW.Close()
-					scanWg.Wait()
-
-					if parent.Err() != nil {
-						return &ExecResult{Stderr: "已取消", ExitCode: -1}, nil
-					}
-					return &ExecResult{Stderr: "执行超时", ExitCode: -1}, nil
-				}
-			}
-		} else {
-			// 非后台进程：正常等待命令结束
-			err := <-cmdDone
+		select {
+		case err := <-cmdDone:
 			stdoutPW.Close()
 			stderrPW.Close()
 			scanWg.Wait()
@@ -435,6 +367,18 @@ func hostShell(parent context.Context, command string, timeout int, onOutput fun
 				errStr = errStr[:maxLen] + "\n... (输出已截断)"
 			}
 			return &ExecResult{Stdout: outStr, Stderr: errStr, ExitCode: exitCode}, nil
+
+		case <-ctx.Done():
+			select {
+			case <-cmdDone:
+			case <-time.After(1 * time.Second):
+			}
+			scanWg.Wait()
+
+			if parent.Err() != nil {
+				return &ExecResult{Stderr: "已取消", ExitCode: -1}, nil
+			}
+			return &ExecResult{Stderr: "执行超时", ExitCode: -1}, nil
 		}
 	}
 

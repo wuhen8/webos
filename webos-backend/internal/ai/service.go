@@ -19,7 +19,11 @@ import (
 	"webos-backend/internal/service"
 )
 
-const defaultSystemPrompt = `你是文件管理助手。你可以帮用户处理文件、执行代码、分析数据、管理系统。
+const defaultSystemPrompt = `# 系统提示词
+
+> system.md - 系统核心配置文档，定义 AI 的基础行为、工具使用规范、系统环境变量和约束
+
+你是文件管理助手。你可以帮用户处理文件、执行代码、分析数据、管理系统。
 当前时间：{{DATETIME}}（此为实时时间，每次请求更新，请以此为准，忽略历史消息中的旧时间）
 
 ## 数据目录

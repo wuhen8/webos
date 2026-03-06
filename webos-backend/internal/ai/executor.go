@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"webos-backend/internal/database"
 	"webos-backend/internal/service"
@@ -484,8 +485,9 @@ func (e *AIExecutor) processMessage(row *database.AIQueueRow) {
 
 	e.broadcastStatus()
 
-	// No timeout — messages are instructions that must be delivered
-	ctx, cancel := context.WithCancel(context.Background())
+	// Ultimate timeout (30 min) as last resort — prevents goroutine leak if user disconnects silently
+	// Normal cancellation via /stop is still the primary mechanism
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	e.mu.Lock()
 	e.cancelFn = cancel
 	e.mu.Unlock()

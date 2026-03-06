@@ -395,6 +395,17 @@ func InitAI() {
 	aiExecutor.Start()
 	chatSvc = ai.NewChatService(aiExecutor, aiService)
 
+	// Inject rate limit notification callback for 429 events
+	sink := aiExecutor.GetBroadcastSink()
+	ai.SetNotifyRateLimitCallback(func(level, title, message string) {
+		sink.OnSystemEvent("system_notify", map[string]string{
+			"level":   level,
+			"title":   title,
+			"message": message,
+			"source":  "ai",
+		})
+	})
+
 	// Wire up command executor with AI callbacks and system dependencies
 	ai.InitCommandCallbacks(aiService)
 	ce := service.GetCommandExecutor()

@@ -320,7 +320,21 @@ func chatStreamAnthropic(ctx context.Context, cfg AIConfig, messages []ChatMessa
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+
+	// Context cancellation watcher: close response body when context is cancelled.
+	// This unblocks scanner.Scan() which may be stuck in Read().
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			resp.Body.Close()
+		case <-done:
+		}
+	}()
+	defer func() {
+		close(done)
+		resp.Body.Close()
+	}()
 
 	// Parse Anthropic SSE stream
 	// Track content blocks by index

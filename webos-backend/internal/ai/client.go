@@ -18,9 +18,19 @@ import (
 var (
 	rateMu        sync.Mutex
 	providerRates = make(map[string]*providerRate)
+
+	// notifyRateLimit is a global callback for broadcasting rate limit notifications.
+	// Set during AI initialization. Nil means no notification.
+	notifyRateLimit func(level, title, message string)
 )
 
 const defaultRPM = 10
+
+// SetNotifyRateLimitCallback sets the global callback for rate limit notifications.
+// Call this during AI initialization to enable frontend notifications on 429.
+func SetNotifyRateLimitCallback(fn func(level, title, message string)) {
+	notifyRateLimit = fn
+}
 
 type providerRate struct {
 	lastCall time.Time
@@ -62,8 +72,9 @@ func waitRateLimit(ctx context.Context, baseURL string, rpm int) error {
 }
 
 const (
-	retryBaseWait = 10 * time.Second // initial backoff for retryable errors
-	retryMaxWait  = 5 * time.Minute  // cap for exponential backoff
+	retryBaseWait  = 10 * time.Second // initial backoff for retryable errors
+	retryMaxWait   = 5 * time.Minute  // cap for exponential backoff
+	maxRetryCount  = 5                // max retry attempts for 429/5xx/connection errors
 )
 
 // httpClient is a shared HTTP client with reasonable timeouts for streaming.
@@ -81,13 +92,13 @@ type apiRequest struct {
 	Headers map[string]string
 }
 
-// doAPIRequest sends an HTTP POST with infinite retry on 429/5xx/connection errors.
+// doAPIRequest sends an HTTP POST with retry on 429/5xx/connection errors.
 // Backoff starts at 10s, doubles each attempt, caps at 5 minutes.
-// Only ctx cancellation can stop the retry loop.
+// Max 5 attempts. Returns error if all retries exhausted.
 func doAPIRequest(ctx context.Context, cfg AIConfig, ar apiRequest) (*http.Response, error) {
 	wait := retryBaseWait
 
-	for attempt := 1; ; attempt++ {
+	for attempt := 1; attempt <= maxRetryCount; attempt++ {
 		if err := waitRateLimit(ctx, cfg.BaseURL, cfg.RPM); err != nil {
 			return nil, fmt.Errorf("rate limit wait cancelled: %w", err)
 		}
@@ -119,6 +130,13 @@ func doAPIRequest(ctx context.Context, cfg AIConfig, ar apiRequest) (*http.Respo
 			errBody, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			log.Printf("[ai] 触发速率限制 429 (第%d次): %s, %s后重试", attempt, string(errBody), wait)
+
+			// Notify frontend on each 429 attempt
+			if notifyRateLimit != nil {
+				msg := fmt.Sprintf("触发速率限制 (第%d/%d次)，%v 后重试...", attempt, maxRetryCount, wait)
+				notifyRateLimit("warning", "API 限速中", msg)
+			}
+
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
@@ -151,6 +169,9 @@ func doAPIRequest(ctx context.Context, cfg AIConfig, ar apiRequest) (*http.Respo
 
 		return resp, nil
 	}
+
+	// All retries exhausted
+	return nil, fmt.Errorf("API 请求失败：重试次数已达上限 (%d 次)", maxRetryCount)
 }
 
 // nextBackoff doubles the wait time, capped at retryMaxWait.
@@ -253,7 +274,21 @@ func chatStreamOpenAI(ctx context.Context, cfg AIConfig, messages []ChatMessage,
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+
+	// Context cancellation watcher: close response body when context is cancelled.
+	// This unblocks scanner.Scan() which may be stuck in Read().
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			resp.Body.Close()
+		case <-done:
+		}
+	}()
+	defer func() {
+		close(done)
+		resp.Body.Close()
+	}()
 
 	// Parse SSE stream
 	// Accumulate tool calls by index
