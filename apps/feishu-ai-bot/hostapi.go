@@ -5,22 +5,9 @@ import (
 	"unsafe"
 )
 
+const currentAppID = "feishu-ai-bot"
+
 // ==================== Host function imports ====================
-
-//go:wasmimport webos log
-func _hostLog(msgPtr, msgLen uint32)
-
-//go:wasmimport webos config_get
-func _hostConfigGet(keyPtr, keyLen uint32) uint64
-
-//go:wasmimport webos config_set
-func _hostConfigSet(keyPtr, keyLen, valPtr, valLen uint32) uint32
-
-//go:wasmimport webos kv_get
-func _hostKVGet(keyPtr, keyLen uint32) uint64
-
-//go:wasmimport webos kv_set
-func _hostKVSet(keyPtr, keyLen, valPtr, valLen uint32) uint32
 
 //go:wasmimport webos http_request
 func _hostHTTPRequest(methodPtr, methodLen, urlPtr, urlLen, bodyPtr, bodyLen, headersPtr, headersLen uint32) uint64
@@ -121,38 +108,52 @@ func handleHTTPResponse(data json.RawMessage) {
 	cb(d.Body)
 }
 
-// ==================== 同步 API ====================
+// ==================== Unified API (via request) ====================
 
 func logMsg(msg string) {
-	if len(msg) == 0 {
-		return
+	hostCall("system.log", map[string]interface{}{"message": msg})
+}
+
+func scopedRequest(msgType string, payload map[string]interface{}) string {
+	if payload == nil {
+		payload = map[string]interface{}{}
 	}
-	b := []byte(msg)
-	_hostLog(bytesPtr(b), uint32(len(b)))
+	payload["appId"] = currentAppID
+	return request(msgType, payload)
 }
 
 func configGet(key string) string {
-	b := []byte(key)
-	packed := _hostConfigGet(bytesPtr(b), uint32(len(b)))
-	return readSharedBuf(packed)
+	result := scopedRequest("config.get", map[string]interface{}{"key": key})
+	var r struct {
+		Value string `json:"value"`
+		Error string `json:"error"`
+	}
+	json.Unmarshal([]byte(result), &r)
+	if r.Error != "" {
+		return ""
+	}
+	return r.Value
 }
 
 func configSet(key, val string) {
-	kb := []byte(key)
-	vb := []byte(val)
-	_hostConfigSet(bytesPtr(kb), uint32(len(kb)), bytesPtr(vb), uint32(len(vb)))
+	scopedRequest("config.set", map[string]interface{}{"key": key, "value": val})
 }
 
 func kvGet(key string) string {
-	b := []byte(key)
-	packed := _hostKVGet(bytesPtr(b), uint32(len(b)))
-	return readSharedBuf(packed)
+	result := scopedRequest("kv.get", map[string]interface{}{"key": key})
+	var r struct {
+		Value string `json:"value"`
+		Error string `json:"error"`
+	}
+	json.Unmarshal([]byte(result), &r)
+	if r.Error != "" {
+		return ""
+	}
+	return r.Value
 }
 
 func kvSet(key, val string) {
-	kb := []byte(key)
-	vb := []byte(val)
-	_hostKVSet(bytesPtr(kb), uint32(len(kb)), bytesPtr(vb), uint32(len(vb)))
+	scopedRequest("kv.set", map[string]interface{}{"key": key, "value": val})
 }
 
 func request(msgType string, payload interface{}) string {
@@ -166,6 +167,49 @@ func request(msgType string, payload interface{}) string {
 		bytesPtr(payloadBytes), uint32(len(payloadBytes)),
 	)
 	return readSharedBuf(packed)
+}
+
+// ==================== Unified Host Call API ====================
+
+// HostCall makes a unified capability call to the host
+func hostCall(method string, params map[string]interface{}) string {
+	call := map[string]interface{}{
+		"method": method,
+		"params": params,
+	}
+	return request("host_call", call)
+}
+
+// Async response callbacks for host_call
+var hostCallbacks = map[string]func(success bool, data interface{}, err string){}
+
+func handleHostResponse(data json.RawMessage) {
+	var resp struct {
+		RequestID string      `json:"requestId"`
+		Success   bool        `json:"success"`
+		Data      interface{} `json:"data,omitempty"`
+		Error     string      `json:"error,omitempty"`
+	}
+	if json.Unmarshal(data, &resp) != nil {
+		return
+	}
+	cb, ok := hostCallbacks[resp.RequestID]
+	if !ok {
+		return
+	}
+	delete(hostCallbacks, resp.RequestID)
+	cb(resp.Success, resp.Data, resp.Error)
+}
+
+// hostCallAsync makes an async host call with callback
+func hostCallAsync(method string, params map[string]interface{}, cb func(success bool, data interface{}, err string)) {
+	result := hostCall(method, params)
+	var r struct {
+		RequestID string `json:"requestId"`
+	}
+	if json.Unmarshal([]byte(result), &r) == nil && r.RequestID != "" && cb != nil {
+		hostCallbacks[r.RequestID] = cb
+	}
 }
 
 // ==================== Memory helpers ====================

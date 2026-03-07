@@ -112,6 +112,8 @@ func on_event(ptr uint32, size uint32) uint32 {
 	switch ev.Type {
 	case "http_response":
 		handleHTTPResponse(ev.Data)
+	case "host_response":
+		handleHostResponse(ev.Data)
 	case "chat_delta":
 		onChatDelta(ev.Data)
 	case "chat_done":

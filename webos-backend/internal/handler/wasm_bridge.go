@@ -28,6 +28,76 @@ func InitWasmBridge() {
 
 	// Register sync handlers — protocol-agnostic, any WASM app can call these directly.
 	// These bypass the WebSocket layer entirely, calling service/executor directly.
+
+	// Config handlers
+	wasm.RegisterSyncHandler("config.get", func(payload json.RawMessage) ([]byte, error) {
+		var p struct {
+			AppID string `json:"appId"`
+			Key   string `json:"key"`
+		}
+		json.Unmarshal(payload, &p)
+		val, err := wasm.GetAppConfig(p.AppID, p.Key)
+		if err != nil {
+			return json.Marshal(map[string]string{"error": err.Error()})
+		}
+		return json.Marshal(map[string]string{"value": val})
+	})
+
+	wasm.RegisterSyncHandler("config.set", func(payload json.RawMessage) ([]byte, error) {
+		var p struct {
+			AppID string `json:"appId"`
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		}
+		json.Unmarshal(payload, &p)
+		err := wasm.SetAppConfig(p.AppID, p.Key, p.Value)
+		if err != nil {
+			return json.Marshal(map[string]string{"error": err.Error()})
+		}
+		return json.Marshal(map[string]bool{"success": true})
+	})
+
+	// KV handlers
+	wasm.RegisterSyncHandler("kv.get", func(payload json.RawMessage) ([]byte, error) {
+		var p struct {
+			AppID string `json:"appId"`
+			Key   string `json:"key"`
+		}
+		json.Unmarshal(payload, &p)
+		val, err := wasm.KVGet(p.AppID, p.Key)
+		if err != nil {
+			return json.Marshal(map[string]string{"error": err.Error()})
+		}
+		return json.Marshal(map[string]string{"value": string(val)})
+	})
+
+	wasm.RegisterSyncHandler("kv.set", func(payload json.RawMessage) ([]byte, error) {
+		var p struct {
+			AppID string `json:"appId"`
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		}
+		json.Unmarshal(payload, &p)
+		err := wasm.KVSet(p.AppID, p.Key, []byte(p.Value))
+		if err != nil {
+			return json.Marshal(map[string]string{"error": err.Error()})
+		}
+		return json.Marshal(map[string]bool{"success": true})
+	})
+
+	wasm.RegisterSyncHandler("kv.delete", func(payload json.RawMessage) ([]byte, error) {
+		var p struct {
+			AppID string `json:"appId"`
+			Key   string `json:"key"`
+		}
+		json.Unmarshal(payload, &p)
+		err := wasm.KVDelete(p.AppID, p.Key)
+		if err != nil {
+			return json.Marshal(map[string]string{"error": err.Error()})
+		}
+		return json.Marshal(map[string]bool{"success": true})
+	})
+
 	wasm.RegisterSyncHandler("ai_commands", func(_ json.RawMessage) ([]byte, error) {
 		return json.Marshal(chatSvc.Commands())
 	})

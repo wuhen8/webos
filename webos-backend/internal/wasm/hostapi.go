@@ -74,12 +74,6 @@ func SetRequestBridge(fn func(string, json.RawMessage) ([]byte, error)) {
 func registerHostModule(ctx context.Context, engine wazero.Runtime) error {
 	builder := engine.NewHostModuleBuilder("webos")
 
-	builder.NewFunctionBuilder().WithFunc(hostLog).Export("log")
-	builder.NewFunctionBuilder().WithFunc(hostConfigGet).Export("config_get")
-	builder.NewFunctionBuilder().WithFunc(hostConfigSet).Export("config_set")
-	builder.NewFunctionBuilder().WithFunc(hostKVGet).Export("kv_get")
-	builder.NewFunctionBuilder().WithFunc(hostKVSet).Export("kv_set")
-	builder.NewFunctionBuilder().WithFunc(hostKVDelete).Export("kv_delete")
 	builder.NewFunctionBuilder().WithFunc(hostHTTPRequest).Export("http_request")
 	builder.NewFunctionBuilder().WithFunc(hostRequest).Export("request")
 	builder.NewFunctionBuilder().WithFunc(hostWSConnect).Export("ws_connect")
@@ -352,6 +346,11 @@ func hostRequest(ctx context.Context, m api.Module, typePtr, typeLen, payloadPtr
 		payload = json.RawMessage("{}")
 	}
 
+	// Handle host_call - unified capability interface
+	if msgType == "host_call" {
+		return handleHostCall(m, appID, payload)
+	}
+
 	// Check sync handlers first (query-type requests that return data immediately)
 	SyncHandlers.mu.RLock()
 	syncFn := SyncHandlers.handlers[msgType]
@@ -383,7 +382,64 @@ func hostRequest(ctx context.Context, m api.Module, typePtr, typeLen, payloadPtr
 	return writeToWasm(m, resp)
 }
 
+// handleHostCall processes unified capability calls
+func handleHostCall(m api.Module, appID string, payload json.RawMessage) uint64 {
+	var call struct {
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+	}
+	if err := json.Unmarshal(payload, &call); err != nil {
+		errJSON, _ := json.Marshal(map[string]string{"error": "invalid call format"})
+		return writeToWasm(m, errJSON)
+	}
+
+	reqID := fmt.Sprintf("hc_%d", httpRequestCounter.Add(1))
+
+	// Execute async
+	go func() {
+		router := GetRouter()
+		data, err := router.Execute(appID, call.Method, call.Params)
+
+		var resp map[string]interface{}
+		if err != nil {
+			resp = map[string]interface{}{
+				"requestId": reqID,
+				"success":   false,
+				"error":     err.Error(),
+			}
+		} else {
+			resp = map[string]interface{}{
+				"requestId": reqID,
+				"success":   true,
+				"data":      data,
+			}
+		}
+
+		evt, _ := json.Marshal(map[string]interface{}{
+			"type": "host_response",
+			"data": resp,
+		})
+		GetRuntime().PushEvent(appID, evt)
+	}()
+
+	// Return requestId immediately
+	result, _ := json.Marshal(map[string]string{"requestId": reqID})
+	return writeToWasm(m, result)
+}
+
 // ==================== KV storage ====================
+
+func KVGet(appID, key string) ([]byte, error) {
+	return kvGet(appID, key)
+}
+
+func KVSet(appID, key string, val []byte) error {
+	return kvSet(appID, key, val)
+}
+
+func KVDelete(appID, key string) error {
+	return kvDelete(appID, key)
+}
 
 func kvGet(appID, key string) ([]byte, error) {
 	db := database.DB()
