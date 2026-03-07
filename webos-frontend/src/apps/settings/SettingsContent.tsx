@@ -55,7 +55,7 @@ export function SettingsContent() {
                 </div>
                 <div>
                   <div className="text-[0.8125rem] font-medium text-gray-900">用户</div>
-                  <div className="text-[0.6875rem] text-gray-500">Apple 账户</div>
+                  <div className="text-[0.6875rem] text-gray-500">个人账户</div>
                 </div>
               </div>
             </div>

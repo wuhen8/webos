@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -321,7 +320,7 @@ func hostShell(parent context.Context, command string, timeout int, onOutput fun
 				stdoutPW.Close()
 				stderrPW.Close()
 				if cmd.Process != nil {
-					syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+					killProcess(cmd)
 				}
 			case <-cancelDone:
 			}
