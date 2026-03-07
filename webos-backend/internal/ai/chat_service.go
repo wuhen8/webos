@@ -29,7 +29,7 @@ type ContextStatus struct {
 	Model          string `json:"model"`                    // 当前模型
 }
 
-// ChatStatusResult is the unified response for chat_status.
+// ChatStatusResult is the unified response for chat.status.
 type ChatStatusResult struct {
 	ConversationID string         `json:"conversationId"`
 	Active         bool           `json:"active"`

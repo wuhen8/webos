@@ -5,7 +5,7 @@ import { request } from '@/stores/webSocketStore'
 // App-specific cleanup hooks called when a process is killed
 const processCleanupHooks: Record<string, () => void> = {
   'ai-chat': () => {
-    request('chat_cleanup', {}).catch(() => {})
+    request('chat.cleanup', {}).catch(() => {})
   },
 }
 

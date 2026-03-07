@@ -1,27 +1,21 @@
 package wasm
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/tetratelabs/wazero/api"
 )
-
-// ==================== WebSocket 连接管理 ====================
 
 var wsConnCounter atomic.Uint64
 
-// wsConn 表示一个 WebSocket 连接
 type wsConn struct {
 	id     string
 	appID  string
@@ -31,7 +25,6 @@ type wsConn struct {
 	stopCh chan struct{}
 }
 
-// 全局连接池：appID → connID → *wsConn
 var wsPool struct {
 	mu    sync.RWMutex
 	conns map[string]map[string]*wsConn
@@ -64,82 +57,51 @@ func (wc *wsConn) close() {
 	}
 	wc.closed = true
 	close(wc.stopCh)
-	wc.conn.Close()
+	_ = wc.conn.Close()
 }
 
-func (wc *wsConn) send(data []byte) error {
+func (wc *wsConn) write(messageType int, data []byte) error {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
 	if wc.closed {
 		return fmt.Errorf("connection closed")
 	}
-	return wc.conn.WriteMessage(websocket.TextMessage, data)
+	return wc.conn.WriteMessage(messageType, data)
 }
 
-func (wc *wsConn) sendBinary(data []byte) error {
-	wc.mu.Lock()
-	defer wc.mu.Unlock()
-	if wc.closed {
-		return fmt.Errorf("connection closed")
+func wsConnectCapability(appID string, params json.RawMessage) (interface{}, error) {
+	var p struct {
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
 	}
-	return wc.conn.WriteMessage(websocket.BinaryMessage, data)
-}
-
-// ==================== Host Functions (syscalls) ====================
-// 通过 m.Name() 获取调用者 appID（PID）
-
-// hostWSConnect: ws_connect(urlPtr, urlLen, headersPtr, headersLen) → connID (via shared buf)
-func hostWSConnect(ctx context.Context, m api.Module, urlPtr, urlLen, headersPtr, headersLen uint32) uint64 {
-	appID := m.Name()
-	rawURL, _ := readWasmString(m, urlPtr, urlLen)
-	headersStr, _ := readWasmString(m, headersPtr, headersLen)
-
-	if rawURL == "" {
-		return writeToWasm(m, []byte(`{"error":"empty url"}`))
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.URL == "" {
+		return nil, fmt.Errorf("url is required")
 	}
 
 	connID := fmt.Sprintf("ws_%d", wsConnCounter.Add(1))
-
 	go func() {
-		dialer := websocket.Dialer{
-			HandshakeTimeout: 15 * time.Second,
-		}
-
-		// 按 app 粒度读取代理配置
+		dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second}
 		if proxyURL, err := GetAppConfig(appID, "proxy"); err == nil && proxyURL != "" {
 			if u, err := url.Parse(proxyURL); err == nil {
 				dialer.Proxy = http.ProxyURL(u)
 			}
 		}
 
-		// 解析自定义 headers
 		reqHeaders := http.Header{}
-		if headersStr != "" {
-			for _, line := range strings.Split(headersStr, "\n") {
-				parts := strings.SplitN(line, ":", 2)
-				if len(parts) == 2 {
-					reqHeaders.Set(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-				}
-			}
+		for k, v := range p.Headers {
+			reqHeaders.Set(k, v)
 		}
 
-		conn, _, err := dialer.Dial(rawURL, reqHeaders)
+		conn, _, err := dialer.Dial(p.URL, reqHeaders)
 		if err != nil {
-			pushWSEvent(appID, "ws_error", map[string]string{
-				"connId": connID,
-				"error":  err.Error(),
-			})
+			pushHostEvent(appID, "ws.error", map[string]interface{}{"connId": connID, "streamId": connID, "error": err.Error()})
 			return
 		}
 
-		wc := &wsConn{
-			id:     connID,
-			appID:  appID,
-			conn:   conn,
-			stopCh: make(chan struct{}),
-		}
-
-		// 注册到连接池
+		wc := &wsConn{id: connID, appID: appID, conn: conn, stopCh: make(chan struct{})}
 		wsPool.mu.Lock()
 		if wsPool.conns[appID] == nil {
 			wsPool.conns[appID] = make(map[string]*wsConn)
@@ -147,79 +109,79 @@ func hostWSConnect(ctx context.Context, m api.Module, urlPtr, urlLen, headersPtr
 		wsPool.conns[appID][connID] = wc
 		wsPool.mu.Unlock()
 
-		// 推送连接成功事件
-		pushWSEvent(appID, "ws_open", map[string]string{
-			"connId": connID,
-		})
-
-		// 启动读循环
+		pushHostEvent(appID, "ws.open", map[string]interface{}{"connId": connID, "streamId": connID})
 		go wsReadLoop(wc)
 	}()
 
-	return writeToWasm(m, []byte(connID))
+	return map[string]interface{}{"ok": true, "connId": connID, "streamId": connID}, nil
 }
 
-// hostWSSend: ws_send(connIdPtr, connIdLen, dataPtr, dataLen) → 0/1
-func hostWSSend(ctx context.Context, m api.Module, connIdPtr, connIdLen, dataPtr, dataLen uint32) uint32 {
-	appID := m.Name()
-	connID, _ := readWasmString(m, connIdPtr, connIdLen)
-	data, _ := m.Memory().Read(dataPtr, dataLen)
-	if connID == "" || len(data) == 0 {
-		return 1
+func wsSendCapability(appID string, params json.RawMessage) (interface{}, error) {
+	var p struct {
+		ConnID string `json:"connId"`
+		Data   string `json:"data"`
+		Binary bool   `json:"binary"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.ConnID == "" {
+		return nil, fmt.Errorf("connId is required")
 	}
 
 	wsPool.mu.RLock()
-	wc := wsPool.conns[appID][connID]
+	wc := wsPool.conns[appID][p.ConnID]
 	wsPool.mu.RUnlock()
 	if wc == nil {
-		return 1
+		return nil, fmt.Errorf("connection not found: %s", p.ConnID)
 	}
 
-	// 拷贝数据（wasm 内存引用可能失效）
-	dataCopy := make([]byte, len(data))
-	copy(dataCopy, data)
-
-	// 自动检测：首字节是 '{', '[', 或可打印 ASCII → TextMessage，否则 BinaryMessage
-	isBinary := len(dataCopy) > 0 && dataCopy[0] != '{' && dataCopy[0] != '[' && dataCopy[0] < 0x20
-	var err error
-	if isBinary {
-		err = wc.sendBinary(dataCopy)
+	var data []byte
+	var messageType int
+	if p.Binary {
+		decoded, err := base64.StdEncoding.DecodeString(p.Data)
+		if err != nil {
+			return nil, fmt.Errorf("invalid base64 data: %w", err)
+		}
+		data = decoded
+		messageType = websocket.BinaryMessage
 	} else {
-		err = wc.send(dataCopy)
+		data = []byte(p.Data)
+		messageType = websocket.TextMessage
 	}
-	if err != nil {
-		return 1
+
+	if err := wc.write(messageType, data); err != nil {
+		return nil, err
 	}
-	return 0
+	return map[string]bool{"ok": true}, nil
 }
 
-// hostWSClose: ws_close(connIdPtr, connIdLen) → 0/1
-func hostWSClose(ctx context.Context, m api.Module, connIdPtr, connIdLen uint32) uint32 {
-	appID := m.Name()
-	connID, _ := readWasmString(m, connIdPtr, connIdLen)
-	if connID == "" {
-		return 1
+func wsCloseCapability(appID string, params json.RawMessage) (interface{}, error) {
+	var p struct {
+		ConnID string `json:"connId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.ConnID == "" {
+		return nil, fmt.Errorf("connId is required")
 	}
 
 	wsPool.mu.Lock()
-	wc := wsPool.conns[appID][connID]
+	wc := wsPool.conns[appID][p.ConnID]
 	if wc != nil {
-		delete(wsPool.conns[appID], connID)
+		delete(wsPool.conns[appID], p.ConnID)
 	}
 	wsPool.mu.Unlock()
-
 	if wc == nil {
-		return 1
+		return nil, fmt.Errorf("connection not found: %s", p.ConnID)
 	}
 	wc.close()
-	return 0
+	return map[string]bool{"ok": true}, nil
 }
-
-// ==================== 读循环 & 事件推送 ====================
 
 func wsReadLoop(wc *wsConn) {
 	defer func() {
-		// 从连接池移除
 		wsPool.mu.Lock()
 		if appConns := wsPool.conns[wc.appID]; appConns != nil {
 			delete(appConns, wc.id)
@@ -227,11 +189,7 @@ func wsReadLoop(wc *wsConn) {
 		wsPool.mu.Unlock()
 
 		wc.close()
-
-		// 推送关闭事件
-		pushWSEvent(wc.appID, "ws_close", map[string]string{
-			"connId": wc.id,
-		})
+		pushHostEvent(wc.appID, "ws.close", map[string]interface{}{"connId": wc.id, "streamId": wc.id})
 	}()
 
 	for {
@@ -244,17 +202,12 @@ func wsReadLoop(wc *wsConn) {
 		msgType, data, err := wc.conn.ReadMessage()
 		if err != nil {
 			if !wc.closed {
-				pushWSEvent(wc.appID, "ws_error", map[string]string{
-					"connId": wc.id,
-					"error":  err.Error(),
-				})
+				pushHostEvent(wc.appID, "ws.error", map[string]interface{}{"connId": wc.id, "streamId": wc.id, "error": err.Error()})
 			}
 			return
 		}
 
-		evtData := map[string]interface{}{
-			"connId": wc.id,
-		}
+		evtData := map[string]interface{}{"connId": wc.id, "streamId": wc.id}
 		switch msgType {
 		case websocket.TextMessage:
 			evtData["data"] = string(data)
@@ -264,16 +217,10 @@ func wsReadLoop(wc *wsConn) {
 			evtData["binary"] = true
 		case websocket.PingMessage, websocket.PongMessage:
 			continue
+		default:
+			continue
 		}
 
-		pushWSEvent(wc.appID, "ws_message", evtData)
+		pushHostEvent(wc.appID, "ws.message", evtData)
 	}
-}
-
-func pushWSEvent(appID, evtType string, data interface{}) {
-	evt, _ := json.Marshal(map[string]interface{}{
-		"type": evtType,
-		"data": data,
-	})
-	GetRuntime().PushEvent(appID, evt)
 }

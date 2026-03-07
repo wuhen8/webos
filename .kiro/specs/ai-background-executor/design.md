@@ -74,7 +74,7 @@ sequenceDiagram
     participant BS as BroadcastSink
     participant DB as SQLite
 
-    FE->>WS: chat_send(convID, content)
+    FE->>WS: chat.send(convID, content)
     WS->>EX: Enqueue(convID, content, wsSink)
 
     alt 同对话或空闲

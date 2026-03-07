@@ -168,9 +168,9 @@ func sendTypingAction(chatID int) {
 }
 // registerBotCommands 从 backend 获取命令列表，调用 Telegram setMyCommands 注册
 func registerBotCommands() {
-	resp := request("ai_commands", nil)
+	resp := request("chat.commands", nil)
 	if resp == "" || resp[0] != '[' {
-		logMsg("WARN: ai_commands returned: " + resp)
+		logMsg("WARN: chat.commands returned: " + resp)
 		return
 	}
 

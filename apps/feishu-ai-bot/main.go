@@ -60,7 +60,7 @@ func ensureInit() {
 	} else {
 		logMsg(fmt.Sprintf("授权 chat_id: %d 个", len(allowedChatIDs)))
 	}
-	request("register_client_context", map[string]interface{}{
+	request("client_context.register", map[string]interface{}{
 		"id":          "feishu-ai-bot",
 		"platform":    "feishu",
 		"displayName": "飞书 Bot",
@@ -95,10 +95,10 @@ func on_event(ptr uint32, size uint32) uint32 {
 		return 1
 	}
 	switch ev.Type {
-	case "http_response":
-		handleHTTPResponse(ev.Data)
-	case "host_response":
+	case "host.response":
 		handleHostResponse(ev.Data)
+	case "host.event":
+		handleHostEvent(ev.Data)
 	case "chat_delta":
 		onChatDelta(ev.Data)
 	case "chat_done":
@@ -111,14 +111,6 @@ func on_event(ptr uint32, size uint32) uint32 {
 		onMediaAttachment(ev.Data)
 	case "system_notify":
 		onSystemNotify(ev.Data)
-	case "ws_open":
-		onWSOpen(ev.Data)
-	case "ws_message":
-		onWSMessage(ev.Data)
-	case "ws_close":
-		onWSClose(ev.Data)
-	case "ws_error":
-		onWSError(ev.Data)
 	case "tick":
 		ensureInit()
 		onTick()
@@ -178,11 +170,31 @@ func startWSConnection() {
 			}
 		}
 
-		wsConnID = wsConnect(wsURL, "")
+		wsConnID = wsConnect(wsURL, map[string]string{})
 		if wsConnID == "" {
 			logMsg("ERROR: wsConnect 调用失败")
 		}
 	})
+}
+
+func handleHostEvent(data json.RawMessage) {
+	var evt struct {
+		Method string          `json:"method"`
+		Data   json.RawMessage `json:"data"`
+	}
+	if json.Unmarshal(data, &evt) != nil {
+		return
+	}
+	switch evt.Method {
+	case "ws.open":
+		onWSOpen(evt.Data)
+	case "ws.message":
+		onWSMessage(evt.Data)
+	case "ws.close":
+		onWSClose(evt.Data)
+	case "ws.error":
+		onWSError(evt.Data)
+	}
 }
 
 func onWSOpen(data json.RawMessage) {
@@ -207,7 +219,7 @@ func onWSMessage(data json.RawMessage) {
 		return
 	}
 
-	logMsg(fmt.Sprintf("ws_message: binary=%v, len=%d", d.Binary, len(d.Data)))
+	logMsg(fmt.Sprintf("ws.message: binary=%v, len=%d", d.Binary, len(d.Data)))
 
 	if d.Binary {
 		// 二进制消息：base64 编码的 protobuf 帧
@@ -469,7 +481,7 @@ func handleTextMessage(msg struct {
 	logMsg(fmt.Sprintf("[chat:%s] %s: %s", chatID, senderOpenID, userText))
 
 	deltaCount = 0
-	request("chat_send", map[string]interface{}{
+	request("chat.send", map[string]interface{}{
 		"messageContent": userText,
 		"clientId":       "feishu-ai-bot",
 	})
@@ -768,8 +780,7 @@ func uploadImageToFeishu(chatID string, a struct {
 	withToken(func(token string) {
 		if token == "" { return }
 		url := feishuBaseURL + "/im/v1/images"
-		resp := request("http_request", map[string]interface{}{
-			"appId":     "feishu-ai-bot",
+		resp := request("http.request", map[string]interface{}{
 			"method":    "POST",
 			"url":       url,
 			"format":    "multipart",
@@ -813,8 +824,7 @@ func uploadFileToFeishu(chatID string, a struct {
 	withToken(func(token string) {
 		if token == "" { return }
 		url := feishuBaseURL + "/im/v1/files"
-		resp := request("http_request", map[string]interface{}{
-			"appId":     "feishu-ai-bot",
+		resp := request("http.request", map[string]interface{}{
 			"method":    "POST",
 			"url":       url,
 			"format":    "multipart",
@@ -927,17 +937,27 @@ func sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, di
 
 // sendHTTPRequestAsync 发起 HTTP 请求并返回 requestID
 func sendHTTPRequestAsync(method, url, body, headers string) string {
-	mb := []byte(method)
-	ub := []byte(url)
-	bb := []byte(body)
-	hb := []byte(headers)
-	packed := _hostHTTPRequest(
-		bytesPtr(mb), uint32(len(mb)),
-		bytesPtr(ub), uint32(len(ub)),
-		bytesPtr(bb), uint32(len(bb)),
-		bytesPtr(hb), uint32(len(hb)),
-	)
-	return readSharedBuf(packed)
+		headersMap := map[string]string{}
+		if headers != "" {
+			if json.Unmarshal([]byte(headers), &headersMap) != nil {
+				return ""
+			}
+		}
+		params := map[string]interface{}{"method": method, "url": url, "headers": headersMap, "body": map[string]interface{}{}}
+		if body != "" {
+			var bodyMap map[string]interface{}
+			if json.Unmarshal([]byte(body), &bodyMap) == nil {
+				params["body"] = bodyMap
+			}
+		}
+		result, ok := requestJSON("http.request", params)
+	if !ok {
+		return ""
+	}
+	if reqID, _ := result["requestId"].(string); reqID != "" {
+		return reqID
+	}
+	return ""
 }
 
 // handleDownloadComplete 处理下载完成事件
@@ -976,7 +996,7 @@ func handleDownloadComplete(pending PendingDownload, respBody string) {
 
 	activeChatID = pending.ChatID
 	deltaCount = 0
-	request("chat_send", map[string]interface{}{
+	request("chat.send", map[string]interface{}{
 		"messageContent": userText,
 		"clientId":       "feishu-ai-bot",
 	})

@@ -294,7 +294,7 @@ docker run -d --name webos-sandbox \
 | `terminal_open` / `terminal_input` / `terminal_resize` / `terminal_close` | 终端 |
 | `docker_*` | Docker 容器/镜像/Compose 管理 |
 | `scheduled_jobs_*` | 定时任务管理 |
-| `chat_send` / `chat_stop` / `chat_history` / `chat_messages` / `chat_delete` | AI 对话 |
+| `chat.send` / `chat.history` / `chat.messages` / `chat.delete` / `chat.cleanup` / `chat.status` | AI 对话 |
 | `appstore_*` / `webapp_*` | 应用商店 |
 | `share_create` / `share_delete` / `share_list` | 文件分享 |
 | `subscribe` / `unsubscribe` | 系统监控订阅（overview、processes、disks 等） |

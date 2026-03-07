@@ -54,9 +54,10 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    request('chat_config_get', {}).then((data: any) => {
-      if (data) {
-        const raw = typeof data === 'string' ? JSON.parse(data) : data
+    request('config.get', { key: 'ai_config' }).then((data: any) => {
+      const value = data?.value
+      if (value) {
+        const raw = typeof value === 'string' ? JSON.parse(value) : value
         if (raw.providers) {
           setCfg(raw as AIMultiConfig)
         }
@@ -119,8 +120,9 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
         const ap = cleaned.providers.find(p => p.id === cleaned.activeProvider)
         if (ap && ap.models.length > 0) cleaned.activeModel = ap.models[0]
       }
-      await request('chat_config_save', {
-        prefs: { ai_config: JSON.stringify(cleaned) }
+      await request('config.set', {
+        key: 'ai_config',
+        value: JSON.stringify(cleaned)
       })
       onClose(true)
     } catch { /* ignore */ } finally {

@@ -7,8 +7,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
@@ -78,7 +80,7 @@ func ensureInit() {
 	}
 
 	// 注册客户端上下文
-	request("register_client_context", map[string]interface{}{
+	request("client_context.register", map[string]interface{}{
 		"id":          "qq-ai-bot",
 		"platform":    "qq",
 		"displayName": "QQ Bot",
@@ -113,10 +115,10 @@ func on_event(ptr uint32, size uint32) uint32 {
 	}
 
 	switch ev.Type {
-	case "http_response":
-		handleHTTPResponse(ev.Data)
-	case "host_response":
+	case "host.response":
 		handleHostResponse(ev.Data)
+	case "host.event":
+		handleHostEvent(ev.Data)
 	case "chat_delta":
 		onChatDelta(ev.Data)
 	case "chat_done":
@@ -129,14 +131,6 @@ func on_event(ptr uint32, size uint32) uint32 {
 		onSystemNotify(ev.Data)
 	case "chat_media":
 		onChatMedia(ev.Data)
-	case "ws_open":
-		onWSOpen(ev.Data)
-	case "ws_message":
-		onWSMessage(ev.Data)
-	case "ws_close":
-		onWSClose(ev.Data)
-	case "ws_error":
-		onWSError(ev.Data)
 	case "tick":
 		ensureInit()
 		onTick()
@@ -167,7 +161,18 @@ func getAccessTokenAndConnect() {
 		}
 
 		accessToken = r.AccessToken
-		logMsg(fmt.Sprintf("✅ Access Token 获取成功，有效期: %s 秒", r.ExpiresIn))
+		expiresInSec := int64(0)
+		if v, err := strconv.ParseInt(r.ExpiresIn, 10, 64); err == nil && v > 0 {
+			expiresInSec = v
+			tokenExpire = time.Now().Unix() + v
+		} else {
+			tokenExpire = 0
+		}
+		if expiresInSec > 0 {
+			logMsg(fmt.Sprintf("✅ Access Token 获取成功，有效期: %d 秒", expiresInSec))
+		} else {
+			logMsg(fmt.Sprintf("✅ Access Token 获取成功，有效期原始值: %s", r.ExpiresIn))
+		}
 
 		// 获取 Gateway URL
 		getGatewayAndConnect()
@@ -191,7 +196,7 @@ func getGatewayAndConnect() {
 		logMsg(fmt.Sprintf("Gateway URL: %s", r.URL))
 
 		// 连接 WebSocket
-		wsHeaders := fmt.Sprintf("Authorization: QQBot %s", accessToken)
+		wsHeaders := map[string]string{"Authorization": "QQBot " + accessToken}
 		wsConnID = wsConnect(r.URL, wsHeaders)
 		if wsConnID == "" {
 			logMsg("ERROR: wsConnect 调用失败")
@@ -201,6 +206,26 @@ func getGatewayAndConnect() {
 }
 
 // ==================== WebSocket 事件处理 ====================
+
+func handleHostEvent(data json.RawMessage) {
+	var evt struct {
+		Method string          `json:"method"`
+		Data   json.RawMessage `json:"data"`
+	}
+	if json.Unmarshal(data, &evt) != nil {
+		return
+	}
+	switch evt.Method {
+	case "ws.open":
+		onWSOpen(evt.Data)
+	case "ws.message":
+		onWSMessage(evt.Data)
+	case "ws.close":
+		onWSClose(evt.Data)
+	case "ws.error":
+		onWSError(evt.Data)
+	}
+}
 
 func onWSOpen(data json.RawMessage) {
 	var d struct {
@@ -263,6 +288,22 @@ func onTick() {
 	tickCount++
 
 	if appID == "" || appSecret == "" {
+		return
+	}
+
+	if wsReady && shouldRefreshQQToken() {
+		logMsg("QQ Access Token 即将过期，主动重连刷新")
+		if wsConnID != "" {
+			wsClose(wsConnID)
+		}
+		wsReady = false
+		wsConnecting = false
+		wsConnID = ""
+		heartbeatInterval = 0
+		heartbeatTick = 0
+		lastSeq = 0
+		accessToken = ""
+		tokenExpire = 0
 		return
 	}
 
@@ -487,7 +528,7 @@ func handleC2CMessage(data json.RawMessage) {
 	// 调用 AI
 	deltaCount = 0
 	replyBuf.Reset()
-	request("chat_send", map[string]interface{}{
+	request("chat.send", map[string]interface{}{
 		"messageContent": userText,
 		"clientId":       "qq-ai-bot",
 	})
@@ -523,7 +564,7 @@ func handleGroupAtMessage(data json.RawMessage) {
 	// 调用 AI
 	deltaCount = 0
 	replyBuf.Reset()
-	request("chat_send", map[string]interface{}{
+	request("chat.send", map[string]interface{}{
 		"messageContent": userText,
 		"clientId":       "qq-ai-bot",
 	})
@@ -558,7 +599,7 @@ func handleChannelMessage(data json.RawMessage) {
 	// 调用 AI
 	deltaCount = 0
 	replyBuf.Reset()
-	request("chat_send", map[string]interface{}{
+	request("chat.send", map[string]interface{}{
 		"messageContent": userText,
 		"clientId":       "qq-ai-bot",
 	})
@@ -735,8 +776,8 @@ func getNextMsgSeq() uint64 {
 }
 
 func sendQQC2CMessage(openid, content string) {
-	if accessToken == "" {
-		logMsg("ERROR: accessToken 为空，无法发送消息")
+	if !hasValidQQToken() {
+		logMsg("ERROR: accessToken 不可用或已过期，无法发送消息")
 		return
 	}
 
@@ -774,8 +815,8 @@ func sendQQC2CMessage(openid, content string) {
 }
 
 func sendQQGroupMessage(groupOpenid, content, msgID string) {
-	if accessToken == "" {
-		logMsg("ERROR: accessToken 为空，无法发送消息")
+	if !hasValidQQToken() {
+		logMsg("ERROR: accessToken 不可用或已过期，无法发送消息")
 		return
 	}
 
@@ -864,6 +905,23 @@ func stripQQAtMention(text string) string {
 	return strings.TrimSpace(strings.TrimPrefix(text, "<@!"))
 }
 
+func shouldRefreshQQToken() bool {
+	if tokenExpire == 0 {
+		return false
+	}
+	return time.Now().Unix() >= tokenExpire-300
+}
+
+func hasValidQQToken() bool {
+	if accessToken == "" {
+		return false
+	}
+	if tokenExpire == 0 {
+		return true
+	}
+	return time.Now().Unix() < tokenExpire
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
@@ -925,17 +983,16 @@ func extractTextWithoutFiles(content string) string {
 
 // sendQQC2CImage 发送私聊图片
 func sendQQC2CImage(openid, filePath, msgID, text string) {
-	if accessToken == "" {
-		logMsg("ERROR: accessToken 为空，无法发送图片")
+	if !hasValidQQToken() {
+		logMsg("ERROR: accessToken 不可用或已过期，无法发送图片")
 		return
 	}
 	
 	logMsg(fmt.Sprintf("发送 C2C 图片: %s, 文本: %s", filePath, text))
 	
-	// 使用 http_request 上传图片（通用 API，自动处理文件 base64）
+	// 使用 http.request 上传图片（通用 API，自动处理文件 base64）
 	uploadURL := APIBase + "/v2/users/" + openid + "/files"
-	resp := request("http_request", map[string]interface{}{
-		"appId":  "qq-ai-bot",
+	resp := request("http.request", map[string]interface{}{
 		"method": "POST",
 		"url":    uploadURL,
 		"headers": map[string]string{
@@ -1026,17 +1083,16 @@ func sendQQC2CImage(openid, filePath, msgID, text string) {
 
 // sendQQGroupImage 发送群聊图片
 func sendQQGroupImage(groupOpenid, filePath, msgID, text string) {
-	if accessToken == "" {
-		logMsg("ERROR: accessToken 为空，无法发送图片")
+	if !hasValidQQToken() {
+		logMsg("ERROR: accessToken 不可用或已过期，无法发送图片")
 		return
 	}
 	
 	logMsg(fmt.Sprintf("发送群聊图片: %s, 文本: %s", filePath, text))
 	
-	// 使用 http_request 上传图片（通用 API，自动处理文件 base64）
+	// 使用 http.request 上传图片（通用 API，自动处理文件 base64）
 	uploadURL := APIBase + "/v2/groups/" + groupOpenid + "/files"
-	resp := request("http_request", map[string]interface{}{
-		"appId":  "qq-ai-bot",
+	resp := request("http.request", map[string]interface{}{
 		"method": "POST",
 		"url":    uploadURL,
 		"headers": map[string]string{
@@ -1126,8 +1182,8 @@ func sendQQGroupImage(groupOpenid, filePath, msgID, text string) {
 }
 // sendQQC2CFile 发送私聊文件
 func sendQQC2CFile(openid, filePath, fileName, caption string) {
-	if accessToken == "" {
-		logMsg("ERROR: accessToken 为空，无法发送文件")
+	if !hasValidQQToken() {
+		logMsg("ERROR: accessToken 不可用或已过期，无法发送文件")
 		return
 	}
 	
@@ -1137,10 +1193,9 @@ func sendQQC2CFile(openid, filePath, fileName, caption string) {
 	
 	logMsg(fmt.Sprintf("发送 C2C 文件: %s, 文件名: %s", filePath, fileName))
 	
-	// 使用 http_request 上传文件（file_type=4, 必须传 file_name）
+	// 使用 http.request 上传文件（file_type=4, 必须传 file_name）
 	uploadURL := APIBase + "/v2/users/" + openid + "/files"
-	resp := request("http_request", map[string]interface{}{
-		"appId":  "qq-ai-bot",
+	resp := request("http.request", map[string]interface{}{
 		"method": "POST",
 		"url":    uploadURL,
 		"headers": map[string]string{
@@ -1222,8 +1277,8 @@ func sendQQC2CFile(openid, filePath, fileName, caption string) {
 
 // sendQQGroupFile 发送群聊文件
 func sendQQGroupFile(groupOpenid, filePath, fileName, caption string) {
-	if accessToken == "" {
-		logMsg("ERROR: accessToken 为空，无法发送文件")
+	if !hasValidQQToken() {
+		logMsg("ERROR: accessToken 不可用或已过期，无法发送文件")
 		return
 	}
 	
@@ -1234,8 +1289,7 @@ func sendQQGroupFile(groupOpenid, filePath, fileName, caption string) {
 	logMsg(fmt.Sprintf("发送群聊文件: %s, 文件名: %s", filePath, fileName))
 	
 	uploadURL := APIBase + "/v2/groups/" + groupOpenid + "/files"
-	resp := request("http_request", map[string]interface{}{
-		"appId":  "qq-ai-bot",
+	resp := request("http.request", map[string]interface{}{
 		"method": "POST",
 		"url":    uploadURL,
 		"headers": map[string]string{

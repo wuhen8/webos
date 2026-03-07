@@ -45,7 +45,7 @@ func ensureInit() {
 		logMsg(fmt.Sprintf("Telegram AI Bot 初始化完成 (token=...%s, 授权用户=%d个)", token[len(token)-4:], len(allowedChatIDs)))
 	}
 
-	request("register_client_context", map[string]interface{}{
+	request("client_context.register", map[string]interface{}{
 		"id":          "telegram-ai-bot",
 		"platform":    "telegram",
 		"displayName": "Telegram Bot",
@@ -110,9 +110,7 @@ func on_event(ptr uint32, size uint32) uint32 {
 		return 1
 	}
 	switch ev.Type {
-	case "http_response":
-		handleHTTPResponse(ev.Data)
-	case "host_response":
+	case "host.response":
 		handleHostResponse(ev.Data)
 	case "chat_delta":
 		onChatDelta(ev.Data)
@@ -428,7 +426,7 @@ func pollOnce() {
 			activeChatID = incomingCID
 			sendTypingAction(incomingCID)
 			deltaCount = 0
-			request("chat_send", map[string]interface{}{
+			request("chat.send", map[string]interface{}{
 				"messageContent": userText,
 				"clientId":       "telegram-ai-bot",
 			})
@@ -475,8 +473,7 @@ func onMediaAttachment(data json.RawMessage) {
 		body["caption"] = a.Caption
 	}
 
-	resp := request("http_request", map[string]interface{}{
-		"appId":     "telegram-ai-bot",
+	resp := request("http.request", map[string]interface{}{
 		"method":    "POST",
 		"url":       url,
 		"format":    "multipart",
@@ -490,7 +487,7 @@ func onMediaAttachment(data json.RawMessage) {
 	}
 	json.Unmarshal([]byte(resp), &result)
 	if result.Error != "" {
-		logMsg("ERROR: http_request failed: " + result.Error)
+		logMsg("ERROR: http.request failed: " + result.Error)
 		sendTelegramAsync(activeChatID, fmt.Sprintf("📎 %s (发送失败: %s)", a.FileName, result.Error), nil)
 		return
 	}

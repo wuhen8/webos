@@ -29,9 +29,10 @@ export function ModelSwitcher({ configVer }: { configVer: number }) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    request('chat_config_get', {}).then((data: any) => {
-      if (data) {
-        const raw = typeof data === 'string' ? JSON.parse(data) : data
+    request('config.get', { key: 'ai_config' }).then((data: any) => {
+      const value = data?.value
+      if (value) {
+        const raw = typeof value === 'string' ? JSON.parse(value) : value
         if (raw.providers) setCfg(raw as AIMultiConfig)
       }
     }).catch(() => {})
@@ -56,8 +57,9 @@ export function ModelSwitcher({ configVer }: { configVer: number }) {
     setCfg(updated)
     setOpen(false)
     try {
-      await request('chat_config_save', {
-        prefs: { ai_config: JSON.stringify(updated) }
+      await request('config.set', {
+        key: 'ai_config',
+        value: JSON.stringify(updated)
       })
     } catch { /* ignore */ }
   }

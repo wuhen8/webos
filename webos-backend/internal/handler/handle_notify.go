@@ -12,10 +12,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// WS handler: broadcast_notify
+// WS handler: notify.broadcast
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"broadcast_notify": handleBroadcastNotify,
+		"notify.broadcast": handleBroadcastNotify,
 	})
 }
 
@@ -29,14 +29,14 @@ func handleBroadcastNotify(c *WSConn, raw json.RawMessage) {
 		Target  string `json:"target"`
 	}
 	if json.Unmarshal(raw, &p) != nil || p.Message == "" {
-		c.ReplyErr("broadcast_notify", p.ReqID, fmt.Errorf("message is required"))
+		c.ReplyErr("notify.broadcast", p.ReqID, fmt.Errorf("message is required"))
 		return
 	}
 	if p.Level == "" {
 		p.Level = "info"
 	}
 	doBroadcastNotify(p.Level, p.Title, p.Message, p.Source, p.Target)
-	c.Reply("broadcast_notify", p.ReqID, map[string]string{"ok": "broadcast"})
+	c.Reply("notify.broadcast", p.ReqID, map[string]string{"ok": "broadcast"})
 }
 
 // doBroadcastNotify is the shared implementation for all entry points.

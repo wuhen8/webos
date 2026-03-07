@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -9,24 +10,8 @@ import (
 
 const currentAppID = "qq-ai-bot"
 
-// ==================== Host function imports ====================
-
-//go:wasmimport webos http_request
-func _hostHTTPRequest(methodPtr, methodLen, urlPtr, urlLen, bodyPtr, bodyLen, headersPtr, headersLen uint32) uint64
-
 //go:wasmimport webos request
 func _hostRequest(typePtr, typeLen, payloadPtr, payloadLen uint32) uint64
-
-//go:wasmimport webos ws_connect
-func _hostWSConnect(urlPtr, urlLen, headersPtr, headersLen uint32) uint64
-
-//go:wasmimport webos ws_send
-func _hostWSSend(connIdPtr, connIdLen, dataPtr, dataLen uint32) uint32
-
-//go:wasmimport webos ws_close
-func _hostWSClose(connIdPtr, connIdLen uint32) uint32
-
-// ==================== Shared buffer for host→wasm data ====================
 
 var _sharedBuf [1 << 20]byte
 
@@ -36,231 +21,139 @@ func get_shared_buf() uint64 {
 	return uint64(ptr)<<32 | uint64(len(_sharedBuf))
 }
 
-// ==================== Async HTTP callbacks ====================
-
 var httpCallbacks = map[string]func(resp string){}
 var hostCallbacks = map[string]func(success bool, data interface{}, err string){}
 
 func handleHTTPResponse(data json.RawMessage) {
 	var d struct {
 		RequestID string `json:"requestId"`
-		Body      string `json:"body"`
+		Data      struct { Body string `json:"body"` } `json:"data"`
+		Error     string `json:"error"`
 	}
-	if json.Unmarshal(data, &d) != nil {
-		return
-	}
+	if json.Unmarshal(data, &d) != nil { return }
 	cb, ok := httpCallbacks[d.RequestID]
-	if !ok {
-		return
-	}
+	if !ok { return }
 	delete(httpCallbacks, d.RequestID)
-	cb(d.Body)
+	if d.Error != "" { cb(`{"error":"` + d.Error + `"}`); return }
+	cb(d.Data.Body)
 }
 
 func handleHostResponse(data json.RawMessage) {
-	var resp struct {
-		RequestID string      `json:"requestId"`
-		Success   bool        `json:"success"`
-		Data      interface{} `json:"data,omitempty"`
-		Error     string      `json:"error,omitempty"`
-	}
-	if json.Unmarshal(data, &resp) != nil {
-		return
-	}
+	var resp struct { Method, RequestID string; Success bool; Data interface{}; Error string }
+	if json.Unmarshal(data, &resp) != nil { return }
+	if resp.Method == "http.request" { handleHTTPResponse(data); return }
 	cb, ok := hostCallbacks[resp.RequestID]
-	if !ok {
-		return
-	}
+	if !ok { return }
 	delete(hostCallbacks, resp.RequestID)
 	cb(resp.Success, resp.Data, resp.Error)
 }
 
-// ==================== Synchronous API ====================
-
 func logMsg(msg string) {
-	if len(msg) == 0 {
-		return
-	}
-	hostCall("system.log", map[string]interface{}{"message": msg})
-}
-
-func scopedRequest(msgType string, payload map[string]interface{}) string {
-	if payload == nil {
-		payload = map[string]interface{}{}
-	}
-	payload["appId"] = currentAppID
-	return request(msgType, payload)
+	if len(msg) == 0 { return }
+	_, _ = requestJSON("system.log", map[string]interface{}{"message": msg})
 }
 
 func configGet(key string) string {
-	result := scopedRequest("config.get", map[string]interface{}{"key": key})
-	var r struct {
-		Value string `json:"value"`
-		Error string `json:"error"`
-	}
-	json.Unmarshal([]byte(result), &r)
-	if r.Error != "" {
-		return ""
-	}
+	result := request("config.get", map[string]interface{}{"key": key})
+	var r struct { Value string `json:"value"`; Error string `json:"error"` }
+	_ = json.Unmarshal([]byte(result), &r)
+	if r.Error != "" { return "" }
 	return r.Value
 }
-
-func configSet(key, val string) {
-	scopedRequest("config.set", map[string]interface{}{"key": key, "value": val})
-}
-
+func configSet(key, val string) { request("config.set", map[string]interface{}{"key": key, "value": val}) }
 func kvGet(key string) string {
-	result := scopedRequest("kv.get", map[string]interface{}{"key": key})
-	var r struct {
-		Value string `json:"value"`
-		Error string `json:"error"`
-	}
-	json.Unmarshal([]byte(result), &r)
-	if r.Error != "" {
-		return ""
-	}
+	result := request("kv.get", map[string]interface{}{"key": key})
+	var r struct { Value string `json:"value"`; Error string `json:"error"` }
+	_ = json.Unmarshal([]byte(result), &r)
+	if r.Error != "" { return "" }
 	return r.Value
 }
-
-func kvSet(key, val string) {
-	scopedRequest("kv.set", map[string]interface{}{"key": key, "value": val})
-}
+func kvSet(key, val string) { request("kv.set", map[string]interface{}{"key": key, "value": val}) }
 
 func request(msgType string, payload interface{}) string {
 	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return `{"error":"marshal payload: ` + err.Error() + `"}`
-	}
+	if err != nil { return `{"error":"marshal payload: ` + err.Error() + `"}` }
 	tb := []byte(msgType)
-	packed := _hostRequest(
-		bytesPtr(tb), uint32(len(tb)),
-		bytesPtr(payloadBytes), uint32(len(payloadBytes)),
-	)
+	packed := _hostRequest(bytesPtr(tb), uint32(len(tb)), bytesPtr(payloadBytes), uint32(len(payloadBytes)))
 	return readSharedBuf(packed)
 }
 
-func hostCall(method string, params map[string]interface{}) string {
-	call := map[string]interface{}{
-		"method": method,
-		"params": params,
-	}
-	return request("host_call", call)
+func requestJSON(msgType string, payload interface{}) (map[string]interface{}, bool) {
+	resp := request(msgType, payload)
+	var m map[string]interface{}
+	if json.Unmarshal([]byte(resp), &m) != nil { return nil, false }
+	return m, true
 }
 
+func hostCall(method string, params map[string]interface{}) string { return request(method, params) }
 func hostCallAsync(method string, params map[string]interface{}, cb func(success bool, data interface{}, err string)) {
-	result := hostCall(method, params)
-	var r struct {
-		RequestID string `json:"requestId"`
-	}
-	if json.Unmarshal([]byte(result), &r) == nil && r.RequestID != "" && cb != nil {
-		hostCallbacks[r.RequestID] = cb
+	result, ok := requestJSON(method, params)
+	if !ok { if cb != nil { cb(false, nil, "invalid response") }; return }
+	if reqID, _ := result["requestId"].(string); reqID != "" && cb != nil { hostCallbacks[reqID] = cb; return }
+	if cb != nil {
+		if errText, _ := result["error"].(string); errText != "" { cb(false, nil, errText) } else { cb(true, result, "") }
 	}
 }
 
-// ==================== Memory helpers ====================
-
-func bytesPtr(b []byte) uint32 {
-	if len(b) == 0 {
-		return 0
-	}
-	return uint32(uintptr(unsafe.Pointer(&b[0])))
+func wsConnect(url string, headers map[string]string) string {
+	result, ok := requestJSON("ws.connect", map[string]interface{}{"url": url, "headers": headers})
+	if !ok { return "" }
+	if connID, _ := result["connId"].(string); connID != "" { return connID }
+	return ""
 }
-
-func readSharedBuf(packed uint64) string {
-	length := uint32(packed & 0xFFFFFFFF)
-	if length == 0 {
-		return ""
-	}
-	if length > uint32(len(_sharedBuf)) {
-		return ""
-	}
-	return string(_sharedBuf[:length])
-}
-
-// ==================== WebSocket API ====================
-
-func wsConnect(url, headers string) string {
-	ub := []byte(url)
-	hb := []byte(headers)
-	packed := _hostWSConnect(
-		bytesPtr(ub), uint32(len(ub)),
-		bytesPtr(hb), uint32(len(hb)),
-	)
-	return readSharedBuf(packed)
-}
-
 func wsSend(connID string, data []byte) bool {
-	cb := []byte(connID)
-	return _hostWSSend(bytesPtr(cb), uint32(len(cb)), bytesPtr(data), uint32(len(data))) == 0
+	result, ok := requestJSON("ws.send", map[string]interface{}{"connId": connID, "data": string(data), "binary": false})
+	return ok && result["error"] == nil
 }
-
-func wsClose(connID string) {
-	cb := []byte(connID)
-	_hostWSClose(bytesPtr(cb), uint32(len(cb)))
+func wsSendBinary(connID string, data []byte) bool {
+	result, ok := requestJSON("ws.send", map[string]interface{}{"connId": connID, "data": base64.StdEncoding.EncodeToString(data), "binary": true})
+	return ok && result["error"] == nil
 }
-
-// ==================== Sync HTTP API ====================
+func wsClose(connID string) { request("ws.close", map[string]interface{}{"connId": connID}) }
 
 func httpRequest(method, url, body, headers string) string {
-	mb := []byte(method)
-	ub := []byte(url)
-	bb := []byte(body)
-	hb := []byte(headers)
-	packed := _hostHTTPRequest(
-		bytesPtr(mb), uint32(len(mb)),
-		bytesPtr(ub), uint32(len(ub)),
-		bytesPtr(bb), uint32(len(bb)),
-		bytesPtr(hb), uint32(len(hb)),
-	)
-	return readSharedBuf(packed)
+	result, ok := requestJSON("http.request", buildHTTPRequestParams(method, url, body, headers))
+	if !ok { return "" }
+	if reqID, _ := result["requestId"].(string); reqID != "" { return reqID }
+	return ""
 }
-
-// ==================== Async HTTP API ====================
-
 func httpRequestAsync(method, url, body, headers string, cb func(resp string)) {
-	mb := []byte(method)
-	ub := []byte(url)
-	bb := []byte(body)
-	hb := []byte(headers)
-	packed := _hostHTTPRequest(
-		bytesPtr(mb), uint32(len(mb)),
-		bytesPtr(ub), uint32(len(ub)),
-		bytesPtr(bb), uint32(len(bb)),
-		bytesPtr(hb), uint32(len(hb)),
-	)
-	reqID := readSharedBuf(packed)
-	if reqID == "" {
-		if cb != nil {
-			cb("")
-		}
-		return
+	result, ok := requestJSON("http.request", buildHTTPRequestParams(method, url, body, headers))
+	if !ok { if cb != nil { cb("") }; return }
+	if reqID, _ := result["requestId"].(string); reqID != "" && cb != nil { httpCallbacks[reqID] = cb; return }
+	if cb != nil { cb("") }
+}
+func buildHTTPRequestParams(method, url, body, headers string) map[string]interface{} {
+	params := map[string]interface{}{"method": method, "url": url, "headers": map[string]string{}, "body": map[string]interface{}{}}
+	if headers != "" {
+		var h map[string]string
+		if json.Unmarshal([]byte(headers), &h) == nil { params["headers"] = h }
 	}
-	if cb != nil {
-		httpCallbacks[reqID] = cb
+	if body != "" {
+		var b map[string]interface{}
+		if json.Unmarshal([]byte(body), &b) == nil { params["body"] = b }
 	}
+	return params
 }
 
-// ==================== 文件操作 API ====================
-
-// downloadFile 通过 shell_exec 下载文件到指定路径
 func downloadFile(url, savePath string) bool {
-	// 创建目录并下载
-	cmd := fmt.Sprintf("mkdir -p %s && curl -sL -o '%s' '%s'",
-		savePath[:strings.LastIndex(savePath, "/")], savePath, url)
-	result := request("shell_exec", map[string]interface{}{
-		"command": cmd,
-	})
-	logMsg("shell_exec result: " + result[:min(len(result), 300)])
-	var r struct {
-		Success  bool   `json:"success"`
-		Error    string `json:"error"`
-		ExitCode int    `json:"exitCode"`
-	}
+	cmd := fmt.Sprintf("mkdir -p %s && curl -sL -o '%s' '%s'", savePath[:strings.LastIndex(savePath, "/")], savePath, url)
+	result := request("shell.exec", map[string]interface{}{"command": cmd})
+	logMsg("shell.exec result: " + result[:min(len(result), 300)])
+	var r struct { Success bool `json:"success"`; Error string `json:"error"`; ExitCode int `json:"exitCode"` }
 	if json.Unmarshal([]byte(result), &r) == nil {
-		if r.Error != "" {
-			logMsg("shell_exec error: " + r.Error)
-		}
+		if r.Error != "" { logMsg("shell.exec error: " + r.Error) }
 		return r.Success
 	}
 	return false
+}
+
+func bytesPtr(b []byte) uint32 {
+	if len(b) == 0 { return 0 }
+	return uint32(uintptr(unsafe.Pointer(&b[0])))
+}
+func readSharedBuf(packed uint64) string {
+	length := uint32(packed & 0xFFFFFFFF)
+	if length == 0 || length > uint32(len(_sharedBuf)) { return "" }
+	return string(_sharedBuf[:length])
 }

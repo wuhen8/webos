@@ -1,30 +1,15 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"unsafe"
 )
 
 const currentAppID = "feishu-ai-bot"
 
-// ==================== Host function imports ====================
-
-//go:wasmimport webos http_request
-func _hostHTTPRequest(methodPtr, methodLen, urlPtr, urlLen, bodyPtr, bodyLen, headersPtr, headersLen uint32) uint64
-
 //go:wasmimport webos request
 func _hostRequest(typePtr, typeLen, payloadPtr, payloadLen uint32) uint64
-
-//go:wasmimport webos ws_connect
-func _hostWSConnect(urlPtr, urlLen, headersPtr, headersLen uint32) uint64
-
-//go:wasmimport webos ws_send
-func _hostWSSend(connIdPtr, connIdLen, dataPtr, dataLen uint32) uint32
-
-//go:wasmimport webos ws_close
-func _hostWSClose(connIdPtr, connIdLen uint32) uint32
-
-// ==================== Shared buffer for host→wasm data ====================
 
 var _sharedBuf [1 << 20]byte
 
@@ -34,222 +19,131 @@ func get_shared_buf() uint64 {
 	return uint64(ptr)<<32 | uint64(len(_sharedBuf))
 }
 
-// ==================== 异步 HTTP 回调注册 ====================
-
 var httpCallbacks = map[string]func(resp string){}
+var hostCallbacks = map[string]func(success bool, data interface{}, err string){}
 
-// 待处理的下载任务（异步下载完成后的上下文）
 type PendingDownload struct {
 	ChatID      string
 	SenderID    string
 	FileName    string
 	MediaType   string
-	DisplayName string // 用于显示的文件名
+	DisplayName string
 }
 
-var pendingDownloads = map[string]PendingDownload{} // requestID -> pendingDownload
-
-// 下载完成回调（由 main.go 设置）
+var pendingDownloads = map[string]PendingDownload{}
 var onDownloadComplete func(PendingDownload, string)
 
-// SetDownloadCallback 设置下载完成回调
-func SetDownloadCallback(cb func(PendingDownload, string)) {
-	onDownloadComplete = cb
+func SetDownloadCallback(cb func(PendingDownload, string)) { onDownloadComplete = cb }
+
+func logMsg(msg string) { _, _ = requestJSON("system.log", map[string]interface{}{"message": msg}) }
+
+func configGet(key string) string {
+	result := request("config.get", map[string]interface{}{"key": key})
+	var r struct{ Value, Error string }
+	_ = json.Unmarshal([]byte(result), &r)
+	if r.Error != "" { return "" }
+	return r.Value
+}
+func configSet(key, val string) { request("config.set", map[string]interface{}{"key": key, "value": val}) }
+func kvGet(key string) string {
+	result := request("kv.get", map[string]interface{}{"key": key})
+	var r struct{ Value, Error string }
+	_ = json.Unmarshal([]byte(result), &r)
+	if r.Error != "" { return "" }
+	return r.Value
+}
+func kvSet(key, val string) { request("kv.set", map[string]interface{}{"key": key, "value": val}) }
+
+func request(msgType string, payload interface{}) string {
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil { return `{"error":"marshal payload: ` + err.Error() + `"}` }
+	tb := []byte(msgType)
+	packed := _hostRequest(bytesPtr(tb), uint32(len(tb)), bytesPtr(payloadBytes), uint32(len(payloadBytes)))
+	return readSharedBuf(packed)
+}
+
+func requestJSON(msgType string, payload interface{}) (map[string]interface{}, bool) {
+	resp := request(msgType, payload)
+	var m map[string]interface{}
+	if json.Unmarshal([]byte(resp), &m) != nil { return nil, false }
+	return m, true
+}
+
+func hostCall(method string, params map[string]interface{}) string { return request(method, params) }
+func hostCallAsync(method string, params map[string]interface{}, cb func(success bool, data interface{}, err string)) {
+	result, ok := requestJSON(method, params)
+	if !ok { if cb != nil { cb(false, nil, "invalid response") }; return }
+	if reqID, _ := result["requestId"].(string); reqID != "" && cb != nil { hostCallbacks[reqID] = cb; return }
+	if cb != nil {
+		if errText, _ := result["error"].(string); errText != "" { cb(false, nil, errText) } else { cb(true, result, "") }
+	}
 }
 
 func httpRequestAsync(method, url, body, headers string, cb func(resp string)) {
-	mb := []byte(method)
-	ub := []byte(url)
-	bb := []byte(body)
-	hb := []byte(headers)
-	packed := _hostHTTPRequest(
-		bytesPtr(mb), uint32(len(mb)),
-		bytesPtr(ub), uint32(len(ub)),
-		bytesPtr(bb), uint32(len(bb)),
-		bytesPtr(hb), uint32(len(hb)),
-	)
-	reqID := readSharedBuf(packed)
-	if reqID == "" {
-		if cb != nil {
-			cb("")
-		}
-		return
+	params := map[string]interface{}{"method": method, "url": url, "headers": map[string]string{}, "body": map[string]interface{}{}}
+	if headers != "" {
+		var h map[string]string
+		if json.Unmarshal([]byte(headers), &h) == nil { params["headers"] = h }
 	}
-	if cb != nil {
-		httpCallbacks[reqID] = cb
+	if body != "" {
+		var b map[string]interface{}
+		if json.Unmarshal([]byte(body), &b) == nil { params["body"] = b }
 	}
+	result, ok := requestJSON("http.request", params)
+	if !ok { if cb != nil { cb("") }; return }
+	if reqID, _ := result["requestId"].(string); reqID != "" && cb != nil { httpCallbacks[reqID] = cb; return }
+	if cb != nil { cb("") }
+}
+
+func wsConnect(url string, headers map[string]string) string {
+	result, ok := requestJSON("ws.connect", map[string]interface{}{"url": url, "headers": headers})
+	if !ok { return "" }
+	if connID, _ := result["connId"].(string); connID != "" { return connID }
+	return ""
+}
+func wsSend(connID string, data []byte) bool {
+	result, ok := requestJSON("ws.send", map[string]interface{}{"connId": connID, "data": base64.StdEncoding.EncodeToString(data), "binary": true})
+	return ok && result["error"] == nil
+}
+func wsClose(connID string) { request("ws.close", map[string]interface{}{"connId": connID}) }
+
+func handleHostResponse(data json.RawMessage) {
+	var resp struct { Method, RequestID string; Success bool; Data interface{}; Error string }
+	if json.Unmarshal(data, &resp) != nil { return }
+	if resp.Method == "http.request" { handleHTTPResponse(data); return }
+	cb, ok := hostCallbacks[resp.RequestID]
+	if !ok { return }
+	delete(hostCallbacks, resp.RequestID)
+	cb(resp.Success, resp.Data, resp.Error)
 }
 
 func handleHTTPResponse(data json.RawMessage) {
 	var d struct {
 		RequestID string `json:"requestId"`
-		Body      string `json:"body"`
+		Data      struct { Body string `json:"body"` } `json:"data"`
+		Error     string `json:"error"`
 	}
-	if json.Unmarshal(data, &d) != nil {
-		return
-	}
-	reqID := d.RequestID
-
-	// 检查是否是文件下载请求
-	if pending, ok := pendingDownloads[reqID]; ok {
-		delete(pendingDownloads, reqID)
+	if json.Unmarshal(data, &d) != nil { return }
+	if pending, ok := pendingDownloads[d.RequestID]; ok {
+		delete(pendingDownloads, d.RequestID)
 		if onDownloadComplete != nil {
-			onDownloadComplete(pending, d.Body)
+			if d.Error != "" { onDownloadComplete(pending, `{"error":"`+d.Error+`"}`) } else { onDownloadComplete(pending, d.Data.Body) }
 		}
 		return
 	}
-
-	// 普通回调
-	cb, ok := httpCallbacks[reqID]
-	if !ok {
-		return
-	}
-	delete(httpCallbacks, reqID)
-	cb(d.Body)
+	cb, ok := httpCallbacks[d.RequestID]
+	if !ok { return }
+	delete(httpCallbacks, d.RequestID)
+	if d.Error != "" { cb(`{"error":"` + d.Error + `"}`); return }
+	cb(d.Data.Body)
 }
-
-// ==================== Unified API (via request) ====================
-
-func logMsg(msg string) {
-	hostCall("system.log", map[string]interface{}{"message": msg})
-}
-
-func scopedRequest(msgType string, payload map[string]interface{}) string {
-	if payload == nil {
-		payload = map[string]interface{}{}
-	}
-	payload["appId"] = currentAppID
-	return request(msgType, payload)
-}
-
-func configGet(key string) string {
-	result := scopedRequest("config.get", map[string]interface{}{"key": key})
-	var r struct {
-		Value string `json:"value"`
-		Error string `json:"error"`
-	}
-	json.Unmarshal([]byte(result), &r)
-	if r.Error != "" {
-		return ""
-	}
-	return r.Value
-}
-
-func configSet(key, val string) {
-	scopedRequest("config.set", map[string]interface{}{"key": key, "value": val})
-}
-
-func kvGet(key string) string {
-	result := scopedRequest("kv.get", map[string]interface{}{"key": key})
-	var r struct {
-		Value string `json:"value"`
-		Error string `json:"error"`
-	}
-	json.Unmarshal([]byte(result), &r)
-	if r.Error != "" {
-		return ""
-	}
-	return r.Value
-}
-
-func kvSet(key, val string) {
-	scopedRequest("kv.set", map[string]interface{}{"key": key, "value": val})
-}
-
-func request(msgType string, payload interface{}) string {
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return `{"error":"marshal payload: ` + err.Error() + `"}`
-	}
-	tb := []byte(msgType)
-	packed := _hostRequest(
-		bytesPtr(tb), uint32(len(tb)),
-		bytesPtr(payloadBytes), uint32(len(payloadBytes)),
-	)
-	return readSharedBuf(packed)
-}
-
-// ==================== Unified Host Call API ====================
-
-// HostCall makes a unified capability call to the host
-func hostCall(method string, params map[string]interface{}) string {
-	call := map[string]interface{}{
-		"method": method,
-		"params": params,
-	}
-	return request("host_call", call)
-}
-
-// Async response callbacks for host_call
-var hostCallbacks = map[string]func(success bool, data interface{}, err string){}
-
-func handleHostResponse(data json.RawMessage) {
-	var resp struct {
-		RequestID string      `json:"requestId"`
-		Success   bool        `json:"success"`
-		Data      interface{} `json:"data,omitempty"`
-		Error     string      `json:"error,omitempty"`
-	}
-	if json.Unmarshal(data, &resp) != nil {
-		return
-	}
-	cb, ok := hostCallbacks[resp.RequestID]
-	if !ok {
-		return
-	}
-	delete(hostCallbacks, resp.RequestID)
-	cb(resp.Success, resp.Data, resp.Error)
-}
-
-// hostCallAsync makes an async host call with callback
-func hostCallAsync(method string, params map[string]interface{}, cb func(success bool, data interface{}, err string)) {
-	result := hostCall(method, params)
-	var r struct {
-		RequestID string `json:"requestId"`
-	}
-	if json.Unmarshal([]byte(result), &r) == nil && r.RequestID != "" && cb != nil {
-		hostCallbacks[r.RequestID] = cb
-	}
-}
-
-// ==================== Memory helpers ====================
 
 func bytesPtr(b []byte) uint32 {
-	if len(b) == 0 {
-		return 0
-	}
+	if len(b) == 0 { return 0 }
 	return uint32(uintptr(unsafe.Pointer(&b[0])))
 }
-
 func readSharedBuf(packed uint64) string {
 	length := uint32(packed & 0xFFFFFFFF)
-	if length == 0 {
-		return ""
-	}
-	if length > uint32(len(_sharedBuf)) {
-		return ""
-	}
+	if length == 0 || length > uint32(len(_sharedBuf)) { return "" }
 	return string(_sharedBuf[:length])
-}
-
-// ==================== WebSocket API ====================
-
-func wsConnect(url, headers string) string {
-	ub := []byte(url)
-	hb := []byte(headers)
-	packed := _hostWSConnect(
-		bytesPtr(ub), uint32(len(ub)),
-		bytesPtr(hb), uint32(len(hb)),
-	)
-	return readSharedBuf(packed)
-}
-
-func wsSend(connID string, data []byte) bool {
-	cb := []byte(connID)
-	return _hostWSSend(bytesPtr(cb), uint32(len(cb)), bytesPtr(data), uint32(len(data))) == 0
-}
-
-func wsClose(connID string) {
-	cb := []byte(connID)
-	_hostWSClose(bytesPtr(cb), uint32(len(cb)))
 }

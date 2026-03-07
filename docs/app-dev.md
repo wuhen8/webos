@@ -344,9 +344,6 @@ func _hostKVSet(keyPtr, keyLen, valPtr, valLen uint32) uint32
 //go:wasmimport webos kv_delete
 func _hostKVDelete(keyPtr, keyLen uint32) uint32
 
-//go:wasmimport webos http_request
-func _hostHTTPRequest(methodPtr, methodLen, urlPtr, urlLen, bodyPtr, bodyLen, headersPtr, headersLen uint32) uint64
-
 //go:wasmimport webos request
 func _hostRequest(typePtr, typeLen, payloadPtr, payloadLen uint32) uint64
 
@@ -374,14 +371,6 @@ func kvSet(key, val string) {
 func kvDelete(key string) {
     b := []byte(key)
     _hostKVDelete(bytesPtr(b), uint32(len(b)))
-}
-
-func httpRequest(method, url, body, headers string) string {
-    mb, ub, bb, hb := []byte(method), []byte(url), []byte(body), []byte(headers)
-    return unpackString(_hostHTTPRequest(
-        bytesPtr(mb), uint32(len(mb)), bytesPtr(ub), uint32(len(ub)),
-        bytesPtr(bb), uint32(len(bb)), bytesPtr(hb), uint32(len(hb)),
-    ))
 }
 
 func request(msgType string, payload interface{}) string {
@@ -450,13 +439,13 @@ wasm 通过 `//go:wasmimport webos <name>` 调用系统能力。
 logMsg("hello from wasm")  // → [WASM:my-app] hello from wasm
 ```
 
-### config_get — 读应用配置
+### config.get — 读应用配置
 
 ```go
 token := configGet("api_token")
 ```
 
-### kv_get / kv_set / kv_delete — KV 存储
+### kv.get / kv.set / kv.delete — KV 存储
 
 应用级，按 appID 隔离。
 
@@ -466,13 +455,13 @@ val := kvGet("last_id")
 kvDelete("last_id")
 ```
 
-### http_request — HTTP 请求
+### request — 统一宿主调用入口
 
-headers 换行分隔 `Key: Value\nKey2: Value2`。超时 30 秒，响应体最大 10MB。
+通过 `request` 调用所有宿主能力。HTTP 请求使用 `http.request`，配置使用 `config.get/config.set`，KV 使用 `kv.get/kv.set/kv.delete`。
 
 ```go
-resp := httpRequest("GET", "https://api.example.com/data", "", "")
-resp := httpRequest("POST", url, `{"text":"hello"}`, "Content-Type: application/json")
+request("http.request", map[string]interface{}{"method": "GET", "url": "https://api.example.com/data"})
+request("http.request", map[string]interface{}{"method": "POST", "url": url, "body": map[string]interface{}{"text": "hello"}, "headers": map[string]string{"Content-Type": "application/json"}})
 ```
 
 ### request — 通用请求（核心）
@@ -481,8 +470,8 @@ resp := httpRequest("POST", url, `{"text":"hello"}`, "Content-Type: application/
 
 ```go
 request("fs.read", map[string]interface{}{"nodeId": "local", "path": "/etc/hostname"})
-request("chat_send", map[string]interface{}{"conversationId": "c1", "messageContent": "你好"})
-request("exec", map[string]interface{}{"command": "ls -la"})
+request("chat.send", map[string]interface{}{"conversationId": "c1", "messageContent": "你好"})
+request("process.exec", map[string]interface{}{"command": "ls -la"})
 ```
 
 ## 导出函数 on_event
@@ -491,6 +480,8 @@ request("exec", map[string]interface{}{"command": "ls -la"})
 
 | type | 说明 | data |
 |------|------|------|
+| `host.response` | 一次性异步结果（如 `http.request`） | `method`, `requestId`, `success`, `data`, `error` |
+| `host.event` | 持续事件流（如 WebSocket） | `method`, `data` |
 | `chat_delta` | AI 流式文本 | `conversationId`, `content` |
 | `chat_thinking` | AI 思考过程 | `conversationId`, `content` |
 | `chat_done` | AI 回复完成 | `conversationId`, `fullText`, `usage` |
@@ -578,7 +569,7 @@ export function unmount(ctx) { ctx.container.innerHTML = '' }
 }
 ```
 
-main.go 中 `main()` 读 token 初始化，`on_event` 处理 `tick`（轮询 Telegram）和 `chat_delta`/`chat_done`（攒句子回复）。完整代码见 `apps/telegram-ai-bot/`。
+main.go 中 `main()` 读 token 初始化，`on_event` 处理 `tick`（轮询 Telegram）、`chat_delta`/`chat_done`，以及 `host.response`（如 `http.request` 异步结果）。完整代码见 `apps/telegram-ai-bot/`。
 
 ## 前端 + Wasm：带管理界面的后台服务
 

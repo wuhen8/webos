@@ -185,5 +185,5 @@ registerMessageHandler((msg: any) => {
 // ── API ──
 
 export function chatSend(conversationId: string, messageContent: string) {
-  sendMsg({ type: 'chat_send', conversationId, messageContent })
+  sendMsg({ type: 'chat.send', conversationId, messageContent })
 }

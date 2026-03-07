@@ -81,20 +81,20 @@ func (s *wsSink) OnSystemEvent(msgType string, data interface{}) {
 
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"chat_send":            handleChatSend,
-		"chat_commands":        handleChatCommands,
-		"chat_cleanup":         handleChatCleanup,
-		"chat_status":          handleChatStatus,
-		"chat_executor_status": asyncHandler[struct{ baseReq }]("chat_executor_status", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
+		"chat.send":            handleChatSend,
+		"chat.commands":        handleChatCommands,
+		"chat.cleanup":         handleChatCleanup,
+		"chat.status":          handleChatStatus,
+		"chat.executor_status": asyncHandler[struct{ baseReq }]("chat.executor_status", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return chatSvc.ExecutorStatus(), nil
 		}),
-		"chat_history": asyncHandler[struct{ baseReq }]("chat_history", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
+		"chat.history": asyncHandler[struct{ baseReq }]("chat.history", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return chatSvc.ListConversations()
 		}),
-		"chat_messages":    handleChatMessages,
-		"chat_delete":      handleChatDelete,
-		"chat_config_get":  handleChatConfigGet,
-		"chat_config_save": handleChatConfigSave,
+		"chat.messages": handleChatMessages,
+		"chat.delete":   handleChatDelete,
+		"config.get":    handleChatConfigGet,
+		"config.set":    handleChatConfigSave,
 	})
 }
 
@@ -140,7 +140,7 @@ func handleChatCommands(c *WSConn, raw json.RawMessage) {
 	go func() {
 		var p struct{ baseReq }
 		json.Unmarshal(raw, &p)
-		c.Reply("chat_commands", p.ReqID, chatSvc.Commands())
+		c.Reply("chat.commands", p.ReqID, chatSvc.Commands())
 	}()
 }
 
@@ -157,7 +157,7 @@ func handleChatMessages(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	go func() {
 		msgs, err := chatSvc.GetMessages(p.ConversationID)
-		c.ReplyResult("chat_messages", p.ReqID, msgs, err)
+		c.ReplyResult("chat.messages", p.ReqID, msgs, err)
 	}()
 }
 
@@ -168,31 +168,36 @@ func handleChatDelete(c *WSConn, raw json.RawMessage) {
 	}
 	json.Unmarshal(raw, &p)
 	go func() {
-		c.ReplyResult("chat_delete", p.ReqID, nil, chatSvc.DeleteConversation(p.ConversationID))
+		c.ReplyResult("chat.delete", p.ReqID, nil, chatSvc.DeleteConversation(p.ConversationID))
 	}()
 }
 
 func handleChatConfigGet(c *WSConn, raw json.RawMessage) {
-	var p struct{ baseReq }
+	var p struct {
+		baseReq
+		Key string `json:"key"`
+	}
 	json.Unmarshal(raw, &p)
 	go func() {
 		data, err := service.GetPreferences()
 		if err != nil {
-			c.ReplyErr("chat_config_get", p.ReqID, err)
+			c.ReplyErr("config.get", p.ReqID, err)
 			return
 		}
-		c.Reply("chat_config_get", p.ReqID, data["ai_config"])
+		value, _ := data[p.Key]
+		c.Reply("config.get", p.ReqID, map[string]interface{}{"value": value})
 	}()
 }
 
 func handleChatConfigSave(c *WSConn, raw json.RawMessage) {
 	var p struct {
 		baseReq
-		Prefs map[string]interface{} `json:"prefs"`
+		Key   string      `json:"key"`
+		Value interface{} `json:"value"`
 	}
 	json.Unmarshal(raw, &p)
 	go func() {
-		c.ReplyResult("chat_config_save", p.ReqID, nil, service.SavePreferences(p.Prefs))
+		c.ReplyResult("config.set", p.ReqID, nil, service.SavePreferences(map[string]interface{}{p.Key: p.Value}))
 	}()
 }
 
@@ -202,6 +207,6 @@ func handleChatStatus(c *WSConn, raw json.RawMessage) {
 		ConversationID string `json:"conversationId"`
 	}
 	json.Unmarshal(raw, &p)
-	c.Reply("chat_status", p.ReqID, chatSvc.GetStatus(p.ConversationID))
+	c.Reply("chat.status", p.ReqID, chatSvc.GetStatus(p.ConversationID))
 }
 

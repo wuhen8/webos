@@ -156,7 +156,7 @@ export default function ChatContent() {
 
   const loadConversations = useCallback(async () => {
     try {
-      const data = await request('chat_history', {})
+      const data = await request('chat.history', {})
       if (Array.isArray(data)) {
         setConversations(data.map((c: any) => ({ id: c.ID || c.id, title: c.Title || c.title })))
       }
@@ -167,7 +167,7 @@ export default function ChatContent() {
 
   const loadConversationMessages = useCallback(async (id: string) => {
     try {
-      const data = await request('chat_messages', { conversationId: id })
+      const data = await request('chat.messages', { conversationId: id })
       if (Array.isArray(data)) {
         const blocks: MessageBlock[] = []
         for (const m of data) {
@@ -210,8 +210,8 @@ export default function ChatContent() {
 
   // On mount, fetch executor status and restore active conversation (parallel)
   useEffect(() => {
-    const statusP = request('chat_executor_status', {})
-    const msgsP = request('chat_messages', {})
+    const statusP = request('chat.executor_status', {})
+    const msgsP = request('chat.messages', {})
     Promise.all([statusP, msgsP]).then(([statusData, msgsData]: any[]) => {
       if (statusData) {
         setExecutorStatus(statusData)
@@ -224,7 +224,7 @@ export default function ChatContent() {
         }
       }
       if (Array.isArray(msgsData) && msgsData.length > 0 && !convIdRef.current) {
-        // chat_messages without id returned active conv messages
+        // chat.messages without id returned active conv messages
         // extract convId from first message
         const firstMsg = msgsData[0]
         const cid = firstMsg.ConversationID || firstMsg.conversation_id || ''
@@ -282,7 +282,7 @@ export default function ChatContent() {
       // 给后端一点时间完成，然后检查对话状态
       setTimeout(async () => {
         try {
-          const status = await request('chat_status', { conversationId: cid })
+          const status = await request('chat.status', { conversationId: cid })
           if (status && !(status as any).active) {
             // 后端已完成，但前端没收到 done，从 DB 恢复
             setStreaming(false)
@@ -290,7 +290,7 @@ export default function ChatContent() {
             thinkingBuf.current = ''
             if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = 0 }
             if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
-            const data = await request('chat_messages', { conversationId: cid })
+            const data = await request('chat.messages', { conversationId: cid })
             if (Array.isArray(data)) {
               const blocks: MessageBlock[] = []
               for (const m of data) {
@@ -330,14 +330,14 @@ export default function ChatContent() {
             }
             loadConversations()
           }
-        } catch { /* chat_status 不存在时静默忽略 */ }
+        } catch { /* chat.status 不存在时静默忽略 */ }
       }, 1000)
     })
     return unsub
   }, [streaming, loadConversations])
 
   useEffect(() => {
-    request('chat_commands', {}).then((data: any) => {
+    request('chat.commands', {}).then((data: any) => {
       if (Array.isArray(data)) setCommands(data)
     }).catch(() => {})
   }, [])
@@ -685,7 +685,7 @@ export default function ChatContent() {
             // No content at all — reload from DB as fallback
             const cid = convIdRef.current
             if (cid) {
-              request('chat_messages', { conversationId: cid }).then((data: any) => {
+              request('chat.messages', { conversationId: cid }).then((data: any) => {
                 if (!Array.isArray(data)) return
                 const blocks: MessageBlock[] = []
                 for (const m of data) {
@@ -920,7 +920,7 @@ export default function ChatContent() {
 
   const handleDeleteConversation = async (id: string) => {
     try {
-      await request('chat_delete', { conversationId: id })
+      await request('chat.delete', { conversationId: id })
       setConversations(prev => prev.filter(c => c.id !== id))
       if (id === convId) handleNewChat()
     } catch { /* ignore */ }
