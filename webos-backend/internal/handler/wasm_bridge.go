@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"webos-backend/internal/ai"
@@ -116,36 +118,40 @@ func InitWasmBridge() {
 		})
 	})
 
-	// File proxy POST — WASM apps can upload files from storage to external APIs
-	// via multipart/form-data without loading file content into WASM memory.
-	// Returns {"requestId":"req_xxx"} immediately; result arrives as http_response event.
-	wasm.RegisterSyncHandler("file_proxy_post", func(payload json.RawMessage) ([]byte, error) {
-		var p struct {
-			URL       string            `json:"url"`
-			FileField string            `json:"fileField"`
-			NodeID    string            `json:"nodeId"`
-			Path      string            `json:"path"`
-			FileName  string            `json:"fileName"`
-			Fields    map[string]string `json:"fields"`
-			Headers   map[string]string `json:"headers"`
-			AppID     string            `json:"appId"`
-		}
-		if err := json.Unmarshal(payload, &p); err != nil {
-			return json.Marshal(map[string]string{"error": err.Error()})
-		}
-		if p.URL == "" || p.FileField == "" || p.NodeID == "" || p.Path == "" {
-			return json.Marshal(map[string]string{"error": "url, fileField, nodeId, path are required"})
-		}
-		if p.FileName == "" {
-			p.FileName = filepath.Base(p.Path)
-		}
+	// HTTP request with file support — WASM apps can make HTTP requests with automatic file handling.
+// Body can contain "[file:nodeId:path]" markers which are replaced based on format:
+// - Default (JSON): replaced with base64-encoded file content
+// - Multipart: replaced with binary file data in multipart/form-data
+// Returns {"requestId":"req_xxx"} immediately; result arrives as http_response event.
+wasm.RegisterSyncHandler("http_request", func(payload json.RawMessage) ([]byte, error) {
+	var p struct {
+		AppID     string                 `json:"appId"`
+		Method    string                 `json:"method"`
+		URL       string                 `json:"url"`
+		Headers   map[string]string      `json:"headers"`
+		Body      map[string]interface{} `json:"body"`
+		Format    string                 `json:"format"`    // "json" (default) or "multipart"
+		FileField string                 `json:"fileField"` // for multipart: the field name for file
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return json.Marshal(map[string]string{"error": err.Error()})
+	}
+	if p.URL == "" {
+		return json.Marshal(map[string]string{"error": "url is required"})
+	}
+	if p.Method == "" {
+		p.Method = "POST"
+	}
+	if p.Format == "" {
+		p.Format = "json"
+	}
 
-		reqID := fmt.Sprintf("fpp_%d", time.Now().UnixNano())
+	reqID := fmt.Sprintf("hr_%d", time.Now().UnixNano())
 
-		go fileProxyPost(p.AppID, reqID, p.URL, p.FileField, p.NodeID, p.Path, p.FileName, p.Fields, p.Headers)
+	go httpRequestWithFiles(p.AppID, reqID, p.Method, p.URL, p.Headers, p.Body, p.Format, p.FileField)
 
-		return json.Marshal(map[string]string{"requestId": reqID})
-	})
+	return json.Marshal(map[string]string{"requestId": reqID})
+})
 
 	// System notification broadcast — any WASM app can send notifications to all clients.
 	wasm.RegisterSyncHandler("broadcast_notify", func(payload json.RawMessage) ([]byte, error) {
@@ -167,6 +173,35 @@ func InitWasmBridge() {
 		}
 		doBroadcastNotify(p.Level, p.Title, p.Message, p.Source, p.Target)
 		return json.Marshal(map[string]string{"ok": "broadcast"})
+	})
+
+	// Shell execution — WASM apps can run shell commands on the host.
+	wasm.RegisterSyncHandler("shell_exec", func(payload json.RawMessage) ([]byte, error) {
+		var p struct {
+			Command string `json:"command"`
+		}
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return json.Marshal(map[string]string{"error": err.Error()})
+		}
+		if p.Command == "" {
+			return json.Marshal(map[string]string{"error": "command is required"})
+		}
+		stdout, stderr, exitCode, err := systemSvc.Exec(p.Command)
+		if err != nil {
+			return json.Marshal(map[string]interface{}{
+				"success": false,
+				"error":   err.Error(),
+				"stdout":  stdout,
+				"stderr":  stderr,
+				"exitCode": exitCode,
+			})
+		}
+		return json.Marshal(map[string]interface{}{
+			"success":  exitCode == 0,
+			"stdout":   stdout,
+			"stderr":   stderr,
+			"exitCode": exitCode,
+		})
 	})
 
 	rt := wasm.GetRuntime()
@@ -265,6 +300,179 @@ func (s *wasmEventSink) OnShellOutput(convID, toolCallID string, output ai.Shell
 func (s *wasmEventSink) OnUIAction(convID string, action ai.UIAction) {
 	s.push("chat_ui_action", map[string]interface{}{"conversationId": convID, "action": action})
 }
+
+// httpRequestWithFiles makes HTTP requests with automatic file handling.
+// Body values matching "[file:nodeId:path]" are replaced based on format:
+// - JSON (default): replaced with base64-encoded file content
+// - Multipart: replaced with binary file data in multipart/form-data
+func httpRequestWithFiles(appID, reqID, method, targetURL string, headers map[string]string, body map[string]interface{}, format, fileField string) {
+	pushErr := func(msg string) {
+		log.Printf("[http_request:%s] ERROR: %s", appID, msg)
+		errJSON, _ := json.Marshal(map[string]string{"error": msg})
+		evt, _ := json.Marshal(map[string]interface{}{
+			"type": "http_response",
+			"data": map[string]string{"requestId": reqID, "body": string(errJSON)},
+		})
+		wasm.GetRuntime().PushEvent(appID, evt)
+	}
+
+	// 收集需要处理的文件标记
+	type fileMarker struct {
+		key      string
+		nodeID   string
+		filePath string
+	}
+	var fileMarkers []fileMarker
+
+	if body != nil {
+		for key, value := range body {
+			if str, ok := value.(string); ok {
+				// 检测 [file:nodeId:path] 标记
+				if strings.HasPrefix(str, "[file:") && strings.HasSuffix(str, "]") {
+					inner := str[6 : len(str)-1] // 去掉 "[file:" 和 "]"
+					fileParts := strings.SplitN(inner, ":", 2)
+					if len(fileParts) == 2 {
+						fileMarkers = append(fileMarkers, fileMarker{key, fileParts[0], fileParts[1]})
+					}
+				}
+			}
+		}
+	}
+
+	var reqBody []byte
+	var contentType string
+
+	if format == "multipart" {
+		// === Multipart 模式 ===
+		if len(fileMarkers) == 0 {
+			pushErr("multipart format requires at least one [file:nodeId:path] marker")
+			return
+		}
+
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+
+		// 先添加普通字段
+		for key, value := range body {
+			if str, ok := value.(string); ok {
+				// 跳过文件标记
+				if strings.HasPrefix(str, "[file:") {
+					continue
+				}
+				writer.WriteField(key, str)
+			} else if num, ok := value.(float64); ok {
+				writer.WriteField(key, fmt.Sprintf("%.0f", num))
+			} else if bl, ok := value.(bool); ok {
+				writer.WriteField(key, fmt.Sprintf("%v", bl))
+			}
+		}
+
+		// 添加文件字段
+		for _, marker := range fileMarkers {
+			driver, err := storage.GetDriver(marker.nodeID)
+			if err != nil {
+				pushErr("storage node not found: " + err.Error())
+				return
+			}
+			fileData, err := driver.Read(marker.filePath)
+			if err != nil {
+				pushErr("read file failed: " + err.Error())
+				return
+			}
+
+			// 从路径提取文件名
+			fileName := filepath.Base(marker.filePath)
+			fieldName := fileField
+			if fieldName == "" {
+				fieldName = marker.key
+			}
+
+			part, err := writer.CreateFormFile(fieldName, fileName)
+			if err != nil {
+				pushErr("create form file failed: " + err.Error())
+				return
+			}
+			if _, err := part.Write(fileData); err != nil {
+				pushErr("write file data failed: " + err.Error())
+				return
+			}
+			log.Printf("[http_request:%s] multipart file: field=%s, name=%s, size=%d", appID, fieldName, fileName, len(fileData))
+		}
+
+		writer.Close()
+		reqBody = buf.Bytes()
+		contentType = writer.FormDataContentType()
+
+	} else {
+		// === JSON 模式（默认）===
+		// 处理 body 中的文件标记，替换为 base64
+		for _, marker := range fileMarkers {
+			driver, err := storage.GetDriver(marker.nodeID)
+			if err != nil {
+				pushErr("storage node not found: " + err.Error())
+				return
+			}
+			fileData, err := driver.Read(marker.filePath)
+			if err != nil {
+				pushErr("read file failed: " + err.Error())
+				return
+			}
+
+			body[marker.key] = base64.StdEncoding.EncodeToString(fileData)
+			log.Printf("[http_request:%s] json base64 file: key=%s, size=%d", appID, marker.key, len(fileData))
+		}
+
+		// 序列化 body
+		var err error
+		reqBody, err = json.Marshal(body)
+		if err != nil {
+			pushErr("marshal body failed: " + err.Error())
+			return
+		}
+		contentType = "application/json"
+	}
+
+	// 创建请求
+	req, err := http.NewRequest(method, targetURL, bytes.NewReader(reqBody))
+	if err != nil {
+		pushErr("create request failed: " + err.Error())
+		return
+	}
+
+	// 设置 headers
+	req.Header.Set("Content-Type", contentType)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	// 使用代理（如果配置了）
+	client := &http.Client{Timeout: 300 * time.Second}
+	if appID != "" {
+		if proxyStr, cfgErr := wasm.GetAppConfig(appID, "proxy"); cfgErr == nil && proxyStr != "" {
+			if u, parseErr := url.Parse(proxyStr); parseErr == nil {
+				client.Transport = &http.Transport{Proxy: http.ProxyURL(u)}
+			}
+		}
+	}
+
+	// 发送请求
+	resp, err := client.Do(req)
+	if err != nil {
+		pushErr("http request failed: " + err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	log.Printf("[http_request:%s] %s %s -> status=%d, body_len=%d", appID, method, targetURL, resp.StatusCode, len(respBody))
+
+	// 推送响应
+	evt, _ := json.Marshal(map[string]interface{}{
+		"type": "http_response",
+		"data": map[string]string{"requestId": reqID, "body": string(respBody)},
+	})
+	wasm.GetRuntime().PushEvent(appID, evt)
+}
 func (s *wasmEventSink) OnMediaAttachment(convID string, attachment ai.MediaAttachment) {
 	s.push("chat_media", map[string]interface{}{"conversationId": convID, "attachment": attachment})
 }
@@ -276,89 +484,4 @@ func (s *wasmEventSink) OnError(convID string, err error) {
 }
 func (s *wasmEventSink) OnSystemEvent(msgType string, data interface{}) {
 	s.push(msgType, data)
-}
-
-// fileProxyPost reads a file from storage and uploads it via multipart POST.
-// Runs in a goroutine; pushes result back as http_response event.
-func fileProxyPost(appID, reqID, targetURL, fileField, nodeID, path, fileName string, fields map[string]string, headers map[string]string) {
-	pushErr := func(msg string) {
-		log.Printf("[file_proxy_post:%s] ERROR: %s", appID, msg)
-		errJSON, _ := json.Marshal(map[string]string{"error": msg})
-		evt, _ := json.Marshal(map[string]interface{}{
-			"type": "http_response",
-			"data": map[string]string{"requestId": reqID, "body": string(errJSON)},
-		})
-		wasm.GetRuntime().PushEvent(appID, evt)
-	}
-
-	// Read file from storage
-	driver, err := storage.GetDriver(nodeID)
-	if err != nil {
-		pushErr("storage node not found: " + err.Error())
-		return
-	}
-	fileData, err := driver.Read(path)
-	if err != nil {
-		pushErr("read file failed: " + err.Error())
-		return
-	}
-
-	// Build multipart body
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-
-	// Add text fields first
-	for k, v := range fields {
-		writer.WriteField(k, v)
-	}
-
-	// Add file field
-	part, err := writer.CreateFormFile(fileField, fileName)
-	if err != nil {
-		pushErr("create form file failed: " + err.Error())
-		return
-	}
-	if _, err := part.Write(fileData); err != nil {
-		pushErr("write file data failed: " + err.Error())
-		return
-	}
-	writer.Close()
-
-	// Create HTTP request
-	req, err := http.NewRequest("POST", targetURL, &buf)
-	if err != nil {
-		pushErr("create request failed: " + err.Error())
-		return
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	// Use proxy if configured for this app
-	client := &http.Client{Timeout: 300 * time.Second}
-	if appID != "" {
-		if proxyStr, cfgErr := wasm.GetAppConfig(appID, "proxy"); cfgErr == nil && proxyStr != "" {
-			if u, parseErr := url.Parse(proxyStr); parseErr == nil {
-				client.Transport = &http.Transport{Proxy: http.ProxyURL(u)}
-			}
-		}
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		pushErr("http request failed: " + err.Error())
-		return
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
-
-	log.Printf("[file_proxy_post:%s] upload done, status=%d, file=%s (%d bytes)", appID, resp.StatusCode, fileName, len(fileData))
-
-	// Push response back to WASM
-	evt, _ := json.Marshal(map[string]interface{}{
-		"type": "http_response",
-		"data": map[string]string{"requestId": reqID, "body": string(respBody)},
-	})
-	wasm.GetRuntime().PushEvent(appID, evt)
 }

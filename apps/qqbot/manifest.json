@@ -1,0 +1,16 @@
+{
+  "id": "qq-ai-bot",
+  "name": "QQ AI Bot",
+  "description": "QQ机器人接入 WebOS AI 助手，通过长连接接收消息，支持私聊和群聊",
+  "version": "1.0.0",
+  "icon": "https://im.qq.com/favicon.ico",
+  "wasmModule": "bot.wasm",
+  "background": true,
+  "pollInterval": 3000,
+  "permissions": ["kv", "net"],
+  "configSchema": [
+    { "key": "qq_app_id", "label": "QQ Bot App ID", "type": "text", "default": "" },
+    { "key": "qq_app_secret", "label": "QQ Bot App Secret", "type": "password", "default": "" },
+    { "key": "qq_user_ids", "label": "授权用户 ID (多个用逗号分隔，留空则自动授权首个用户)", "type": "text", "default": "" }
+  ]
+}

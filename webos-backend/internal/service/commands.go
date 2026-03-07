@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"sort"
@@ -477,11 +478,25 @@ func (ce *CommandExecutor) cmdConvSwitch(args string) CommandResult {
 }
 
 func (ce *CommandExecutor) cmdConvNew() CommandResult {
+	// 获取当前活跃会话，稍后清空其消息队列
+	var oldConvID string
+	if ce.ConvSwitcher != nil {
+		oldConvID = ce.ConvSwitcher.GetActiveConvID()
+	}
+
 	convID := genCommandID()
 	title := "新对话"
 	if err := database.CreateConversation(convID, title); err != nil {
 		return CommandResult{Text: "创建对话失败: " + err.Error(), IsError: true}
 	}
+
+	// 清空旧会话的待处理消息
+	if oldConvID != "" {
+		if err := database.DeleteAIQueueByConversation(oldConvID); err != nil {
+			log.Printf("[cmdConvNew] failed to clear queue for conv %s: %v", oldConvID, err)
+		}
+	}
+
 	if ce.ConvSwitcher != nil {
 		result := ce.ConvSwitcher.SwitchConv(convID)
 		if !result.OK {

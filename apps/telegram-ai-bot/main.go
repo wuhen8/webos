@@ -465,21 +465,21 @@ func onMediaAttachment(data json.RawMessage) {
 
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", token, apiMethod)
 
-	fields := map[string]string{
+	body := map[string]interface{}{
+		fileField: "[file:" + a.NodeID + ":" + a.Path + "]",
 		"chat_id": strconv.Itoa(activeChatID),
 	}
 	if a.Caption != "" {
-		fields["caption"] = a.Caption
+		body["caption"] = a.Caption
 	}
 
-	resp := request("file_proxy_post", map[string]interface{}{
-		"url":       url,
-		"fileField": fileField,
-		"nodeId":    a.NodeID,
-		"path":      a.Path,
-		"fileName":  a.FileName,
-		"fields":    fields,
+	resp := request("http_request", map[string]interface{}{
 		"appId":     "telegram-ai-bot",
+		"method":    "POST",
+		"url":       url,
+		"format":    "multipart",
+		"fileField": fileField,
+		"body":      body,
 	})
 
 	var result struct {
@@ -488,7 +488,7 @@ func onMediaAttachment(data json.RawMessage) {
 	}
 	json.Unmarshal([]byte(resp), &result)
 	if result.Error != "" {
-		logMsg("ERROR: file_proxy_post failed: " + result.Error)
+		logMsg("ERROR: http_request failed: " + result.Error)
 		sendTelegramAsync(activeChatID, fmt.Sprintf("📎 %s (发送失败: %s)", a.FileName, result.Error), nil)
 		return
 	}

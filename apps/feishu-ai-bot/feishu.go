@@ -18,7 +18,7 @@ var cachedToken string
 func refreshToken(cb func(token string)) {
 	url := feishuBaseURL + "/auth/v3/tenant_access_token/internal"
 	body := fmt.Sprintf(`{"app_id":"%s","app_secret":"%s"}`, appID, appSecret)
-	httpRequestAsync("POST", url, body, "Content-Type: application/json", func(resp string) {
+	httpRequestAsync("POST", url, body, "{\"Content-Type\":\"application/json\"}", func(resp string) {
 		var r struct {
 			Code              int    `json:"code"`
 			Msg               string `json:"msg"`
@@ -101,7 +101,11 @@ func drainSendQueue() {
 		}
 		bodyBytes, _ := json.Marshal(bodyMap)
 
-		headers := fmt.Sprintf("Content-Type: application/json; charset=utf-8\nAuthorization: Bearer %s", token)
+		hb, _ := json.Marshal(map[string]string{
+			"Content-Type":  "application/json; charset=utf-8",
+			"Authorization": "Bearer " + token,
+		})
+		headers := string(hb)
 		httpRequestAsync("POST", url, string(bodyBytes), headers, func(resp string) {
 			if strings.Contains(resp, `"code":0`) {
 				// 发送成功
@@ -118,11 +122,6 @@ func drainSendQueue() {
 	})
 }
 
-func mustJSON(v interface{}) string {
-	b, _ := json.Marshal(v)
-	return string(b)
-}
-
 // ==================== Bot 信息 ====================
 
 var botOpenID string
@@ -133,7 +132,8 @@ func fetchBotInfo() {
 			return
 		}
 		url := feishuBaseURL + "/bot/v3/info"
-		headers := fmt.Sprintf("Authorization: Bearer %s", token)
+		hb, _ := json.Marshal(map[string]string{"Authorization": "Bearer " + token})
+		headers := string(hb)
 		httpRequestAsync("GET", url, "", headers, func(resp string) {
 			var r struct {
 				Code int `json:"code"`

@@ -86,7 +86,7 @@ func drainSendQueue() {
 		body = fmt.Sprintf(`{"chat_id":%d,"text":%s}`, item.chatID, string(textJSON))
 	}
 
-	httpRequestAsync("POST", url, body, "Content-Type: application/json", func(resp string) {
+	httpRequestAsync("POST", url, body, "{\"Content-Type\":\"application/json\"}", func(resp string) {
 		if strings.Contains(resp, `"ok":false`) {
 			logMsg("ERROR: sendMessage failed: " + resp)
 		}
@@ -162,7 +162,7 @@ func escapeLine(line string) string {
 func sendTypingAction(chatID int) {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendChatAction", token)
 	body := fmt.Sprintf(`{"chat_id":%d,"action":"typing"}`, chatID)
-	httpRequestAsync("POST", url, body, "Content-Type: application/json", func(resp string) {
+	httpRequestAsync("POST", url, body, "{\"Content-Type\":\"application/json\"}", func(resp string) {
 		// fire-and-forget，不需要处理结果
 	})
 }
@@ -212,7 +212,7 @@ func registerBotCommands() {
 
 	body, _ := json.Marshal(map[string]interface{}{"commands": tgCmds})
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/setMyCommands", token)
-	httpRequestAsync("POST", url, string(body), "Content-Type: application/json", func(resp string) {
+	httpRequestAsync("POST", url, string(body), "{\"Content-Type\":\"application/json\"}", func(resp string) {
 		if strings.Contains(resp, `"ok":true`) {
 			logMsg(fmt.Sprintf("Telegram Bot Commands 注册成功 (%d 个命令)", len(tgCmds)))
 		} else {

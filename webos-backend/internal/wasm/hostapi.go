@@ -8,11 +8,14 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"webos-backend/internal/config"
 	"webos-backend/internal/database"
 
 	"github.com/tetratelabs/wazero"
@@ -21,6 +24,19 @@ import (
 
 // httpRequestCounter 全局自增 ID，用于异步 HTTP 请求
 var httpRequestCounter atomic.Uint64
+
+// envCache 缓存常用环境变量，启动时初始化一次
+var envCache = map[string]string{
+	"WEBOS_DATA_DIR": config.DataDir(),
+	"HOME":           config.UserHome(),
+}
+
+// expandEnvVars 替换字符串中的 ${XXX} 占位符
+func expandEnvVars(s string) string {
+	return os.Expand(s, func(key string) string {
+		return envCache[key]
+	})
+}
 
 // RequestBridge is set by the handler package to let wasm apps call any
 // registered handler. Protocol-agnostic — same capabilities as frontend SDK.
@@ -237,6 +253,18 @@ func hostHTTPRequest(ctx context.Context, m api.Module, methodPtr, methodLen, ur
 
 	// 异步执行 HTTP 请求
 	go func() {
+		// 解析 headers，提取 __save_path 元字段
+		var savePath string
+		var headers map[string]string
+		if headersStr != "" {
+			if err := json.Unmarshal([]byte(headersStr), &headers); err == nil {
+				if sp, ok := headers["__save_path"]; ok {
+					savePath = expandEnvVars(sp)
+					delete(headers, "__save_path")
+				}
+			}
+		}
+
 		var bodyReader io.Reader
 		if len(bodyCopy) > 0 {
 			bodyReader = strings.NewReader(string(bodyCopy))
@@ -247,12 +275,9 @@ func hostHTTPRequest(ctx context.Context, m api.Module, methodPtr, methodLen, ur
 			pushHTTPResponse(appID, reqID, `{"error":"`+err.Error()+`"}`)
 			return
 		}
-		if headersStr != "" {
-			for _, line := range strings.Split(headersStr, "\n") {
-				parts := strings.SplitN(line, ":", 2)
-				if len(parts) == 2 {
-					req.Header.Set(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-				}
+		if headers != nil {
+			for k, v := range headers {
+				req.Header.Set(k, v)
 			}
 		}
 
@@ -276,7 +301,21 @@ func hostHTTPRequest(ctx context.Context, m api.Module, methodPtr, methodLen, ur
 			pushHTTPResponse(appID, reqID, `{"error":"`+err.Error()+`"}`)
 			return
 		}
-		pushHTTPResponse(appID, reqID, string(respBody))
+
+		// 如果有 savePath，保存文件
+		if savePath != "" {
+			if err := os.MkdirAll(filepath.Dir(savePath), 0755); err != nil {
+				pushHTTPResponse(appID, reqID, `{"error":"`+err.Error()+`"}`)
+				return
+			}
+			if err := os.WriteFile(savePath, respBody, 0644); err != nil {
+				pushHTTPResponse(appID, reqID, `{"error":"`+err.Error()+`"}`)
+				return
+			}
+			pushHTTPResponse(appID, reqID, fmt.Sprintf(`{"path":"%s","size":%d}`, savePath, len(respBody)))
+		} else {
+			pushHTTPResponse(appID, reqID, string(respBody))
+		}
 	}()
 
 	// 返回 requestID 给 WASM

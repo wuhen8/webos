@@ -139,7 +139,7 @@ func startWSConnection() {
 	// 注意：长连接 endpoint 不在 /open-apis 下，而是直接在 open.feishu.cn 根路径下
 	url := "https://open.feishu.cn/callback/ws/endpoint"
 	body := fmt.Sprintf(`{"AppID":"%s","AppSecret":"%s"}`, appID, appSecret)
-	httpRequestAsync("POST", url, body, "Content-Type: application/json\nlocale: zh", func(resp string) {
+	httpRequestAsync("POST", url, body, "{\"Content-Type\":\"application/json\",\"locale\":\"zh\"}", func(resp string) {
 		wsConnecting = false
 		var r struct {
 			Code int    `json:"code"`
@@ -382,6 +382,8 @@ func handleEventPayload(frame pbFrame) {
 
 // handleIMMessage 处理收到的即时消息事件
 func handleIMMessage(eventData json.RawMessage) {
+	logMsg("DEBUG: 原始事件数据: " + string(eventData[:min(len(eventData), 500)]))
+
 	var ev struct {
 		Sender struct {
 			SenderID struct {
@@ -397,9 +399,12 @@ func handleIMMessage(eventData json.RawMessage) {
 			Content     string `json:"content"`
 		} `json:"message"`
 	}
-	if json.Unmarshal(eventData, &ev) != nil {
+	if err := json.Unmarshal(eventData, &ev); err != nil {
+		logMsg("ERROR: 事件 JSON 解析失败: " + err.Error())
 		return
 	}
+
+	logMsg("DEBUG: message_type=" + ev.Message.MessageType + ", chat_id=" + ev.Message.ChatID)
 
 	if ev.Sender.SenderType == "app" {
 		return
@@ -424,14 +429,31 @@ func handleIMMessage(eventData json.RawMessage) {
 		return
 	}
 
-	if ev.Message.MessageType != "text" {
-		return
+	// 处理不同消息类型
+	switch ev.Message.MessageType {
+	case "text":
+		handleTextMessage(ev.Message, incomingChatID, ev.Sender.SenderID.OpenID)
+	case "image":
+		handleImageMessage(ev.Message, incomingChatID, ev.Sender.SenderID.OpenID)
+	case "file", "audio", "video", "media":
+		handleFileMessage(ev.Message, incomingChatID, ev.Sender.SenderID.OpenID)
+	default:
+		logMsg(fmt.Sprintf("暂不支持的消息类型: %s", ev.Message.MessageType))
 	}
+}
 
+// handleTextMessage 处理文本消息
+func handleTextMessage(msg struct {
+	MessageID   string `json:"message_id"`
+	ChatID      string `json:"chat_id"`
+	ChatType    string `json:"chat_type"`
+	MessageType string `json:"message_type"`
+	Content     string `json:"content"`
+}, chatID, senderOpenID string) {
 	var content struct {
 		Text string `json:"text"`
 	}
-	if json.Unmarshal([]byte(ev.Message.Content), &content) != nil || content.Text == "" {
+	if json.Unmarshal([]byte(msg.Content), &content) != nil || content.Text == "" {
 		return
 	}
 
@@ -441,14 +463,65 @@ func handleIMMessage(eventData json.RawMessage) {
 		return
 	}
 
-	activeChatID = incomingChatID
-	logMsg(fmt.Sprintf("[chat:%s] %s: %s", incomingChatID, ev.Sender.SenderID.OpenID, userText))
+	activeChatID = chatID
+	logMsg(fmt.Sprintf("[chat:%s] %s: %s", chatID, senderOpenID, userText))
 
 	deltaCount = 0
 	request("chat_send", map[string]interface{}{
 		"messageContent": userText,
 		"clientId":       "feishu-ai-bot",
 	})
+}
+
+// handleImageMessage 处理图片消息
+func handleImageMessage(msg struct {
+	MessageID   string `json:"message_id"`
+	ChatID      string `json:"chat_id"`
+	ChatType    string `json:"chat_type"`
+	MessageType string `json:"message_type"`
+	Content     string `json:"content"`
+}, chatID, senderOpenID string) {
+	var content struct {
+		ImageKey string `json:"image_key"`
+	}
+	if json.Unmarshal([]byte(msg.Content), &content) != nil || content.ImageKey == "" {
+		return
+	}
+
+	logMsg(fmt.Sprintf("[chat:%s] %s 发送图片: image_key=%s", chatID, senderOpenID, content.ImageKey))
+
+	// 异步下载图片
+	downloadFeishuMediaAsync(msg.MessageID, content.ImageKey, "image", chatID, senderOpenID)
+}
+
+// handleFileMessage 处理文件消息
+func handleFileMessage(msg struct {
+	MessageID   string `json:"message_id"`
+	ChatID      string `json:"chat_id"`
+	ChatType    string `json:"chat_type"`
+	MessageType string `json:"message_type"`
+	Content     string `json:"content"`
+}, chatID, senderOpenID string) {
+	var content struct {
+		FileKey  string `json:"file_key"`
+		FileName string `json:"file_name"`
+	}
+	if json.Unmarshal([]byte(msg.Content), &content) != nil || content.FileKey == "" {
+		return
+	}
+
+	fileName := content.FileName
+	if fileName == "" {
+		fileName = "file"
+	}
+
+	logMsg(fmt.Sprintf("[chat:%s] %s 发送文件: file_key=%s, name=%s", chatID, senderOpenID, content.FileKey, fileName))
+
+	// 异步下载文件
+	reqID := sendDownloadRequest(msg.MessageID, content.FileKey, "file", chatID, senderOpenID, fileName)
+	if reqID == "" {
+		logMsg("ERROR: 发起文件下载请求失败")
+	}
 }
 
 // ==================== 多用户授权管理 ====================
@@ -693,10 +766,17 @@ func uploadImageToFeishu(chatID string, a struct {
 	withToken(func(token string) {
 		if token == "" { return }
 		url := feishuBaseURL + "/im/v1/images"
-		resp := request("file_proxy_post", map[string]interface{}{
-			"url": url, "fileField": "image", "nodeId": a.NodeID, "path": a.Path, "fileName": a.FileName,
-			"fields": map[string]string{"image_type": "message"},
-			"appId": "feishu-ai-bot", "headers": map[string]string{"Authorization": "Bearer " + token},
+		resp := request("http_request", map[string]interface{}{
+			"appId":     "feishu-ai-bot",
+			"method":    "POST",
+			"url":       url,
+			"format":    "multipart",
+			"fileField": "image",
+			"headers":   map[string]string{"Authorization": "Bearer " + token},
+			"body": map[string]interface{}{
+				"image":      "[file:" + a.NodeID + ":" + a.Path + "]",
+				"image_type": "message",
+			},
 		})
 		var result struct { RequestID string `json:"requestId"`; Error string `json:"error"` }
 		json.Unmarshal([]byte(resp), &result)
@@ -705,11 +785,16 @@ func uploadImageToFeishu(chatID string, a struct {
 			httpCallbacks[result.RequestID] = func(resp string) {
 				var imgResp struct { Code int `json:"code"`; Data struct { ImageKey string `json:"image_key"` } `json:"data"` }
 				if json.Unmarshal([]byte(resp), &imgResp) == nil && imgResp.Code == 0 && imgResp.Data.ImageKey != "" {
-					content := mustJSON(map[string]string{"image_key": imgResp.Data.ImageKey})
+					cb, _ := json.Marshal(map[string]string{"image_key": imgResp.Data.ImageKey})
+					content := string(cb)
 					bodyMap := map[string]string{"receive_id": chatID, "msg_type": "image", "content": content}
 					bodyBytes, _ := json.Marshal(bodyMap)
 					sendURL := feishuBaseURL + "/im/v1/messages?receive_id_type=chat_id"
-					hdrs := fmt.Sprintf("Content-Type: application/json; charset=utf-8\nAuthorization: Bearer %s", token)
+					hb, _ := json.Marshal(map[string]string{
+						"Content-Type":  "application/json; charset=utf-8",
+						"Authorization": "Bearer " + token,
+					})
+					hdrs := string(hb)
 					httpRequestAsync("POST", sendURL, string(bodyBytes), hdrs, func(r string) {
 						if !strings.Contains(r, `"code":0`) { logMsg("WARN: 飞书图片消息发送失败: " + r) }
 					})
@@ -726,10 +811,18 @@ func uploadFileToFeishu(chatID string, a struct {
 	withToken(func(token string) {
 		if token == "" { return }
 		url := feishuBaseURL + "/im/v1/files"
-		resp := request("file_proxy_post", map[string]interface{}{
-			"url": url, "fileField": "file", "nodeId": a.NodeID, "path": a.Path, "fileName": a.FileName,
-			"fields": map[string]string{"file_type": "stream", "file_name": a.FileName},
-			"appId": "feishu-ai-bot", "headers": map[string]string{"Authorization": "Bearer " + token},
+		resp := request("http_request", map[string]interface{}{
+			"appId":     "feishu-ai-bot",
+			"method":    "POST",
+			"url":       url,
+			"format":    "multipart",
+			"fileField": "file",
+			"headers":   map[string]string{"Authorization": "Bearer " + token},
+			"body": map[string]interface{}{
+				"file":      "[file:" + a.NodeID + ":" + a.Path + "]",
+				"file_type": "stream",
+				"file_name": a.FileName,
+			},
 		})
 		var result struct { RequestID string `json:"requestId"`; Error string `json:"error"` }
 		json.Unmarshal([]byte(resp), &result)
@@ -738,11 +831,16 @@ func uploadFileToFeishu(chatID string, a struct {
 			httpCallbacks[result.RequestID] = func(resp string) {
 				var fileResp struct { Code int `json:"code"`; Data struct { FileKey string `json:"file_key"` } `json:"data"` }
 				if json.Unmarshal([]byte(resp), &fileResp) == nil && fileResp.Code == 0 && fileResp.Data.FileKey != "" {
-					content := mustJSON(map[string]string{"file_key": fileResp.Data.FileKey})
+					cb, _ := json.Marshal(map[string]string{"file_key": fileResp.Data.FileKey})
+					content := string(cb)
 					bodyMap := map[string]string{"receive_id": chatID, "msg_type": "file", "content": content}
 					bodyBytes, _ := json.Marshal(bodyMap)
 					sendURL := feishuBaseURL + "/im/v1/messages?receive_id_type=chat_id"
-					hdrs := fmt.Sprintf("Content-Type: application/json; charset=utf-8\nAuthorization: Bearer %s", token)
+					hb, _ := json.Marshal(map[string]string{
+						"Content-Type":  "application/json; charset=utf-8",
+						"Authorization": "Bearer " + token,
+					})
+					hdrs := string(hb)
 					httpRequestAsync("POST", sendURL, string(bodyBytes), hdrs, func(r string) {
 						if !strings.Contains(r, `"code":0`) { logMsg("WARN: 飞书文件消息发送失败: " + r) }
 					})
@@ -758,4 +856,133 @@ func humanSize(b int64) string {
 	div, exp := int64(unit), 0
 	for n := b / unit; n >= unit; n /= unit { div *= unit; exp++ }
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+// ==================== 媒体下载 ====================
+
+// 初始化下载回调
+func init() {
+	SetDownloadCallback(handleDownloadComplete)
+}
+
+// downloadFeishuMediaAsync 异步下载飞书媒体文件
+// 下载完成后通过 handleDownloadComplete 处理
+func downloadFeishuMediaAsync(messageID, fileKey, mediaType, chatID, senderOpenID string) {
+	fileName := fileKey
+	if mediaType == "image" {
+		fileName = fileKey + ".jpg"
+	}
+	sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, fileName)
+}
+
+// sendDownloadRequest 发起下载请求
+func sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, displayName string) string {
+	// 获取 token
+	token := ""
+	withToken(func(t string) {
+		token = t
+	})
+	if token == "" {
+		logMsg("ERROR: 获取飞书 token 失败")
+		return ""
+	}
+
+	// 构建下载 URL
+	downloadURL := fmt.Sprintf("%s/im/v1/messages/%s/resources/%s?type=%s",
+		feishuBaseURL, messageID, fileKey, mediaType)
+
+	// 生成保存路径（使用环境变量占位符）
+	fileName := fileKey
+	if mediaType == "image" {
+		fileName = fileKey + ".jpg"
+	}
+	savePath := fmt.Sprintf("${WEBOS_DATA_DIR}/uploads/feishu/%s/%s", chatID, fileName)
+
+	// 构建请求头（包含 __save_path 元字段）
+	headers := map[string]string{
+		"Authorization": "Bearer " + token,
+		"__save_path":   savePath,
+	}
+	headersJSON, _ := json.Marshal(headers)
+
+	// 发起异步请求，注册到 pendingDownloads
+	reqID := sendHTTPRequestAsync("GET", downloadURL, "", string(headersJSON))
+	if reqID == "" {
+		logMsg("ERROR: 发起下载请求失败")
+		return ""
+	}
+
+	pendingDownloads[reqID] = PendingDownload{
+		ChatID:      chatID,
+		SenderID:    senderOpenID,
+		FileName:    fileName,
+		MediaType:   mediaType,
+		DisplayName: displayName,
+	}
+	logMsg(fmt.Sprintf("开始下载飞书媒体: %s (reqID=%s)", displayName, reqID))
+	return reqID
+}
+
+// sendHTTPRequestAsync 发起 HTTP 请求并返回 requestID
+func sendHTTPRequestAsync(method, url, body, headers string) string {
+	mb := []byte(method)
+	ub := []byte(url)
+	bb := []byte(body)
+	hb := []byte(headers)
+	packed := _hostHTTPRequest(
+		bytesPtr(mb), uint32(len(mb)),
+		bytesPtr(ub), uint32(len(ub)),
+		bytesPtr(bb), uint32(len(bb)),
+		bytesPtr(hb), uint32(len(hb)),
+	)
+	return readSharedBuf(packed)
+}
+
+// handleDownloadComplete 处理下载完成事件
+func handleDownloadComplete(pending PendingDownload, respBody string) {
+	if respBody == "" {
+		logMsg("ERROR: 下载飞书媒体失败: 空响应")
+		return
+	}
+
+	// 解析响应（可能是 {"path":"...","size":...} 或 {"error":"..."}）
+	var r struct {
+		Path  string `json:"path"`
+		Size  int    `json:"size"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(respBody), &r); err != nil {
+		logMsg("ERROR: 解析下载响应失败: " + respBody[:min(len(respBody), 200)])
+		return
+	}
+	if r.Error != "" {
+		logMsg("ERROR: 下载飞书媒体失败: " + r.Error)
+		return
+	}
+
+	// 返回相对路径
+	relativePath := fmt.Sprintf("uploads/feishu/%s/%s", pending.ChatID, pending.FileName)
+	logMsg(fmt.Sprintf("✅ 飞书媒体已保存: %s (%s)", relativePath, humanSize(int64(r.Size))))
+
+	// 根据媒体类型构建不同的消息
+	var userText string
+	if pending.MediaType == "image" {
+		userText = fmt.Sprintf("[用户发送了一张图片]\n图片: [文件: local_1:/opt/webos/%s]", relativePath)
+	} else {
+		userText = fmt.Sprintf("[用户发送了一个文件: %s]\n文件: [文件: local_1:/opt/webos/%s]", pending.DisplayName, relativePath)
+	}
+
+	activeChatID = pending.ChatID
+	deltaCount = 0
+	request("chat_send", map[string]interface{}{
+		"messageContent": userText,
+		"clientId":       "feishu-ai-bot",
+	})
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"unsafe"
 )
 
@@ -47,51 +49,9 @@ func get_shared_buf() uint64 {
 	return uint64(ptr)<<32 | uint64(len(_sharedBuf))
 }
 
-// ==================== 异步 HTTP 回调注册 ====================
+// ==================== Async HTTP callbacks ====================
 
 var httpCallbacks = map[string]func(resp string){}
-
-// 待处理的下载任务（异步下载完成后的上下文）
-type PendingDownload struct {
-	ChatID      string
-	SenderID    string
-	FileName    string
-	MediaType   string
-	DisplayName string // 用于显示的文件名
-}
-
-var pendingDownloads = map[string]PendingDownload{} // requestID -> pendingDownload
-
-// 下载完成回调（由 main.go 设置）
-var onDownloadComplete func(PendingDownload, string)
-
-// SetDownloadCallback 设置下载完成回调
-func SetDownloadCallback(cb func(PendingDownload, string)) {
-	onDownloadComplete = cb
-}
-
-func httpRequestAsync(method, url, body, headers string, cb func(resp string)) {
-	mb := []byte(method)
-	ub := []byte(url)
-	bb := []byte(body)
-	hb := []byte(headers)
-	packed := _hostHTTPRequest(
-		bytesPtr(mb), uint32(len(mb)),
-		bytesPtr(ub), uint32(len(ub)),
-		bytesPtr(bb), uint32(len(bb)),
-		bytesPtr(hb), uint32(len(hb)),
-	)
-	reqID := readSharedBuf(packed)
-	if reqID == "" {
-		if cb != nil {
-			cb("")
-		}
-		return
-	}
-	if cb != nil {
-		httpCallbacks[reqID] = cb
-	}
-}
 
 func handleHTTPResponse(data json.RawMessage) {
 	var d struct {
@@ -101,27 +61,15 @@ func handleHTTPResponse(data json.RawMessage) {
 	if json.Unmarshal(data, &d) != nil {
 		return
 	}
-	reqID := d.RequestID
-
-	// 检查是否是文件下载请求
-	if pending, ok := pendingDownloads[reqID]; ok {
-		delete(pendingDownloads, reqID)
-		if onDownloadComplete != nil {
-			onDownloadComplete(pending, d.Body)
-		}
-		return
-	}
-
-	// 普通回调
-	cb, ok := httpCallbacks[reqID]
+	cb, ok := httpCallbacks[d.RequestID]
 	if !ok {
 		return
 	}
-	delete(httpCallbacks, reqID)
+	delete(httpCallbacks, d.RequestID)
 	cb(d.Body)
 }
 
-// ==================== 同步 API ====================
+// ==================== Synchronous API ====================
 
 func logMsg(msg string) {
 	if len(msg) == 0 {
@@ -208,4 +156,66 @@ func wsSend(connID string, data []byte) bool {
 func wsClose(connID string) {
 	cb := []byte(connID)
 	_hostWSClose(bytesPtr(cb), uint32(len(cb)))
+}
+
+// ==================== Sync HTTP API ====================
+
+func httpRequest(method, url, body, headers string) string {
+	mb := []byte(method)
+	ub := []byte(url)
+	bb := []byte(body)
+	hb := []byte(headers)
+	packed := _hostHTTPRequest(
+		bytesPtr(mb), uint32(len(mb)),
+		bytesPtr(ub), uint32(len(ub)),
+		bytesPtr(bb), uint32(len(bb)),
+		bytesPtr(hb), uint32(len(hb)),
+	)
+	return readSharedBuf(packed)
+}
+
+// ==================== Async HTTP API ====================
+
+func httpRequestAsync(method, url, body, headers string, cb func(resp string)) {
+	mb := []byte(method)
+	ub := []byte(url)
+	bb := []byte(body)
+	hb := []byte(headers)
+	packed := _hostHTTPRequest(
+		bytesPtr(mb), uint32(len(mb)),
+		bytesPtr(ub), uint32(len(ub)),
+		bytesPtr(bb), uint32(len(bb)),
+		bytesPtr(hb), uint32(len(hb)),
+	)
+	reqID := readSharedBuf(packed)
+	if reqID == "" {
+		cb("")
+		return
+	}
+	httpCallbacks[reqID] = cb
+}
+
+// ==================== 文件操作 API ====================
+
+// downloadFile 通过 shell_exec 下载文件到指定路径
+func downloadFile(url, savePath string) bool {
+	// 创建目录并下载
+	cmd := fmt.Sprintf("mkdir -p %s && curl -sL -o '%s' '%s'",
+		savePath[:strings.LastIndex(savePath, "/")], savePath, url)
+	result := request("shell_exec", map[string]interface{}{
+		"command": cmd,
+	})
+	logMsg("shell_exec result: " + result[:min(len(result), 300)])
+	var r struct {
+		Success  bool   `json:"success"`
+		Error    string `json:"error"`
+		ExitCode int    `json:"exitCode"`
+	}
+	if json.Unmarshal([]byte(result), &r) == nil {
+		if r.Error != "" {
+			logMsg("shell_exec error: " + r.Error)
+		}
+		return r.Success
+	}
+	return false
 }

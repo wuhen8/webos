@@ -224,6 +224,27 @@
       "download": {
         "zipUrl": "https://webos.686860.xyz/webapps/feishu-ai-bot.zip"
       }
+    },
+    {
+      "id": "qq-ai-bot",
+      "name": "QQ AI Bot",
+      "description": "QQ机器人接入 WebOS AI 助手，支持私聊和群聊",
+      "icon": "https://im.qq.com/favicon.ico",
+      "category": "社交通讯",
+      "type": "sideload",
+      "version": "1.0.0",
+      "author": "webos",
+      "background": true,
+      "pollInterval": 3000,
+      "permissions": ["kv", "net"],
+      "configSchema": [
+        { "key": "qq_app_id", "label": "QQ Bot App ID", "type": "text", "default": "" },
+        { "key": "qq_app_secret", "label": "QQ Bot App Secret", "type": "password", "default": "" },
+        { "key": "qq_user_ids", "label": "授权用户 ID (多个用逗号分隔)", "type": "text", "default": "" }
+      ],
+      "download": {
+        "zipUrl": "https://webos.686860.xyz/webapps/qq-ai-bot.zip"
+      }
     }
   ],
   "skills": [
