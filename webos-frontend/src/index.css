@@ -101,6 +101,16 @@ body {
   animation: indeterminate 1.5s ease-in-out infinite;
 }
 
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-6px); }
+  20%, 40%, 60%, 80% { transform: translateX(6px); }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
 /* Remove focus outline from file manager panels */
 [data-file-manager-content]:focus,
 [data-file-manager-content]:focus-visible,

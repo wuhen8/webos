@@ -14,6 +14,7 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
   const authPhase = useAuthStore((s) => s.authPhase)
   const login = useAuthStore((s) => s.login)
   const [passwordInput, setPasswordInput] = useState("")
+  const [shaking, setShaking] = useState(false)
   const [needSetup, setNeedSetup] = useState<boolean | null>(null)
   const [confirmPassword, setConfirmPassword] = useState("")
   const [setupError, setSetupError] = useState("")
@@ -52,6 +53,10 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
       const success = await login(passwordInput)
       if (success) {
         setPasswordInput("")
+      } else {
+        setShaking(true)
+        setPasswordInput("")
+        setTimeout(() => setShaking(false), 500)
       }
     }
   }
@@ -137,7 +142,7 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
           </div>
         </div>
       ) : (
-        <div className="bg-white/90 rounded-2xl p-6 border border-white/40 w-80 relative">
+        <div className={`bg-white/90 rounded-2xl p-6 border border-white/40 w-80 relative ${shaking ? 'animate-shake' : ''}`}>
           {onCancel && (
             <button
               onClick={onCancel}
