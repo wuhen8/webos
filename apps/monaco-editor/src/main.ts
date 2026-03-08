@@ -167,7 +167,7 @@ export async function mount(ctx: MountContext) {
 
   let content = ''
   try {
-    const data = await sdk.fs.read(nodeId, filePath)
+    const data = await sdk.request('fs.read', { nodeId, path: filePath })
     content = data.content || ''
   } catch (err: any) {
     loadingEl.textContent = `读取文件失败: ${err.message}`
@@ -220,7 +220,7 @@ export async function mount(ctx: MountContext) {
     if (state.disposed) return
     const value = editor.getValue()
     try {
-      await sdk.fs.write(nodeId, filePath, value)
+      await sdk.request('fs.write', { nodeId, path: filePath, content: value })
       state.isModified = false
       sdk.window.setTitle(getFileName(filePath!))
       updateStatusbar()

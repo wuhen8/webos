@@ -46,7 +46,7 @@ function base64ToArrayBuffer(base64) {
 }
 
 async function readFileAsArrayBuffer(filePath) {
-  const result = await sdk.exec(`base64 -w 0 "${filePath}"`)
+  const result = await sdk.request('system.exec', { command: `base64 -w 0 "${filePath}"` })
   if (result.exitCode !== 0) {
     throw new Error(result.stderr || '文件读取失败')
   }
