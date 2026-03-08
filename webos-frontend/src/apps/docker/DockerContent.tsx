@@ -44,32 +44,32 @@ function DockerContent() {
     if (!autoRefresh || activeTab === "settings") return
     const unsubs: (() => void)[] = []
     // Global container subscription
-    unsubs.push(subscribe("docker_containers", refreshInterval, (data: any) => {
+    unsubs.push(subscribe("sub.docker_containers", refreshInterval, (data: any) => {
       if (data.available === false) { setAvailable(false); return }
       setAvailable(true); setContainers(data.containers || [])
     }))
     // Tab-specific subscriptions
     if (activeTab === "images") {
-      unsubs.push(subscribe("docker_images", refreshInterval, (data: any) => {
+      unsubs.push(subscribe("sub.docker_images", refreshInterval, (data: any) => {
         if (data.available !== false) setImages(data.images || [])
       }))
     } else if (activeTab === "compose") {
-      unsubs.push(subscribe("docker_compose", refreshInterval, (data: any) => {
+      unsubs.push(subscribe("sub.docker_compose", refreshInterval, (data: any) => {
         if (data.available !== false) setComposeProjects(data.projects || [])
       }))
     } else if (activeTab === "networks") {
-      unsubs.push(subscribe("docker_networks", refreshInterval, (data: any) => {
+      unsubs.push(subscribe("sub.docker_networks", refreshInterval, (data: any) => {
         if (data.available !== false) setNetworks(data.networks || [])
       }))
     } else if (activeTab === "volumes") {
-      unsubs.push(subscribe("docker_volumes", refreshInterval, (data: any) => {
+      unsubs.push(subscribe("sub.docker_volumes", refreshInterval, (data: any) => {
         if (data.available !== false) setVolumes(data.volumes || [])
       }))
     }
     return () => { unsubs.forEach((fn) => fn()) }
   }, [activeTab, autoRefresh, refreshInterval, subscribe])
 
-  const dockerRefreshChannels = ['docker_containers', 'docker_images', 'docker_compose', 'docker_networks', 'docker_volumes']
+  const dockerRefreshChannels = ['sub.docker_containers', 'sub.docker_images', 'sub.docker_compose', 'sub.docker_networks', 'sub.docker_volumes']
 
   const containerAction = (id: string, action: string) => {
     const actionMap: Record<string, string> = { start: '启动', stop: '停止', restart: '重启' }

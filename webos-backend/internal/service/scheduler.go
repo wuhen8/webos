@@ -729,7 +729,7 @@ func makeBuiltinRun(jobID string, bc builtinConfig, submitFn func(string, string
 			to := bc.To
 			title := fmt.Sprintf("定时: 复制 %d 个项目", len(paths))
 			crossStorage := srcNode != dstNode
-			submitFn("fs_copy", title, func(ctx context.Context, r *ProgressReporter) (string, error) {
+			submitFn("fs.copy", title, func(ctx context.Context, r *ProgressReporter) (string, error) {
 				total := int64(len(paths))
 				for i, p := range paths {
 					progress := storage.ProgressFunc(func(written, size int64) {
@@ -763,7 +763,7 @@ func makeBuiltinRun(jobID string, bc builtinConfig, submitFn func(string, string
 				reportResult("failed", "未指定路径或输出文件名")
 				return
 			}
-			submitFn("fs_compress", "定时: 压缩 "+filepath.Base(bc.Output), func(ctx context.Context, r *ProgressReporter) (string, error) {
+			submitFn("fs.compress", "定时: 压缩 "+filepath.Base(bc.Output), func(ctx context.Context, r *ProgressReporter) (string, error) {
 				if err := fileSvc.Compress(bc.NodeID, bc.Paths, bc.Output); err != nil {
 					reportResult("failed", err.Error())
 					return "", err
@@ -782,7 +782,7 @@ func makeBuiltinRun(jobID string, bc builtinConfig, submitFn func(string, string
 			if dest == "" {
 				dest = filepath.Dir(bc.Path)
 			}
-			submitFn("fs_extract", "定时: 解压 "+filepath.Base(bc.Path), func(ctx context.Context, r *ProgressReporter) (string, error) {
+			submitFn("fs.extract", "定时: 解压 "+filepath.Base(bc.Path), func(ctx context.Context, r *ProgressReporter) (string, error) {
 				if err := fileSvc.Extract(bc.NodeID, bc.Path, dest); err != nil {
 					reportResult("failed", err.Error())
 					return "", err

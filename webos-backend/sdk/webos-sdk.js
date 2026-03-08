@@ -87,106 +87,106 @@
     // File system operations
     fs: {
       list: function (nodeId, path) {
-        return sendRequest('fs_list', { nodeId: nodeId, path: path || '/' });
+        return sendRequest('fs.list', { nodeId: nodeId, path: path || '/' });
       },
       read: function (nodeId, path) {
-        return sendRequest('fs_read', { nodeId: nodeId, path: path });
+        return sendRequest('fs.read', { nodeId: nodeId, path: path });
       },
       write: function (nodeId, path, content) {
-        return sendRequest('fs_write', { nodeId: nodeId, path: path, content: content });
+        return sendRequest('fs.write', { nodeId: nodeId, path: path, content: content });
       },
       mkdir: function (nodeId, path, name) {
-        return sendRequest('fs_mkdir', { nodeId: nodeId, path: path, name: name });
+        return sendRequest('fs.mkdir', { nodeId: nodeId, path: path, name: name });
       },
       create: function (nodeId, path, name) {
-        return sendRequest('fs_create', { nodeId: nodeId, path: path, name: name });
+        return sendRequest('fs.create', { nodeId: nodeId, path: path, name: name });
       },
       delete: function (nodeId, paths) {
         if (typeof paths === 'string') paths = [paths];
-        return sendRequest('fs_delete', { nodeId: nodeId, paths: paths });
+        return sendRequest('fs.delete', { nodeId: nodeId, paths: paths });
       },
       rename: function (nodeId, path, oldName, newName) {
-        return sendRequest('fs_rename', { nodeId: nodeId, path: path, oldName: oldName, newName: newName });
+        return sendRequest('fs.rename', { nodeId: nodeId, path: path, oldName: oldName, newName: newName });
       },
       copy: function (nodeId, paths, to, dstNodeId) {
         if (typeof paths === 'string') paths = [paths];
-        return sendRequest('fs_copy', { nodeId: nodeId, paths: paths, to: to, dstNodeId: dstNodeId });
+        return sendRequest('fs.copy', { nodeId: nodeId, paths: paths, to: to, dstNodeId: dstNodeId });
       },
       move: function (nodeId, paths, to, dstNodeId) {
         if (typeof paths === 'string') paths = [paths];
-        return sendRequest('fs_move', { nodeId: nodeId, paths: paths, to: to, dstNodeId: dstNodeId });
+        return sendRequest('fs.move', { nodeId: nodeId, paths: paths, to: to, dstNodeId: dstNodeId });
       },
       search: function (nodeId, path, keyword) {
-        return sendRequest('fs_search', { nodeId: nodeId, path: path, keyword: keyword });
+        return sendRequest('fs.search', { nodeId: nodeId, path: path, keyword: keyword });
       }
     },
 
     // Terminal operations
     terminal: {
       open: function () {
-        return sendRequest('terminal_open', {});
+        return sendRequest('terminal.open', {});
       },
       input: function (sid, data) {
-        return sendRequest('terminal_input', { sid: sid, data: data });
+        return sendRequest('terminal.input', { sid: sid, data: data });
       },
       resize: function (sid, cols, rows) {
-        return sendRequest('terminal_resize', { sid: sid, cols: cols, rows: rows });
+        return sendRequest('terminal.resize', { sid: sid, cols: cols, rows: rows });
       },
       close: function (sid) {
-        return sendRequest('terminal_close', { sid: sid });
+        return sendRequest('terminal.close', { sid: sid });
       }
     },
 
     // Docker operations
     docker: {
       containers: function () {
-        return sendRequest('docker_containers', {});
+        return sendRequest('docker.containers', {});
       },
       images: function () {
-        return sendRequest('docker_images', {});
+        return sendRequest('docker.images', {});
       },
       composeProjects: function () {
-        return sendRequest('docker_compose', {});
+        return sendRequest('docker.compose', {});
       },
       composeLogs: function (projectDir, tail) {
-        return sendRequest('docker_compose_logs', { projectDir: projectDir, tail: tail || '100' });
+        return sendRequest('docker.compose_logs', { projectDir: projectDir, tail: tail || '100' });
       },
       containerLogs: function (containerId, tail) {
-        return sendRequest('docker_container_logs', { data: containerId, tail: tail || '200' });
+        return sendRequest('docker.container_logs', { data: containerId, tail: tail || '200' });
       }
     },
 
     // Execute command
     exec: function (command) {
-      return sendRequest('exec', { command: command });
+      return sendRequest('system.exec', { command: command });
     },
 
     // Window operations
     window: {
       setTitle: function (title) {
-        return sendRequest('window_setTitle', { title: title });
+        return sendRequest('window.setTitle', { title: title });
       },
       close: function () {
-        return sendRequest('window_close', {});
+        return sendRequest('window.close', {});
       },
       getInfo: function () {
-        return sendRequest('window_getInfo', {});
+        return sendRequest('window.getInfo', {});
       }
     },
 
     // Wasm process management
     wasm: {
       start: function (appId) {
-        return sendRequest('wasm_start', { appId: appId });
+        return sendRequest('wasm.start', { appId: appId });
       },
       stop: function (appId) {
-        return sendRequest('wasm_stop', { appId: appId });
+        return sendRequest('wasm.stop', { appId: appId });
       },
       restart: function (appId) {
-        return sendRequest('wasm_restart', { appId: appId });
+        return sendRequest('wasm.restart', { appId: appId });
       },
       list: function () {
-        return sendRequest('wasm_list', {});
+        return sendRequest('wasm.list', {});
       }
     },
 

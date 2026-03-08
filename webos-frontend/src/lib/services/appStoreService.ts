@@ -12,7 +12,7 @@ useTaskStore.subscribe((state, prevState) => {
     if (
       prev && prev.status === 'running' &&
       (task.status === 'success' || task.status === 'failed') &&
-      (task.type === 'appstore_install' || task.type === 'appstore_uninstall' || task.type === 'appstore_update')
+      (task.type === 'appstore.install' || task.type === 'appstore.uninstall' || task.type === 'appstore.update')
     ) {
       // Auto-refresh installed apps list after install/uninstall/update
       appStoreService.getInstalled().then((apps) => {
@@ -40,43 +40,43 @@ registerReconnectHook(() => {
 
 export const appStoreService = {
   getCatalog(refresh = false): Promise<any[]> {
-    return wsRequest('appstore_catalog', { refresh })
+    return wsRequest('appstore.catalog', { refresh })
   },
 
   getInstalled(): Promise<any[]> {
-    return wsRequest('appstore_installed', {})
+    return wsRequest('appstore.installed', {})
   },
 
   install(appId: string, appConfig: Record<string, any> = {}): Promise<void> {
-    return wsRequest('appstore_install', { appId, appConfig })
+    return wsRequest('appstore.install', { appId, appConfig })
   },
 
   uninstall(appId: string): Promise<void> {
-    return wsRequest('appstore_uninstall', { appId })
+    return wsRequest('appstore.uninstall', { appId })
   },
 
   start(appId: string): Promise<void> {
-    return wsRequest('appstore_start', { appId })
+    return wsRequest('appstore.start', { appId })
   },
 
   stop(appId: string): Promise<void> {
-    return wsRequest('appstore_stop', { appId })
+    return wsRequest('appstore.stop', { appId })
   },
 
   update(appId: string): Promise<void> {
-    return wsRequest('appstore_update', { appId })
+    return wsRequest('appstore.update', { appId })
   },
 
   updateConfig(appId: string, appConfig: Record<string, any>): Promise<void> {
-    return wsRequest('appstore_update_config', { appId, appConfig })
+    return wsRequest('appstore.update_config', { appId, appConfig })
   },
 
   setAutostart(appId: string, enabled: boolean): Promise<void> {
-    return wsRequest('appstore_set_autostart', { appId, enabled })
+    return wsRequest('appstore.set_autostart', { appId, enabled })
   },
 
   getAppStatus(appId: string): Promise<any> {
-    return wsRequest('appstore_app_status', { appId })
+    return wsRequest('appstore.app_status', { appId })
   },
 
   onInstalledAppsChanged(handler: (apps: any[]) => void): () => void {
@@ -88,18 +88,18 @@ export const appStoreService = {
 
   // Skills marketplace
   getSkillsCatalog(refresh = false): Promise<any[]> {
-    return wsRequest('skills_catalog', { refresh })
+    return wsRequest('skills.catalog', { refresh })
   },
 
   getInstalledSkills(): Promise<any[]> {
-    return wsRequest('skills_installed', {})
+    return wsRequest('skills.installed', {})
   },
 
   installSkill(skillId: string, zipUrl: string): Promise<void> {
-    return wsRequest('skills_install', { skillId, zipUrl })
+    return wsRequest('skills.install', { skillId, zipUrl })
   },
 
   uninstallSkill(skillId: string): Promise<void> {
-    return wsRequest('skills_uninstall', { skillId })
+    return wsRequest('skills.uninstall', { skillId })
   },
 }

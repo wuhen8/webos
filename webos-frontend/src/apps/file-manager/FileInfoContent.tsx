@@ -51,7 +51,7 @@ export default function FileInfoContent({ windowId }: { windowId: string }) {
   useEffect(() => {
     if (!appData.nodeId || !appData.path) return
     const unsub = registerMessageHandler((msg: any) => {
-      if (msg.type === 'fs_stat_size' && msg.data?.path === appData.path && msg.data?.nodeId === appData.nodeId) {
+      if (msg.type === 'fs.stat_size' && msg.data?.path === appData.path && msg.data?.nodeId === appData.nodeId) {
         setDirSize({ size: msg.data.size, itemCount: msg.data.itemCount })
         setDirSizeLoading(false)
         return true

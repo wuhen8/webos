@@ -11,7 +11,7 @@ const dockerLogsHandlers = new Map<string, { handler: (chunk: string, isFirst: b
 
 // Register push message handler for docker_logs
 registerMessageHandler((msg) => {
-  if (msg.type === 'docker_logs' && msg.data) {
+  if (msg.type === 'docker.logs' && msg.data) {
     const containerId = msg.data.containerId as string
     const entry = containerId ? dockerLogsHandlers.get(containerId) : null
     if (entry) {
@@ -30,15 +30,15 @@ registerDisconnectHook(() => {
 
 export const dockerService = {
   containerLogs(id: string, tail?: string): Promise<{ logs: string }> {
-    return request('docker_container_logs', { data: id, tail: tail || '200' })
+    return request('docker.container_logs', { data: id, tail: tail || '200' })
   },
 
   composeLogs(projectDir: string, tail?: string): Promise<{ logs: string }> {
-    return request('docker_compose_logs', { projectDir, tail: tail || '100' })
+    return request('docker.compose_logs', { projectDir, tail: tail || '100' })
   },
 
   composeCreate(projectDir: string, yamlContent: string, autoUp: boolean): Promise<{ composePath: string; output?: string }> {
-    return request('docker_compose_create', { projectDir, yamlContent, autoUp })
+    return request('docker.compose_create', { projectDir, yamlContent, autoUp })
   },
 
   async composeRead(projectDir: string): Promise<{ composePath: string; content: string }> {
@@ -62,44 +62,44 @@ export const dockerService = {
   },
 
   async daemonRestart(): Promise<{ status: string }> {
-    await exec('systemctl restart docker', { background: true, title: 'Docker 重启', refreshChannels: ['docker_containers', 'docker_images', 'docker_compose', 'docker_networks', 'docker_volumes'] })
+    await exec('systemctl restart docker', { background: true, title: 'Docker 重启', refreshChannels: ['sub.docker_containers', 'sub.docker_images', 'sub.docker_compose', 'sub.docker_networks', 'sub.docker_volumes'] })
     return { status: 'ok' }
   },
 
   pull(imageName: string) {
-    sendMsg({ type: 'docker_pull', name: imageName })
+    sendMsg({ type: 'docker.pull', name: imageName })
   },
 
   logsSubscribe(containerId: string, tail: string, handler: (chunk: string, isFirst: boolean) => void): () => void {
     dockerLogsHandlers.set(containerId, { handler, isFirst: true })
-    sendMsg({ type: 'docker_logs_subscribe', data: containerId, tail })
+    sendMsg({ type: 'docker.logs_subscribe', data: containerId, tail })
     return () => {
       dockerLogsHandlers.delete(containerId)
-      sendMsg({ type: 'docker_logs_unsubscribe' })
+      sendMsg({ type: 'docker.logs_unsubscribe' })
     }
   },
 
   networkInspect(id: string): Promise<any> {
-    return request('docker_network_inspect', { data: id })
+    return request('docker.network_inspect', { data: id })
   },
 
   networkCreate(name: string, driver: string): Promise<any> {
-    return request('docker_network_create', { name, driver })
+    return request('docker.network_create', { name, driver })
   },
 
   networkRemove(id: string): Promise<any> {
-    return request('docker_network_remove', { data: id })
+    return request('docker.network_remove', { data: id })
   },
 
   volumeInspect(name: string): Promise<any> {
-    return request('docker_volume_inspect', { data: name })
+    return request('docker.volume_inspect', { data: name })
   },
 
   volumeCreate(name: string, driver: string): Promise<any> {
-    return request('docker_volume_create', { name, driver })
+    return request('docker.volume_create', { name, driver })
   },
 
   volumeRemove(name: string, force?: boolean): Promise<any> {
-    return request('docker_volume_remove', { data: name, force: !!force })
+    return request('docker.volume_remove', { data: name, force: !!force })
   },
 }

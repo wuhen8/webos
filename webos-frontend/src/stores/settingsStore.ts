@@ -74,7 +74,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(defaults))
     } catch {}
-    wsRequest('preferences_reset', {}).then(() => {
+    wsRequest('settings.preferences_reset', {}).then(() => {
       set({ _lastSaved: { ...defaults } })
     }).catch(() => {})
   },
@@ -113,7 +113,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         document.documentElement.style.fontSize = `${initFont}px`
       } catch {}
       // 从后端获取 dataDir（只读）
-      wsRequest('preferences_get', {}).then((data: any) => {
+      wsRequest('settings.preferences_get', {}).then((data: any) => {
         if (data?.dataDir) set({ dataDir: data.dataDir })
       }).catch(() => {})
       if (_skipAutoSaveTimer) clearTimeout(_skipAutoSaveTimer)
@@ -123,7 +123,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     } else {
       ;(async () => {
         try {
-          const data = await wsRequest('preferences_get', {}) || {}
+          const data = await wsRequest('settings.preferences_get', {}) || {}
           const initDock = typeof data.dockSize === 'number' ? data.dockSize : 56
           const initFont = typeof data.fontSize === 'number' ? data.fontSize : 14
           const initWall = data.wallpaperUrl || null
@@ -169,7 +169,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(prefs))
     } catch {}
-    wsRequest('preferences_save', { prefs })
+    wsRequest('settings.preferences_save', { prefs })
       .then(() => {
         set({ _lastSaved: { ...prefs } })
       })

@@ -160,20 +160,20 @@ func (e *AIExecutor) executeCommand(convID, cmdName, cmdArgs, sinkID string) {
 		}
 	}
 
-	sendToClient("chat_command_progress", map[string]interface{}{
+	sendToClient("chat.command_progress", map[string]interface{}{
 		"command": cmdName, "state": "running",
 	})
 
 	ce := service.GetCommandExecutor()
 	result := ce.ExecuteCommand(convID, cmdName, cmdArgs)
 
-	sendToClient("chat_command_progress", map[string]interface{}{
+	sendToClient("chat.command_progress", map[string]interface{}{
 		"command": cmdName, "state": "done",
 	})
 
 	ce.HandleCommandResult(convID, result)
 
-	sendToClient("chat_command_result", map[string]interface{}{
+	sendToClient("chat.command_result", map[string]interface{}{
 		"conversationId": convID,
 		"command":        cmdName,
 		"text":           result.Text,
@@ -496,16 +496,16 @@ func (e *AIExecutor) processMessage(row *database.AIQueueRow) {
 	e.service.HandleChat(ctx, row.ConvID, row.Content, row.ClientID, e.broadcastSink)
 }
 
-// broadcastStatus sends a chat_status_update event to all sinks.
+// broadcastStatus sends a chat.status_update event to all sinks.
 func (e *AIExecutor) broadcastStatus() {
 	status := e.Status()
-	e.broadcastSink.OnSystemEvent("chat_status_update", status)
+	e.broadcastSink.OnSystemEvent("chat.status_update", status)
 }
 
 // broadcastConvSwitched sends a conv_switched event to all sinks.
 func (e *AIExecutor) broadcastConvSwitched(convID string) {
 	title := getConvTitle(convID)
-	e.broadcastSink.OnSystemEvent("conv_switched", map[string]string{
+	e.broadcastSink.OnSystemEvent("chat.conv_switched", map[string]string{
 		"convId":    convID,
 		"convTitle": title,
 	})

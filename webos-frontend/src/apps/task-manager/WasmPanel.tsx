@@ -23,7 +23,7 @@ export function WasmPanel({
   const { toast } = useToast()
   const [loading, setLoading] = useState<string | null>(null)
 
-  const doAction = async (action: "wasm_start" | "wasm_stop" | "wasm_restart", appId: string, label: string) => {
+  const doAction = async (action: "wasm.start" | "wasm.stop" | "wasm.restart", appId: string, label: string) => {
     setLoading(appId)
     try {
       await wsRequest(action, { appId })
@@ -155,7 +155,7 @@ export function WasmPanel({
                     {p.state === "running" ? (
                       <>
                         <button
-                          onClick={() => doAction("wasm_stop", p.appId, "已停止")}
+                          onClick={() => doAction("wasm.stop", p.appId, "已停止")}
                           disabled={loading === p.appId}
                           className="flex items-center gap-0.5 px-1.5 py-0.5 text-[0.5625rem] text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                           title="停止"
@@ -164,7 +164,7 @@ export function WasmPanel({
                           停止
                         </button>
                         <button
-                          onClick={() => doAction("wasm_restart", p.appId, "已重启")}
+                          onClick={() => doAction("wasm.restart", p.appId, "已重启")}
                           disabled={loading === p.appId}
                           className="flex items-center gap-0.5 px-1.5 py-0.5 text-[0.5625rem] text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50"
                           title="重启"
@@ -175,7 +175,7 @@ export function WasmPanel({
                       </>
                     ) : (
                       <button
-                        onClick={() => doAction("wasm_start", p.appId, "已启动")}
+                        onClick={() => doAction("wasm.start", p.appId, "已启动")}
                         disabled={loading === p.appId}
                         className="flex items-center gap-0.5 px-1.5 py-0.5 text-[0.5625rem] text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
                         title="启动"

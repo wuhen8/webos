@@ -85,7 +85,7 @@ export const useSidebarConfig = () => {
     const initConfig = async () => {
       setIsLoading(true)
       try {
-        const data = await wsRequest('sidebar_get', {})
+        const data = await wsRequest('settings.sidebar_get', {})
         if (Array.isArray(data) && data.length > 0) {
           setSidebarConfig(prev => ({
             items: data.map(mapApiItem),
@@ -103,7 +103,7 @@ export const useSidebarConfig = () => {
   // 保存配置到后端
   const saveSidebarConfig = useCallback(async (config: SidebarConfig) => {
     try {
-      await wsRequest('sidebar_save', { items: config.items.map(mapToApiItem) })
+      await wsRequest('settings.sidebar_save', { items: config.items.map(mapToApiItem) })
       setSidebarConfig(config)
     } catch (error) {
       console.error('Failed to save sidebar config:', error)

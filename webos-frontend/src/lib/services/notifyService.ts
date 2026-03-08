@@ -12,7 +12,7 @@ const levelToVariant: Record<string, ToastVariant> = {
 }
 
 registerMessageHandler((msg: any) => {
-  if (msg.type !== 'system_notify') return false
+  if (msg.type !== 'system.notify') return false
 
   const { level = 'info', title, message, source } = msg.data || {}
   const variant = levelToVariant[level] || 'default'

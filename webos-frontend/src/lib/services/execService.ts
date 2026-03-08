@@ -8,7 +8,7 @@ interface ExecOptions {
 
 export function exec(command: string, opts?: ExecOptions): Promise<any> {
   if (opts?.background) {
-    return request('exec', { command, background: true, title: opts.title, refreshChannels: opts.refreshChannels })
+    return request('system.exec', { command, background: true, title: opts.title, refreshChannels: opts.refreshChannels })
   }
-  return request('exec', { command })
+  return request('system.exec', { command })
 }

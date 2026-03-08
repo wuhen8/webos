@@ -216,7 +216,7 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
   // Auto-refresh on background task completion
   useEffect(() => {
     const unsub = useTaskStore.subscribe((state, prevState) => {
-      const fsTypes = new Set(['fs_copy', 'fs_move', 'fs_delete', 'upload', 'offline_download'])
+      const fsTypes = new Set(['fs.copy', 'fs.move', 'fs.delete', 'upload', 'offline_download'])
       const justCompleted = state.tasks.some((t) => {
         const prev = prevState.tasks.find(p => p.id === t.id)
         return fsTypes.has(t.type) && (t.status === 'success' || t.status === 'failed') && prev?.status === 'running'

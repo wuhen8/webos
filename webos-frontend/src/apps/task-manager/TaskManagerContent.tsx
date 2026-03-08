@@ -52,7 +52,7 @@ function TaskManagerContent() {
 
   const fetchWasmProcs = useCallback(async () => {
     try {
-      const list = await wsRequest('wasm_list', {})
+      const list = await wsRequest('wasm.list', {})
       setWasmProcs(list || [])
     } catch {
       // 静默
@@ -102,7 +102,7 @@ function TaskManagerContent() {
     setServiceTotal(data.total || 0)
   }, [])
 
-  const wsChannel = activeTab === "tasks" ? "tasks" : activeTab === "services" ? "services" : activeTab === "wasm" ? "overview" : activeTab
+  const wsChannel = activeTab === "tasks" ? "sub.tasks" : activeTab === "services" ? "sub.services" : activeTab === "wasm" ? "sub.overview" : ("sub." + activeTab) as any
 
   const { connected } = useSystemWebSocket({
     channel: wsChannel,
@@ -123,7 +123,7 @@ function TaskManagerContent() {
   }, [activeTab, autoRefresh, refreshInterval, fetchWasmProcs])
 
   const sendSignal = (pid: number, signal: string) => {
-    exec(`kill -${signal} ${pid}`, { background: true, title: `发送 ${signal} 信号到进程 ${pid}`, refreshChannels: ['processes'] })
+    exec(`kill -${signal} ${pid}`, { background: true, title: `发送 ${signal} 信号到进程 ${pid}`, refreshChannels: ['sub.processes'] })
     toast({ title: "已提交", description: `正在向进程 ${pid} 发送 ${signal} 信号` })
   }
 
@@ -167,7 +167,7 @@ function TaskManagerContent() {
       reload: '重载', enable: '启用开机自启', disable: '禁用开机自启',
     }
     const label = labelMap[cmd]
-    exec(`systemctl ${cmd} ${serviceName}`, { background: true, title: `${label}服务 ${serviceName}`, refreshChannels: ['services'] })
+    exec(`systemctl ${cmd} ${serviceName}`, { background: true, title: `${label}服务 ${serviceName}`, refreshChannels: ['sub.services'] })
     toast({ title: "已提交", description: `${label}服务 ${serviceName} 操作已提交到后台` })
   }
 
@@ -195,11 +195,11 @@ function TaskManagerContent() {
     const label = labelMap[action] || action
     try {
       if (action === 'start') {
-        await wsRequest('wasm_start', { appId })
+        await wsRequest('wasm.start', { appId })
       } else if (action === 'stop') {
-        await wsRequest('wasm_stop', { appId })
+        await wsRequest('wasm.stop', { appId })
       } else if (action === 'restart') {
-        await wsRequest('wasm_restart', { appId })
+        await wsRequest('wasm.restart', { appId })
       } else if (action === 'enableAutostart') {
         await appStoreService.setAutostart(appId, true)
       } else if (action === 'disableAutostart') {

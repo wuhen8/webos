@@ -37,7 +37,7 @@ export default function ShareManagerContent({ windowId }: { windowId: string }) 
   const loadLinks = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await wsRequest('share_list', {})
+      const data = await wsRequest('share.list', {})
       setLinks(data || [])
     } catch {
       setLinks([])
@@ -50,7 +50,7 @@ export default function ShareManagerContent({ windowId }: { windowId: string }) 
 
   const handleDelete = async (token: string) => {
     try {
-      await wsRequest('share_delete', { token })
+      await wsRequest('share.delete', { token })
       setLinks(prev => prev.filter(l => l.token !== token))
     } catch {}
   }

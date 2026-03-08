@@ -33,7 +33,7 @@ export async function syncInstalledApps(): Promise<void> {
 
     let staticManifests: Record<string, any> = {}
     try {
-      const manifests: any[] = await wsRequest('webapp_list', {})
+      const manifests: any[] = await wsRequest('webapp.list', {})
       if (manifests) {
         for (const m of manifests) {
           staticManifests[m.id] = m

@@ -11,7 +11,7 @@ export default function UpdateTab() {
   const checkUpdate = async () => {
     setUpdateChecking(true)
     try {
-      const info = await wsRequest('system_check_update', {})
+      const info = await wsRequest('system.check_update', {})
       setUpdateInfo(info)
     } catch (e: any) {
       setUpdateInfo({ error: e.message || '检查更新失败' })
@@ -23,7 +23,7 @@ export default function UpdateTab() {
   const doUpdate = async () => {
     setUpdateRunning(true)
     try {
-      await wsRequest('system_do_update', {})
+      await wsRequest('system.do_update', {})
     } catch {
       // task manager handles it
     }

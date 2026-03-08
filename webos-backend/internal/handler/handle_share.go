@@ -8,9 +8,9 @@ import (
 
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"share_create": handleShareCreate,
-		"share_delete": handleShareDelete,
-		"share_list": asyncHandler[struct{ baseReq }]("share_list", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
+		"share.create": handleShareCreate,
+		"share.delete": handleShareDelete,
+		"share.list": asyncHandler[struct{ baseReq }]("share.list", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return service.ListShareLinks()
 		}),
 	})
@@ -26,7 +26,7 @@ func handleShareCreate(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	go func() {
 		data, err := service.CreateShareLink(p.NodeID, p.Path, p.ExpireSeconds)
-		c.ReplyResult("share_create", p.ReqID, data, err)
+		c.ReplyResult("share.create", p.ReqID, data, err)
 	}()
 }
 
@@ -38,6 +38,6 @@ func handleShareDelete(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	go func() {
 		err := service.DeleteShareLink(p.Token)
-		c.ReplyResult("share_delete", p.ReqID, nil, err)
+		c.ReplyResult("share.delete", p.ReqID, nil, err)
 	}()
 }

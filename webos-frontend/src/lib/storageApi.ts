@@ -7,11 +7,11 @@ import type { StorageNodeConfig } from '@/types'
 // ==================== Storage Node CRUD ====================
 
 export async function getStorageNodes(): Promise<StorageNodeConfig[]> {
-  return wsRequest('storage_nodes_list', {})
+  return wsRequest('settings.storage_nodes_list', {})
 }
 
 export async function addStorageNode(node: StorageNodeConfig): Promise<void> {
-  await wsRequest('storage_node_add', {
+  await wsRequest('settings.storage_node_add', {
     id: node.id,
     stName: node.name,
     stType: node.type,
@@ -20,7 +20,7 @@ export async function addStorageNode(node: StorageNodeConfig): Promise<void> {
 }
 
 export async function updateStorageNode(id: string, node: Partial<StorageNodeConfig>): Promise<void> {
-  await wsRequest('storage_node_update', {
+  await wsRequest('settings.storage_node_update', {
     id,
     stName: node.name,
     stType: node.type,
@@ -29,7 +29,7 @@ export async function updateStorageNode(id: string, node: Partial<StorageNodeCon
 }
 
 export async function deleteStorageNode(id: string): Promise<void> {
-  await wsRequest('storage_node_delete', { id })
+  await wsRequest('settings.storage_node_delete', { id })
 }
 
 // ==================== Chunked Upload Helpers ====================
@@ -246,7 +246,7 @@ export const fsApi = {
           collectedETags.push({ partNum, etag })
 
           // Notify server of progress via WebSocket
-          sendMsg({ type: 'upload_progress', uploadId, partNum })
+          sendMsg({ type: 'upload.progress', uploadId, partNum })
           uploadedBytes += (end - start)
           if (onProgress) onProgress(Math.min(uploadedBytes, file.size), file.size)
         })

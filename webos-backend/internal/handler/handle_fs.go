@@ -15,31 +15,31 @@ import (
 
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"fs_list":             handleFsList,
-		"fs_search":           handleFsSearch,
-		"fs_read":             handleFsRead,
-		"fs_write":            handleFsWrite,
-		"fs_mkdir":            handleFsMkdir,
-		"fs_create":           handleFsCreate,
-		"fs_delete":           handleFsDelete,
-		"fs_rename":           handleFsRename,
-		"fs_copy":             handleFsCopy,
-		"fs_move":             handleFsMove,
-		"fs_presign":          handleFsPresign,
-		"fs_download_sign":    handleFsDownloadSign,
-		"fs_extract":          handleFsExtract,
-		"fs_compress":         handleFsCompress,
-		"fs_offline_download": handleFsOfflineDownload,
-		"fs_stat":             handleFsStat,
-		"fs_stat_cancel":      handleFsStatCancel,
-		"fs_watch":            handleFsWatch,
-		"fs_unwatch":          handleFsUnwatch,
-		"fs_trash_list":       handleFsTrashList,
-		"fs_trash_restore":    handleFsTrashRestore,
-		"fs_trash_delete":     handleFsTrashDelete,
-		"fs_trash_empty":      handleFsTrashEmpty,
-		"mount_watch":         handleMountWatch,
-		"mount_unwatch":       handleMountUnwatch,
+		"fs.list":             handleFsList,
+		"fs.search":           handleFsSearch,
+		"fs.read":             handleFsRead,
+		"fs.write":            handleFsWrite,
+		"fs.mkdir":            handleFsMkdir,
+		"fs.create":           handleFsCreate,
+		"fs.delete":           handleFsDelete,
+		"fs.rename":           handleFsRename,
+		"fs.copy":             handleFsCopy,
+		"fs.move":             handleFsMove,
+		"fs.presign":          handleFsPresign,
+		"fs.download_sign":    handleFsDownloadSign,
+		"fs.extract":          handleFsExtract,
+		"fs.compress":         handleFsCompress,
+		"fs.offline_download": handleFsOfflineDownload,
+		"fs.stat":             handleFsStat,
+		"fs.stat_cancel":      handleFsStatCancel,
+		"fs.watch":            handleFsWatch,
+		"fs.unwatch":          handleFsUnwatch,
+		"fs.trash_list":       handleFsTrashList,
+		"fs.trash_restore":    handleFsTrashRestore,
+		"fs.trash_delete":     handleFsTrashDelete,
+		"fs.trash_empty":      handleFsTrashEmpty,
+		"fs.mount_watch":      handleMountWatch,
+		"fs.mount_unwatch":    handleMountUnwatch,
 	})
 }
 
@@ -55,7 +55,7 @@ func handleFsList(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	go func() {
 		files, err := fileSvc.List(p.NodeID, p.Path)
-		c.ReplyResult("fs_list", p.ReqID, files, err)
+		c.ReplyResult("fs.list", p.ReqID, files, err)
 	}()
 }
 
@@ -67,14 +67,14 @@ func handleFsSearch(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	go func() {
 		if p.Keyword == "" {
-			c.Reply("fs_search", p.ReqID, []storage.FileInfo{})
+			c.Reply("fs.search", p.ReqID, []storage.FileInfo{})
 			return
 		}
 		results, err := fileSvc.Search(p.NodeID, p.Path, p.Keyword, 50)
 		if err != nil || results == nil {
 			results = []storage.FileInfo{}
 		}
-		c.Reply("fs_search", p.ReqID, results)
+		c.Reply("fs.search", p.ReqID, results)
 	}()
 }
 
@@ -84,9 +84,9 @@ func handleFsRead(c *WSConn, raw json.RawMessage) {
 	go func() {
 		content, err := fileSvc.Read(p.NodeID, p.Path)
 		if err != nil {
-			c.ReplyErr("fs_error", p.ReqID, err)
+			c.ReplyErr("fs.error", p.ReqID, err)
 		} else {
-			c.Reply("fs_read", p.ReqID, map[string]string{
+			c.Reply("fs.read", p.ReqID, map[string]string{
 				"path":    p.Path,
 				"content": string(content),
 			})
@@ -102,9 +102,9 @@ func handleFsWrite(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	go func() {
 		if err := fileSvc.Write(p.NodeID, p.Path, []byte(p.Content)); err != nil {
-			c.ReplyErr("fs_error", p.ReqID, err)
+			c.ReplyErr("fs.error", p.ReqID, err)
 		} else {
-			c.Reply("fs_write", p.ReqID, map[string]string{"path": p.Path})
+			c.Reply("fs.write", p.ReqID, map[string]string{"path": p.Path})
 		}
 	}()
 }
@@ -118,9 +118,9 @@ func handleFsMkdir(c *WSConn, raw json.RawMessage) {
 	go func() {
 		fullPath, err := fileSvc.CreateDir(p.NodeID, p.Path, p.Name)
 		if err != nil {
-			c.ReplyErr("fs_error", p.ReqID, err)
+			c.ReplyErr("fs.error", p.ReqID, err)
 		} else {
-			c.Reply("fs_mkdir", p.ReqID, map[string]string{"path": fullPath})
+			c.Reply("fs.mkdir", p.ReqID, map[string]string{"path": fullPath})
 		}
 	}()
 }
@@ -134,9 +134,9 @@ func handleFsCreate(c *WSConn, raw json.RawMessage) {
 	go func() {
 		fullPath, err := fileSvc.CreateFile(p.NodeID, p.Path, p.Name)
 		if err != nil {
-			c.ReplyErr("fs_error", p.ReqID, err)
+			c.ReplyErr("fs.error", p.ReqID, err)
 		} else {
-			c.Reply("fs_create", p.ReqID, map[string]string{"path": fullPath})
+			c.Reply("fs.create", p.ReqID, map[string]string{"path": fullPath})
 		}
 	}()
 }
@@ -153,7 +153,7 @@ func handleFsDelete(c *WSConn, raw json.RawMessage) {
 		paths = []string{p.Path}
 	}
 	if len(paths) == 0 {
-		c.ReplyErr("fs_error", p.ReqID, errRequired("paths"))
+		c.ReplyErr("fs.error", p.ReqID, errRequired("paths"))
 		return
 	}
 	nodeID := p.NodeID
@@ -161,7 +161,7 @@ func handleFsDelete(c *WSConn, raw json.RawMessage) {
 	if len(paths) == 1 {
 		title = "移到回收站 " + filepath.Base(paths[0])
 	}
-	service.GetTaskManager().Submit("fs_delete", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
+	service.GetTaskManager().Submit("fs.delete", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		total := int64(len(paths))
 		for i, pa := range paths {
 			if err := fileSvc.Delete(nodeID, pa); err != nil {
@@ -169,10 +169,10 @@ func handleFsDelete(c *WSConn, raw json.RawMessage) {
 			}
 			r.Report(float64(i+1)/float64(total), int64(i+1), total, 0, 0, "")
 		}
-		c.WriteJSON(wsServerMsg{Type: "fs_trash_changed", Data: map[string]interface{}{"nodeId": nodeID}})
+		c.WriteJSON(wsServerMsg{Type: "fs.trash_changed", Data: map[string]interface{}{"nodeId": nodeID}})
 		return fmt.Sprintf("已移到回收站 %d 个项目", total), nil
 	})
-	c.Reply("fs_delete", p.ReqID, nil)
+	c.Reply("fs.delete", p.ReqID, nil)
 }
 
 func handleFsRename(c *WSConn, raw json.RawMessage) {
@@ -185,9 +185,9 @@ func handleFsRename(c *WSConn, raw json.RawMessage) {
 	go func() {
 		newPath, err := fileSvc.Rename(p.NodeID, p.Path, p.OldName, p.NewName)
 		if err != nil {
-			c.ReplyErr("fs_error", p.ReqID, err)
+			c.ReplyErr("fs.error", p.ReqID, err)
 		} else {
-			c.Reply("fs_rename", p.ReqID, map[string]string{"path": newPath})
+			c.Reply("fs.rename", p.ReqID, map[string]string{"path": newPath})
 		}
 	}()
 }
@@ -207,7 +207,7 @@ func handleFsCopy(c *WSConn, raw json.RawMessage) {
 		paths = []string{p.From}
 	}
 	if len(paths) == 0 {
-		c.ReplyErr("fs_error", p.ReqID, errRequired("paths"))
+		c.ReplyErr("fs.error", p.ReqID, errRequired("paths"))
 		return
 	}
 	srcNodeID := p.NodeID
@@ -221,7 +221,7 @@ func handleFsCopy(c *WSConn, raw json.RawMessage) {
 		title = "复制 " + filepath.Base(paths[0])
 	}
 	crossStorage := srcNodeID != dstNodeID
-	service.GetTaskManager().Submit("fs_copy", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
+	service.GetTaskManager().Submit("fs.copy", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		total := int64(len(paths))
 		for i, pa := range paths {
 			progress := func(written, size int64) {
@@ -244,7 +244,7 @@ func handleFsCopy(c *WSConn, raw json.RawMessage) {
 		}
 		return fmt.Sprintf("已复制 %d 个项目", len(paths)), nil
 	})
-	c.Reply("fs_copy", p.ReqID, nil)
+	c.Reply("fs.copy", p.ReqID, nil)
 }
 
 func handleFsMove(c *WSConn, raw json.RawMessage) {
@@ -262,7 +262,7 @@ func handleFsMove(c *WSConn, raw json.RawMessage) {
 		paths = []string{p.From}
 	}
 	if len(paths) == 0 {
-		c.ReplyErr("fs_error", p.ReqID, errRequired("paths"))
+		c.ReplyErr("fs.error", p.ReqID, errRequired("paths"))
 		return
 	}
 	srcNodeID := p.NodeID
@@ -276,7 +276,7 @@ func handleFsMove(c *WSConn, raw json.RawMessage) {
 		title = "移动 " + filepath.Base(paths[0])
 	}
 	crossStorage := srcNodeID != dstNodeID
-	service.GetTaskManager().Submit("fs_move", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
+	service.GetTaskManager().Submit("fs.move", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		total := int64(len(paths))
 		for i, pa := range paths {
 			progress := func(written, size int64) {
@@ -299,7 +299,7 @@ func handleFsMove(c *WSConn, raw json.RawMessage) {
 		}
 		return fmt.Sprintf("已移动 %d 个项目", len(paths)), nil
 	})
-	c.Reply("fs_move", p.ReqID, nil)
+	c.Reply("fs.move", p.ReqID, nil)
 }
 
 func handleFsPresign(c *WSConn, raw json.RawMessage) {
@@ -321,13 +321,13 @@ func handleFsPresign(c *WSConn, raw json.RawMessage) {
 		case "PUT":
 			presignURL, err = fileSvc.PresignPutURL(p.NodeID, p.Path, expires)
 		default:
-			c.ReplyErr("fs_error", p.ReqID, fmt.Errorf("method must be GET or PUT"))
+			c.ReplyErr("fs.error", p.ReqID, fmt.Errorf("method must be GET or PUT"))
 			return
 		}
 		if err != nil {
-			c.ReplyErr("fs_error", p.ReqID, err)
+			c.ReplyErr("fs.error", p.ReqID, err)
 		} else {
-			c.Reply("fs_presign", p.ReqID, map[string]string{
+			c.Reply("fs.presign", p.ReqID, map[string]string{
 				"url":    presignURL,
 				"method": p.Method,
 			})
@@ -339,7 +339,7 @@ func handleFsDownloadSign(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	go func() {
 		exp, sign := auth.GenerateDownloadSign(p.NodeID, p.Path, 6*60*60)
-		c.Reply("fs_download_sign", p.ReqID, map[string]interface{}{
+		c.Reply("fs.download_sign", p.ReqID, map[string]interface{}{
 			"nodeId": p.NodeID,
 			"path":   p.Path,
 			"exp":    exp,
@@ -360,13 +360,13 @@ func handleFsExtract(c *WSConn, raw json.RawMessage) {
 		dest = filepath.Dir(p.Path)
 	}
 	nodeID, path := p.NodeID, p.Path
-	service.GetTaskManager().Submit("fs_extract", "解压 "+filepath.Base(path), func(ctx context.Context, r *service.ProgressReporter) (string, error) {
+	service.GetTaskManager().Submit("fs.extract", "解压 "+filepath.Base(path), func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		if err := fileSvc.Extract(nodeID, path, dest); err != nil {
 			return "", err
 		}
 		return dest, nil
 	})
-	c.Reply("fs_extract", p.ReqID, map[string]string{"path": dest})
+	c.Reply("fs.extract", p.ReqID, map[string]string{"path": dest})
 }
 
 func handleFsCompress(c *WSConn, raw json.RawMessage) {
@@ -379,21 +379,21 @@ func handleFsCompress(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 
 	if len(p.Paths) == 0 {
-		c.ReplyErr("fs_error", p.ReqID, errRequired("paths"))
+		c.ReplyErr("fs.error", p.ReqID, errRequired("paths"))
 		return
 	}
 	if p.Output == "" {
-		c.ReplyErr("fs_error", p.ReqID, errRequired("output"))
+		c.ReplyErr("fs.error", p.ReqID, errRequired("output"))
 		return
 	}
 	paths, output, nodeID := p.Paths, p.Output, p.NodeID
-	service.GetTaskManager().Submit("fs_compress", "压缩 "+filepath.Base(output), func(ctx context.Context, r *service.ProgressReporter) (string, error) {
+	service.GetTaskManager().Submit("fs.compress", "压缩 "+filepath.Base(output), func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		if err := fileSvc.Compress(nodeID, paths, output); err != nil {
 			return "", err
 		}
 		return output, nil
 	})
-	c.Reply("fs_compress", p.ReqID, map[string]string{"path": output})
+	c.Reply("fs.compress", p.ReqID, map[string]string{"path": output})
 }
 
 func handleFsOfflineDownload(c *WSConn, raw json.RawMessage) {
@@ -404,14 +404,14 @@ func handleFsOfflineDownload(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 
 	if len(p.URLs) == 0 {
-		c.ReplyErr("fs_error", p.ReqID, errRequired("urls"))
+		c.ReplyErr("fs.error", p.ReqID, errRequired("urls"))
 		return
 	}
 	nodeID := p.NodeID
 	destDir := p.Path
 	for _, u := range p.URLs {
 		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-			c.WriteJSON(wsServerMsg{Type: "fs_error", ReqID: p.ReqID, Message: "URL must start with http:// or https://: " + u})
+			c.WriteJSON(wsServerMsg{Type: "fs.error", ReqID: p.ReqID, Message: "URL must start with http:// or https://: " + u})
 			continue
 		}
 		dlURL := u
@@ -423,7 +423,7 @@ func handleFsOfflineDownload(c *WSConn, raw json.RawMessage) {
 			return service.DoOfflineDownload(ctx, dlURL, nodeID, destDir, r)
 		})
 	}
-	c.Reply("fs_offline_download", p.ReqID, nil)
+	c.Reply("fs.offline_download", p.ReqID, nil)
 }
 
 func handleFsTrashList(c *WSConn, raw json.RawMessage) {
@@ -431,7 +431,7 @@ func handleFsTrashList(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	go func() {
 		items, err := fileSvc.ListTrash(p.NodeID)
-		c.ReplyResult("fs_trash_list", p.ReqID, items, err)
+		c.ReplyResult("fs.trash_list", p.ReqID, items, err)
 	}()
 }
 
@@ -446,12 +446,12 @@ func handleFsTrashRestore(c *WSConn, raw json.RawMessage) {
 		for _, id := range p.TrashIDs {
 			destPath, err := fileSvc.RestoreFromTrash(p.NodeID, id)
 			if err != nil {
-				c.ReplyErr("fs_error", p.ReqID, fmt.Errorf("restore %s: %w", id, err))
+				c.ReplyErr("fs.error", p.ReqID, fmt.Errorf("restore %s: %w", id, err))
 				return
 			}
 			restored = append(restored, destPath)
 		}
-		c.Reply("fs_trash_restore", p.ReqID, map[string]interface{}{"restored": restored})
+		c.Reply("fs.trash_restore", p.ReqID, map[string]interface{}{"restored": restored})
 	}()
 }
 
@@ -464,11 +464,11 @@ func handleFsTrashDelete(c *WSConn, raw json.RawMessage) {
 	go func() {
 		for _, id := range p.TrashIDs {
 			if err := fileSvc.TrashDelete(p.NodeID, id); err != nil {
-				c.ReplyErr("fs_error", p.ReqID, fmt.Errorf("delete %s: %w", id, err))
+				c.ReplyErr("fs.error", p.ReqID, fmt.Errorf("delete %s: %w", id, err))
 				return
 			}
 		}
-		c.Reply("fs_trash_delete", p.ReqID, nil)
+		c.Reply("fs.trash_delete", p.ReqID, nil)
 	}()
 }
 
@@ -477,7 +477,7 @@ func handleFsTrashEmpty(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	go func() {
 		err := fileSvc.EmptyTrash(p.NodeID)
-		c.ReplyResult("fs_trash_empty", p.ReqID, nil, err)
+		c.ReplyResult("fs.trash_empty", p.ReqID, nil, err)
 	}()
 }
 
@@ -494,7 +494,7 @@ func handleFsWatch(c *WSConn, raw json.RawMessage) {
 	}
 	driver, err := storage.GetDriver(p.NodeID)
 	if err != nil {
-		c.WriteJSON(wsServerMsg{Type: "fs_error", Message: "fs_watch: " + err.Error()})
+		c.WriteJSON(wsServerMsg{Type: "fs.error", Message: "fs_watch: " + err.Error()})
 		return
 	}
 	if _, ok := driver.(*storage.LocalDriver); !ok {
@@ -509,14 +509,14 @@ func handleFsWatch(c *WSConn, raw json.RawMessage) {
 		if err != nil {
 			return
 		}
-		c.WriteJSON(wsServerMsg{Type: "fs_watch", Data: map[string]interface{}{
+		c.WriteJSON(wsServerMsg{Type: "fs.watch", Data: map[string]interface{}{
 			"nodeId": nodeID,
 			"path":   watchPath,
 			"files":  files,
 		}})
 	})
 	if err != nil {
-		c.WriteJSON(wsServerMsg{Type: "fs_error", Message: "fs_watch subscribe: " + err.Error()})
+		c.WriteJSON(wsServerMsg{Type: "fs.error", Message: "fs_watch subscribe: " + err.Error()})
 	} else {
 		c.FsWatches[watchKey] = absPath
 	}
@@ -527,10 +527,10 @@ func handleFsStat(c *WSConn, raw json.RawMessage) {
 	go func() {
 		info, err := fileSvc.StatBasic(p.NodeID, p.Path)
 		if err != nil {
-			c.ReplyErr("fs_stat", p.ReqID, err)
+			c.ReplyErr("fs.stat", p.ReqID, err)
 			return
 		}
-		c.Reply("fs_stat", p.ReqID, info)
+		c.Reply("fs.stat", p.ReqID, info)
 		if info.IsDir {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -563,7 +563,7 @@ func handleFsStat(c *WSConn, raw json.RawMessage) {
 			default:
 			}
 			c.WriteJSON(wsServerMsg{
-				Type: "fs_stat_size",
+				Type: "fs.stat_size",
 				Data: map[string]interface{}{
 					"path":      p.Path,
 					"nodeId":    p.NodeID,
@@ -607,7 +607,7 @@ func handleMountWatch(c *WSConn, raw json.RawMessage) {
 	if !c.MountWatching {
 		c.MountWatching = true
 		c.MountWatcher.Subscribe(c.ConnID, func(mounts []service.MountInfo) {
-			c.WriteJSON(wsServerMsg{Type: "mount_watch", Data: mounts})
+			c.WriteJSON(wsServerMsg{Type: "fs.mount_watch", Data: mounts})
 		})
 	}
 }

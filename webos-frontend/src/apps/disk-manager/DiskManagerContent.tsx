@@ -49,7 +49,7 @@ function DiskManagerContent() {
   }, [])
 
   const { connected } = useSystemWebSocket({
-    channel: "disks",
+    channel: "sub.disks",
     interval: refreshInterval,
     enabled: autoRefresh,
     onDisks: handleDisks,

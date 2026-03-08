@@ -92,34 +92,34 @@ func (s *wasmEventSink) push(msgType string, data interface{}) {
 }
 
 func (s *wasmEventSink) OnDelta(convID, text string) {
-	s.push("chat_delta", map[string]string{"conversationId": convID, "content": text})
+	s.push("chat.delta", map[string]string{"conversationId": convID, "content": text})
 }
 func (s *wasmEventSink) OnThinking(convID, text string) {
-	s.push("chat_thinking", map[string]string{"conversationId": convID, "content": text})
+	s.push("chat.thinking", map[string]string{"conversationId": convID, "content": text})
 }
 func (s *wasmEventSink) OnToolCallPending(convID string, pending ai.ToolCallPending) {
-	s.push("chat_tool_call_pending", map[string]interface{}{"conversationId": convID, "pending": pending})
+	s.push("chat.tool_call_pending", map[string]interface{}{"conversationId": convID, "pending": pending})
 }
 func (s *wasmEventSink) OnToolCall(convID string, call ai.ToolCall) {
-	s.push("chat_tool_call", map[string]interface{}{"conversationId": convID, "toolCall": call})
+	s.push("chat.tool_call", map[string]interface{}{"conversationId": convID, "toolCall": call})
 }
 func (s *wasmEventSink) OnToolResult(convID string, result ai.ToolResult) {
-	s.push("chat_tool_result", map[string]interface{}{"conversationId": convID, "result": result})
+	s.push("chat.tool_result", map[string]interface{}{"conversationId": convID, "result": result})
 }
 func (s *wasmEventSink) OnShellOutput(convID, toolCallID string, output ai.ShellOutput) {
-	s.push("chat_shell_output", map[string]interface{}{"conversationId": convID, "toolCallId": toolCallID, "output": output})
+	s.push("chat.shell_output", map[string]interface{}{"conversationId": convID, "toolCallId": toolCallID, "output": output})
 }
 func (s *wasmEventSink) OnUIAction(convID string, action ai.UIAction) {
-	s.push("chat_ui_action", map[string]interface{}{"conversationId": convID, "action": action})
+	s.push("chat.ui_action", map[string]interface{}{"conversationId": convID, "action": action})
 }
 func (s *wasmEventSink) OnMediaAttachment(convID string, attachment ai.MediaAttachment) {
-	s.push("chat_media", map[string]interface{}{"conversationId": convID, "attachment": attachment})
+	s.push("chat.media", map[string]interface{}{"conversationId": convID, "attachment": attachment})
 }
 func (s *wasmEventSink) OnDone(convID, fullText string, usage ai.TokenUsage) {
-	s.push("chat_done", map[string]interface{}{"conversationId": convID, "fullText": fullText, "usage": usage})
+	s.push("chat.done", map[string]interface{}{"conversationId": convID, "fullText": fullText, "usage": usage})
 }
 func (s *wasmEventSink) OnError(convID string, err error) {
-	s.push("chat_error", map[string]interface{}{"conversationId": convID, "error": err.Error()})
+	s.push("chat.error", map[string]interface{}{"conversationId": convID, "error": err.Error()})
 }
 func (s *wasmEventSink) OnSystemEvent(msgType string, data interface{}) {
 	s.push(msgType, data)

@@ -18,10 +18,10 @@ import (
 
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"terminal_open":   handleTerminalOpen,
-		"terminal_input":  handleTerminalInput,
-		"terminal_resize": handleTerminalResize,
-		"terminal_close":  handleTerminalClose,
+		"terminal.open":   handleTerminalOpen,
+		"terminal.input":  handleTerminalInput,
+		"terminal.resize": handleTerminalResize,
+		"terminal.close":  handleTerminalClose,
 	})
 }
 
@@ -64,7 +64,7 @@ func handleTerminalOpen(c *WSConn, raw json.RawMessage) {
 	}
 	c.Sessions[sid] = sess
 
-	c.WriteJSON(map[string]interface{}{"type": "terminal_opened", "sid": sid, "reqId": p.ReqID})
+	c.WriteJSON(map[string]interface{}{"type": "terminal.opened", "sid": sid, "reqId": p.ReqID})
 
 	// pty -> WS output goroutine
 	go func() {
@@ -75,7 +75,7 @@ func handleTerminalOpen(c *WSConn, raw json.RawMessage) {
 				if err != io.EOF {
 					// normal close
 				}
-				c.WriteJSON(map[string]string{"type": "terminal_exited", "sid": sid})
+				c.WriteJSON(map[string]string{"type": "terminal.exited", "sid": sid})
 				sess.Cleanup()
 				return
 			}
@@ -85,7 +85,7 @@ func handleTerminalOpen(c *WSConn, raw json.RawMessage) {
 					data = []byte(strings.ToValidUTF8(string(data), "?"))
 				}
 				c.WriteJSON(map[string]interface{}{
-					"type": "terminal_output",
+					"type": "terminal.output",
 					"sid":  sid,
 					"data": string(data),
 				})

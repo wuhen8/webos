@@ -13,37 +13,37 @@ type wsSink struct {
 }
 
 func (s *wsSink) OnDelta(convID, text string) {
-	s.writeJSON(wsServerMsg{Type: "chat_delta", Data: map[string]string{
+	s.writeJSON(wsServerMsg{Type: "chat.delta", Data: map[string]string{
 		"conversationId": convID, "content": text,
 	}})
 }
 
 func (s *wsSink) OnThinking(convID, text string) {
-	s.writeJSON(wsServerMsg{Type: "chat_thinking", Data: map[string]string{
+	s.writeJSON(wsServerMsg{Type: "chat.thinking", Data: map[string]string{
 		"conversationId": convID, "content": text,
 	}})
 }
 
 func (s *wsSink) OnToolCallPending(convID string, pending ai.ToolCallPending) {
-	s.writeJSON(wsServerMsg{Type: "chat_tool_call_pending", Data: map[string]interface{}{
+	s.writeJSON(wsServerMsg{Type: "chat.tool_call_pending", Data: map[string]interface{}{
 		"conversationId": convID, "pending": pending,
 	}})
 }
 
 func (s *wsSink) OnToolCall(convID string, call ai.ToolCall) {
-	s.writeJSON(wsServerMsg{Type: "chat_tool_call", Data: map[string]interface{}{
+	s.writeJSON(wsServerMsg{Type: "chat.tool_call", Data: map[string]interface{}{
 		"conversationId": convID, "toolCall": call,
 	}})
 }
 
 func (s *wsSink) OnToolResult(convID string, result ai.ToolResult) {
-	s.writeJSON(wsServerMsg{Type: "chat_tool_result", Data: map[string]interface{}{
+	s.writeJSON(wsServerMsg{Type: "chat.tool_result", Data: map[string]interface{}{
 		"conversationId": convID, "result": result,
 	}})
 }
 
 func (s *wsSink) OnShellOutput(convID, toolCallID string, output ai.ShellOutput) {
-	s.writeJSON(wsServerMsg{Type: "chat_shell_output", Data: map[string]interface{}{
+	s.writeJSON(wsServerMsg{Type: "chat.shell_output", Data: map[string]interface{}{
 		"conversationId": convID,
 		"toolCallId":     toolCallID,
 		"output":         output,
@@ -51,26 +51,26 @@ func (s *wsSink) OnShellOutput(convID, toolCallID string, output ai.ShellOutput)
 }
 
 func (s *wsSink) OnUIAction(convID string, action ai.UIAction) {
-	s.writeJSON(wsServerMsg{Type: "chat_ui_action", Data: map[string]interface{}{
+	s.writeJSON(wsServerMsg{Type: "chat.ui_action", Data: map[string]interface{}{
 		"conversationId": convID, "action": action,
 	}})
 }
 
 func (s *wsSink) OnMediaAttachment(convID string, attachment ai.MediaAttachment) {
-	s.writeJSON(wsServerMsg{Type: "chat_media", Data: map[string]interface{}{
+	s.writeJSON(wsServerMsg{Type: "chat.media", Data: map[string]interface{}{
 		"conversationId": convID, "attachment": attachment,
 	}})
 }
 
 func (s *wsSink) OnDone(convID, fullText string, usage ai.TokenUsage) {
-	s.writeJSON(wsServerMsg{Type: "chat_done", Data: map[string]interface{}{
+	s.writeJSON(wsServerMsg{Type: "chat.done", Data: map[string]interface{}{
 		"conversationId": convID,
 		"usage":          usage,
 	}})
 }
 
 func (s *wsSink) OnError(convID string, err error) {
-	s.writeJSON(wsServerMsg{Type: "chat_error", Message: err.Error(), Data: map[string]string{
+	s.writeJSON(wsServerMsg{Type: "chat.error", Message: err.Error(), Data: map[string]string{
 		"conversationId": convID,
 	}})
 }
@@ -116,7 +116,7 @@ func handleChatSend(c *WSConn, raw json.RawMessage) {
 	if !result.Accepted {
 		if result.Reason == "inactive_conv" {
 			c.WriteJSON(wsServerMsg{
-				Type: "chat_inactive_conv",
+				Type: "chat.inactive_conv",
 				Data: map[string]interface{}{
 					"conversationId":  p.ConversationID,
 					"activeConvId":    result.ActiveConvID,
@@ -126,7 +126,7 @@ func handleChatSend(c *WSConn, raw json.RawMessage) {
 			})
 		} else {
 			c.WriteJSON(wsServerMsg{
-				Type:    "chat_error",
+				Type:    "chat.error",
 				Message: "消息入队失败，请重试",
 				Data: map[string]string{
 					"conversationId": p.ConversationID,

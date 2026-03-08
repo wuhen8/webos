@@ -8,7 +8,7 @@ const scheduledJobHandlers = new Set<(job: any) => void>()
 // Register push message handlers for task updates and scheduled job changes
 registerMessageHandler((msg) => {
   // Handle background task updates
-  if (msg.type === 'task_update' && msg.data) {
+  if (msg.type === 'task.update' && msg.data) {
     useTaskStore.getState().upsertTask(msg.data)
     if (!msg.data.silent && (msg.data.status === 'success' || msg.data.status === 'failed')) {
       toast({
@@ -27,7 +27,7 @@ registerMessageHandler((msg) => {
   }
 
   // Handle scheduled_job_changed push (no reqId)
-  if (msg.type === 'scheduled_job_changed' && !msg.reqId) {
+  if (msg.type === 'scheduled_job.changed' && !msg.reqId) {
     for (const handler of scheduledJobHandlers) {
       handler(msg.data)
     }
@@ -39,7 +39,7 @@ registerMessageHandler((msg) => {
 
 // Sync background tasks on reconnect
 registerReconnectHook(() => {
-  request('task_list', {}).then((tasks: any) => {
+  request('task.list', {}).then((tasks: any) => {
     useTaskStore.getState().setTasks(tasks || [])
   }).catch(() => {})
 })
@@ -51,31 +51,31 @@ registerDisconnectHook(() => {
 
 export const taskService = {
   cancel(taskId: string) {
-    sendMsg({ type: 'task_cancel', data: taskId })
+    sendMsg({ type: 'task.cancel', data: taskId })
   },
 
   retry(taskId: string): Promise<{ newTaskId: string }> {
-    return request('task_retry', { data: taskId })
+    return request('task.retry', { data: taskId })
   },
 
   scheduledJobsList(): Promise<any[]> {
-    return request('scheduled_jobs_list', {})
+    return request('scheduled_job.list', {})
   },
 
   scheduledJobCreate(job: { jobName: string; jobType: string; jobConfig: string; cronExpr: string; enabled?: boolean; silent?: boolean; scheduleType?: string; runAt?: number }): Promise<{ jobId: string }> {
-    return request('scheduled_job_create', job)
+    return request('scheduled_job.create', job)
   },
 
   scheduledJobUpdate(fields: { jobId: string; jobName?: string; jobType?: string; jobConfig?: string; cronExpr?: string; enabled?: boolean; silent?: boolean; scheduleType?: string; runAt?: number }): Promise<void> {
-    return request('scheduled_job_update', fields)
+    return request('scheduled_job.update', fields)
   },
 
   scheduledJobDelete(jobId: string): Promise<void> {
-    return request('scheduled_job_delete', { jobId })
+    return request('scheduled_job.delete', { jobId })
   },
 
   scheduledJobRun(jobId: string): Promise<void> {
-    return request('scheduled_job_run', { jobId })
+    return request('scheduled_job.run', { jobId })
   },
 
   onScheduledJobChanged(handler: (job: any) => void): () => void {

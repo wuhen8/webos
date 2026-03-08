@@ -112,17 +112,17 @@ func on_event(ptr uint32, size uint32) uint32 {
 	switch ev.Type {
 	case "host.response":
 		handleHostResponse(ev.Data)
-	case "chat_delta":
+	case "chat.delta":
 		onChatDelta(ev.Data)
-	case "chat_done":
+	case "chat.done":
 		onChatDone()
-	case "chat_error":
+	case "chat.error":
 		onChatError(ev.Data)
-	case "chat_command_result":
+	case "chat.command_result":
 		onCommandResult(ev.Data)
-	case "chat_media":
+	case "chat.media":
 		onMediaAttachment(ev.Data)
-	case "system_notify":
+	case "system.notify":
 		onSystemNotify(ev.Data)
 	case "tick":
 		ensureInit()

@@ -8,28 +8,28 @@ import (
 
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"storage_nodes_list": asyncHandler[struct{ baseReq }]("storage_nodes_list", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
+		"settings.storage_nodes_list": asyncHandler[struct{ baseReq }]("settings.storage_nodes_list", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return service.ListStorageNodes()
 		}),
-		"storage_node_add":    handleStorageNodeAdd,
-		"storage_node_update": handleStorageNodeUpdate,
-		"storage_node_delete": handleStorageNodeDelete,
-		"preferences_get": asyncHandler[struct{ baseReq }]("preferences_get", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
+		"settings.storage_node_add":    handleStorageNodeAdd,
+		"settings.storage_node_update": handleStorageNodeUpdate,
+		"settings.storage_node_delete": handleStorageNodeDelete,
+		"settings.preferences_get": asyncHandler[struct{ baseReq }]("settings.preferences_get", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return service.GetPreferences()
 		}),
-		"preferences_save":   handlePreferencesSave,
-		"preferences_reset": asyncHandler[struct{ baseReq }]("preferences_reset", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
+		"settings.preferences_save":   handlePreferencesSave,
+		"settings.preferences_reset": asyncHandler[struct{ baseReq }]("settings.preferences_reset", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return service.ResetPreferences()
 		}),
-		"sidebar_get": asyncHandler[struct{ baseReq }]("sidebar_get", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
+		"settings.sidebar_get": asyncHandler[struct{ baseReq }]("settings.sidebar_get", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return service.GetSidebar()
 		}),
-		"sidebar_save":         handleSidebarSave,
-		"app_overrides_get": asyncHandler[struct{ baseReq }]("app_overrides_get", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
+		"settings.sidebar_save":         handleSidebarSave,
+		"settings.app_overrides_get": asyncHandler[struct{ baseReq }]("settings.app_overrides_get", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return service.GetAppOverrides()
 		}),
-		"app_override_save":   handleAppOverrideSave,
-		"app_override_delete": handleAppOverrideDelete,
+		"settings.app_override_save":   handleAppOverrideSave,
+		"settings.app_override_delete": handleAppOverrideDelete,
 	})
 }
 
@@ -48,7 +48,7 @@ func handleStorageNodeAdd(c *WSConn, raw json.RawMessage) {
 		if err := service.AddStorageNode(p.ID, p.StName, p.StType, p.StConfig); err != nil {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
-			c.Reply("storage_node_add", p.ReqID, map[string]string{"id": p.ID})
+			c.Reply("settings.storage_node_add", p.ReqID, map[string]string{"id": p.ID})
 		}
 	}()
 }
@@ -60,7 +60,7 @@ func handleStorageNodeUpdate(c *WSConn, raw json.RawMessage) {
 		if err := service.UpdateStorageNode(p.ID, p.StName, p.StType, p.StConfig); err != nil {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
-			c.Reply("storage_node_update", p.ReqID, nil)
+			c.Reply("settings.storage_node_update", p.ReqID, nil)
 		}
 	}()
 }
@@ -75,7 +75,7 @@ func handleStorageNodeDelete(c *WSConn, raw json.RawMessage) {
 		if err := service.DeleteStorageNode(p.ID); err != nil {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
-			c.Reply("storage_node_delete", p.ReqID, nil)
+			c.Reply("settings.storage_node_delete", p.ReqID, nil)
 		}
 	}()
 }
@@ -90,7 +90,7 @@ func handlePreferencesSave(c *WSConn, raw json.RawMessage) {
 		if err := service.SavePreferences(p.Prefs); err != nil {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
-			c.Reply("preferences_save", p.ReqID, nil)
+			c.Reply("settings.preferences_save", p.ReqID, nil)
 		}
 	}()
 }
@@ -110,7 +110,7 @@ func handleSidebarSave(c *WSConn, raw json.RawMessage) {
 		if err := service.SaveSidebar(items); err != nil {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
-			c.Reply("sidebar_save", p.ReqID, nil)
+			c.Reply("settings.sidebar_save", p.ReqID, nil)
 		}
 	}()
 }
@@ -130,7 +130,7 @@ func handleAppOverrideSave(c *WSConn, raw json.RawMessage) {
 		if err := service.SaveAppOverride(p.ID, p.Overrides); err != nil {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
-			c.Reply("app_override_save", p.ReqID, nil)
+			c.Reply("settings.app_override_save", p.ReqID, nil)
 		}
 	}()
 }
@@ -149,7 +149,7 @@ func handleAppOverrideDelete(c *WSConn, raw json.RawMessage) {
 		if err := service.DeleteAppOverride(p.ID); err != nil {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
-			c.Reply("app_override_delete", p.ReqID, nil)
+			c.Reply("settings.app_override_delete", p.ReqID, nil)
 		}
 	}()
 }

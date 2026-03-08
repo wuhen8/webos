@@ -537,7 +537,7 @@ func RecoverS3Uploads() {
 
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"upload_progress": handleUploadProgress,
+		"upload.progress": handleUploadProgress,
 	})
 }
 

@@ -10,18 +10,18 @@ import (
 
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"scheduled_jobs_list":  handleScheduledJobsList,
-		"scheduled_job_create": handleScheduledJobCreate,
-		"scheduled_job_update": handleScheduledJobUpdate,
-		"scheduled_job_delete": handleScheduledJobDelete,
-		"scheduled_job_run":    handleScheduledJobRun,
+		"scheduled_job.list":   handleScheduledJobsList,
+		"scheduled_job.create": handleScheduledJobCreate,
+		"scheduled_job.update": handleScheduledJobUpdate,
+		"scheduled_job.delete": handleScheduledJobDelete,
+		"scheduled_job.run":    handleScheduledJobRun,
 	})
 }
 
 func handleScheduledJobsList(c *WSConn, raw json.RawMessage) {
 	var p struct{ baseReq }
 	json.Unmarshal(raw, &p)
-	c.Reply("scheduled_jobs_list", p.ReqID, service.GetScheduler().GetAllStatus())
+	c.Reply("scheduled_job.list", p.ReqID, service.GetScheduler().GetAllStatus())
 }
 
 func handleScheduledJobCreate(c *WSConn, raw json.RawMessage) {
@@ -58,11 +58,11 @@ func handleScheduledJobCreate(c *WSConn, raw json.RawMessage) {
 	cronExpr := p.CronExpr
 	if scheduleType == "once" {
 		if p.RunAt <= 0 {
-			c.ReplyErr("scheduled_job_create", p.ReqID, fmt.Errorf("runAt is required for one-time jobs"))
+			c.ReplyErr("scheduled_job.create", p.ReqID, fmt.Errorf("runAt is required for one-time jobs"))
 			return
 		}
 		if p.RunAt < time.Now().UnixMilli() {
-			c.ReplyErr("scheduled_job_create", p.ReqID, fmt.Errorf("runAt must be a future timestamp (unix milliseconds)"))
+			c.ReplyErr("scheduled_job.create", p.ReqID, fmt.Errorf("runAt must be a future timestamp (unix milliseconds)"))
 			return
 		}
 		// One-time jobs don't need a real cron expression
@@ -72,12 +72,12 @@ func handleScheduledJobCreate(c *WSConn, raw json.RawMessage) {
 			cronExpr = "0 */1 * * * *"
 		}
 		if _, err := service.ParseCron(cronExpr); err != nil {
-			c.ReplyErr("scheduled_job_create", p.ReqID, err)
+			c.ReplyErr("scheduled_job.create", p.ReqID, err)
 			return
 		}
 	}
 	if err := service.DBCreateJob(jobID, p.JobName, p.JobType, p.JobConfig, cronExpr, enabled, silent, scheduleType, p.RunAt); err != nil {
-		c.ReplyErr("scheduled_job_create", p.ReqID, err)
+		c.ReplyErr("scheduled_job.create", p.ReqID, err)
 		return
 	}
 	job := service.ScheduledJob{
@@ -93,7 +93,7 @@ func handleScheduledJobCreate(c *WSConn, raw json.RawMessage) {
 		RunAt:        p.RunAt,
 	}
 	service.GetScheduler().AddJob(job)
-	c.Reply("scheduled_job_create", p.ReqID, map[string]string{"jobId": jobID})
+	c.Reply("scheduled_job.create", p.ReqID, map[string]string{"jobId": jobID})
 }
 
 func handleScheduledJobUpdate(c *WSConn, raw json.RawMessage) {
@@ -112,7 +112,7 @@ func handleScheduledJobUpdate(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 
 	if p.JobID == "" {
-		c.ReplyErr("scheduled_job_update", p.ReqID, errRequired("jobId"))
+		c.ReplyErr("scheduled_job.update", p.ReqID, errRequired("jobId"))
 		return
 	}
 	enabled := true
@@ -135,12 +135,12 @@ func handleScheduledJobUpdate(c *WSConn, raw json.RawMessage) {
 			cronExpr = "0 */1 * * * *"
 		}
 		if _, err := service.ParseCron(cronExpr); err != nil {
-			c.ReplyErr("scheduled_job_update", p.ReqID, err)
+			c.ReplyErr("scheduled_job.update", p.ReqID, err)
 			return
 		}
 	}
 	if err := service.DBUpdateJob(p.JobID, p.JobName, p.JobType, p.JobConfig, cronExpr, enabled, silent, scheduleType, p.RunAt); err != nil {
-		c.ReplyErr("scheduled_job_update", p.ReqID, err)
+		c.ReplyErr("scheduled_job.update", p.ReqID, err)
 		return
 	}
 	runFn := service.MakeJobRunFunc(p.JobID, p.JobType, p.JobConfig, silent, systemSvc, fileSvc)
@@ -154,7 +154,7 @@ func handleScheduledJobUpdate(c *WSConn, raw json.RawMessage) {
 			service.GetScheduler().DisableJob(p.JobID)
 		}
 	}
-	c.Reply("scheduled_job_update", p.ReqID, nil)
+	c.Reply("scheduled_job.update", p.ReqID, nil)
 }
 
 func handleScheduledJobDelete(c *WSConn, raw json.RawMessage) {
@@ -164,12 +164,12 @@ func handleScheduledJobDelete(c *WSConn, raw json.RawMessage) {
 	}
 	json.Unmarshal(raw, &p)
 	if p.JobID == "" {
-		c.ReplyErr("scheduled_job_delete", p.ReqID, errRequired("jobId"))
+		c.ReplyErr("scheduled_job.delete", p.ReqID, errRequired("jobId"))
 		return
 	}
 	service.DBDeleteJob(p.JobID)
 	service.GetScheduler().RemoveJob(p.JobID)
-	c.Reply("scheduled_job_delete", p.ReqID, nil)
+	c.Reply("scheduled_job.delete", p.ReqID, nil)
 }
 
 func handleScheduledJobRun(c *WSConn, raw json.RawMessage) {
@@ -179,9 +179,9 @@ func handleScheduledJobRun(c *WSConn, raw json.RawMessage) {
 	}
 	json.Unmarshal(raw, &p)
 	if p.JobID == "" {
-		c.ReplyErr("scheduled_job_run", p.ReqID, errRequired("jobId"))
+		c.ReplyErr("scheduled_job.run", p.ReqID, errRequired("jobId"))
 		return
 	}
 	service.GetScheduler().RunNow(p.JobID)
-	c.Reply("scheduled_job_run", p.ReqID, nil)
+	c.Reply("scheduled_job.run", p.ReqID, nil)
 }

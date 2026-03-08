@@ -50,11 +50,11 @@ func doBroadcastNotify(level, title, message, source, target string) {
 	}
 	sink := chatSvc.GetBroadcastSink()
 	if target != "" {
-		if !sink.SendToSystemEvent(target, "system_notify", data) {
+		if !sink.SendToSystemEvent(target, "system.notify", data) {
 			log.Printf("[notify] target sink %q not found, dropping", target)
 		}
 	} else {
-		sink.OnSystemEvent("system_notify", data)
+		sink.OnSystemEvent("system.notify", data)
 	}
 	log.Printf("[notify] [%s] %s: %s (from: %s, target: %s)", level, title, message, source, target)
 }

@@ -37,7 +37,7 @@ export default function ShareDialogContent({ windowId }: { windowId: string }) {
     setToken('')
     setExternalUrl('')
     try {
-      const result = await wsRequest('share_create', {
+      const result = await wsRequest('share.create', {
         nodeId: appData.nodeId,
         path: appData.path,
         expireSeconds: expiry,

@@ -27,7 +27,7 @@ export interface TokenUsage {
 }
 
 export interface ChatEvent {
-  type: 'delta' | 'thinking' | 'tool_call_pending' | 'tool_call' | 'tool_result' | 'shell_output' | 'done' | 'error' | 'command_result' | 'ui_action' | 'chat_busy' | 'status_update' | 'conv_switched' | 'inactive_conv' | 'command_progress'
+  type: 'delta' | 'thinking' | 'tool_call_pending' | 'tool_call' | 'tool_result' | 'shell_output' | 'done' | 'error' | 'command_result' | 'ui_action' | 'chat.busy' | 'status_update' | 'chat.conv_switched' | 'inactive_conv' | 'command_progress'
   conversationId: string
   content?: string
   toolCallPending?: { id: string; name: string }
@@ -64,42 +64,42 @@ function emit(event: ChatEvent) {
 
 registerMessageHandler((msg: any) => {
   switch (msg.type) {
-    case 'chat_delta':
+    case 'chat.delta':
       emit({
         type: 'delta',
         conversationId: msg.data?.conversationId,
         content: msg.data?.content,
       })
       return true
-    case 'chat_thinking':
+    case 'chat.thinking':
       emit({
         type: 'thinking',
         conversationId: msg.data?.conversationId,
         content: msg.data?.content,
       })
       return true
-    case 'chat_tool_call_pending':
+    case 'chat.tool_call_pending':
       emit({
         type: 'tool_call_pending',
         conversationId: msg.data?.conversationId,
         toolCallPending: msg.data?.pending,
       })
       return true
-    case 'chat_tool_call':
+    case 'chat.tool_call':
       emit({
         type: 'tool_call',
         conversationId: msg.data?.conversationId,
         toolCall: msg.data?.toolCall,
       })
       return true
-    case 'chat_tool_result':
+    case 'chat.tool_result':
       emit({
         type: 'tool_result',
         conversationId: msg.data?.conversationId,
         toolResult: msg.data?.result,
       })
       return true
-    case 'chat_shell_output':
+    case 'chat.shell_output':
       emit({
         type: 'shell_output',
         conversationId: msg.data?.conversationId,
@@ -110,21 +110,21 @@ registerMessageHandler((msg: any) => {
         },
       })
       return true
-    case 'chat_done':
+    case 'chat.done':
       emit({
         type: 'done',
         conversationId: msg.data?.conversationId,
         usage: msg.data?.usage,
       })
       return true
-    case 'chat_error':
+    case 'chat.error':
       emit({
         type: 'error',
         conversationId: msg.data?.conversationId,
         error: msg.message,
       })
       return true
-    case 'chat_command_result':
+    case 'chat.command_result':
       emit({
         type: 'command_result',
         conversationId: msg.data?.conversationId,
@@ -135,42 +135,42 @@ registerMessageHandler((msg: any) => {
         },
       })
       return true
-    case 'chat_command_progress':
+    case 'chat.command_progress':
       emit({
         type: 'command_progress',
         conversationId: '',
         commandProgress: { command: msg.data?.command, state: msg.data?.state },
       })
       return true
-    case 'chat_ui_action':
+    case 'chat.ui_action':
       emit({
         type: 'ui_action',
         conversationId: msg.data?.conversationId,
         uiAction: msg.data?.action,
       })
       return true
-    case 'chat_busy':
+    case 'chat.busy':
       emit({
-        type: 'chat_busy',
+        type: 'chat.busy',
         conversationId: msg.data?.rejectedConvId || '',
         busyInfo: msg.data,
       })
       return true
-    case 'chat_status_update':
+    case 'chat.status_update':
       emit({
         type: 'status_update',
         conversationId: msg.data?.runningConvId || '',
         statusUpdate: msg.data,
       })
       return true
-    case 'conv_switched':
+    case 'chat.conv_switched':
       emit({
-        type: 'conv_switched',
+        type: 'chat.conv_switched',
         conversationId: msg.data?.convId || '',
         convSwitched: msg.data,
       })
       return true
-    case 'chat_inactive_conv':
+    case 'chat.inactive_conv':
       emit({
         type: 'inactive_conv',
         conversationId: msg.data?.conversationId || '',

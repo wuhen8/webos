@@ -580,14 +580,14 @@ func (ce *CommandExecutor) cmdNotify(args string) CommandResult {
 		}
 		msg := strings.TrimSpace(parts[1])
 		data["message"] = msg
-		if !ce.NotifySink.SendToSystemEvent(target, "system_notify", data) {
+		if !ce.NotifySink.SendToSystemEvent(target, "system.notify", data) {
 			return CommandResult{Text: fmt.Sprintf("客户端 `%s` 不存在或已断开", target), IsError: true}
 		}
 		return CommandResult{Text: fmt.Sprintf("已发送通知到 `%s`: %s", target, msg)}
 	}
 
 	data["message"] = args
-	ce.NotifySink.OnSystemEvent("system_notify", data)
+	ce.NotifySink.OnSystemEvent("system.notify", data)
 	return CommandResult{Text: fmt.Sprintf("已广播通知: %s", args)}
 }
 

@@ -6,7 +6,7 @@ function AboutContent() {
   const [version, setVersion] = useState("...")
 
   useEffect(() => {
-    wsRequest('system_check_update', {})
+    wsRequest('system.check_update', {})
       .then((info: any) => setVersion(info.currentVersion || '未知'))
       .catch(() => setVersion('未知'))
   }, [])

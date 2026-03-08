@@ -9,10 +9,10 @@ import (
 func init() {
 	RegisterHandlers(map[string]Handler{
 		// Process management
-		"wasm_start":   handleWasmStart,
-		"wasm_stop":    handleWasmStop,
-		"wasm_restart": handleWasmRestart,
-		"wasm_list":    handleWasmList,
+		"wasm.start":   handleWasmStart,
+		"wasm.stop":    handleWasmStop,
+		"wasm.restart": handleWasmRestart,
+		"wasm.list":    handleWasmList,
 	})
 }
 
@@ -23,12 +23,12 @@ func handleWasmStart(c *WSConn, raw json.RawMessage) {
 	}
 	json.Unmarshal(raw, &p)
 	if p.AppID == "" {
-		c.ReplyErr("wasm_start", p.ReqID, errRequired("appId"))
+		c.ReplyErr("wasm.start", p.ReqID, errRequired("appId"))
 		return
 	}
 	go func() {
 		err := wasm.GetRuntime().StartProc(p.AppID)
-		c.ReplyResult("wasm_start", p.ReqID, nil, err)
+		c.ReplyResult("wasm.start", p.ReqID, nil, err)
 	}()
 }
 
@@ -39,12 +39,12 @@ func handleWasmStop(c *WSConn, raw json.RawMessage) {
 	}
 	json.Unmarshal(raw, &p)
 	if p.AppID == "" {
-		c.ReplyErr("wasm_stop", p.ReqID, errRequired("appId"))
+		c.ReplyErr("wasm.stop", p.ReqID, errRequired("appId"))
 		return
 	}
 	go func() {
 		wasm.GetRuntime().StopProc(p.AppID)
-		c.Reply("wasm_stop", p.ReqID, nil)
+		c.Reply("wasm.stop", p.ReqID, nil)
 	}()
 }
 
@@ -55,12 +55,12 @@ func handleWasmRestart(c *WSConn, raw json.RawMessage) {
 	}
 	json.Unmarshal(raw, &p)
 	if p.AppID == "" {
-		c.ReplyErr("wasm_restart", p.ReqID, errRequired("appId"))
+		c.ReplyErr("wasm.restart", p.ReqID, errRequired("appId"))
 		return
 	}
 	go func() {
 		err := wasm.GetRuntime().RestartProc(p.AppID)
-		c.ReplyResult("wasm_restart", p.ReqID, nil, err)
+		c.ReplyResult("wasm.restart", p.ReqID, nil, err)
 	}()
 }
 
@@ -69,6 +69,6 @@ func handleWasmList(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	go func() {
 		list := wasm.GetRuntime().ListProcs()
-		c.Reply("wasm_list", p.ReqID, list)
+		c.Reply("wasm.list", p.ReqID, list)
 	}()
 }

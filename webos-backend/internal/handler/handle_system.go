@@ -10,26 +10,27 @@ import (
 
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"system_check_update": asyncHandler[struct{ baseReq }]("system_check_update", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
+		"system.check_update": asyncHandler[struct{ baseReq }]("system.check_update", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return service.CheckUpdate()
 		}),
-		"system_do_update": handleSystemDoUpdate,
-		"exec":             handleExec,
+		"system.do_update": handleSystemDoUpdate,
+		"system.exec":      handleExec,
 	})
 }
 
 func handleSystemDoUpdate(c *WSConn, raw json.RawMessage) {
 	var p struct{ baseReq }
 	json.Unmarshal(raw, &p)
-	service.GetTaskManager().Submit("system_update", "系统更新", func(ctx context.Context, r *service.ProgressReporter) (string, error) {
+	service.GetTaskManager().Submit("system.update", "系统更新", func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		if err := service.DoSystemUpdate(ctx, r); err != nil {
 			return "", err
 		}
 		return "系统更新完成", nil
 	})
-	c.Reply("system_do_update", p.ReqID, nil)
+	c.Reply("system.do_update", p.ReqID, nil)
 }
 
+// handleExec handles "system.exec" messages.
 func handleExec(c *WSConn, raw json.RawMessage) {
 	var p struct {
 		baseReq
@@ -63,7 +64,7 @@ func handleExec(c *WSConn, raw json.RawMessage) {
 			}
 			return title + "成功", nil
 		}, opts...)
-		c.Reply("exec", p.ReqID, map[string]interface{}{
+		c.Reply("system.exec", p.ReqID, map[string]interface{}{
 			"background": true,
 		})
 		return
@@ -72,9 +73,9 @@ func handleExec(c *WSConn, raw json.RawMessage) {
 	go func() {
 		stdout, stderr, exitCode, err := systemSvc.Exec(p.Command)
 		if err != nil {
-			c.ReplyErr("exec", p.ReqID, fmt.Errorf("exec failed: %w", err))
+			c.ReplyErr("system.exec", p.ReqID, fmt.Errorf("exec failed: %w", err))
 		} else {
-			c.Reply("exec", p.ReqID, map[string]interface{}{
+			c.Reply("system.exec", p.ReqID, map[string]interface{}{
 				"exitCode": exitCode,
 				"stdout":   stdout,
 				"stderr":   stderr,

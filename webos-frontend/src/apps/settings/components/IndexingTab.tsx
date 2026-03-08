@@ -14,7 +14,7 @@ export default function IndexingTab() {
   useEffect(() => {
     setSkipDirsLoading(true)
     setIndexDirsLoading(true)
-    wsRequest('preferences_get', {}).then((data: any) => {
+    wsRequest('settings.preferences_get', {}).then((data: any) => {
       if (data?.indexSkipDirs && Array.isArray(data.indexSkipDirs)) {
         setSkipDirs(data.indexSkipDirs)
       }
@@ -29,7 +29,7 @@ export default function IndexingTab() {
 
   const saveSkipDirs = useCallback(async (dirs: string[]) => {
     setSkipDirs(dirs)
-    await wsRequest('preferences_save', { prefs: { indexSkipDirs: dirs } })
+    await wsRequest('settings.preferences_save', { prefs: { indexSkipDirs: dirs } })
   }, [])
 
   const addSkipDir = useCallback(() => {
@@ -46,7 +46,7 @@ export default function IndexingTab() {
 
   const saveIndexDirs = useCallback(async (dirs: string[]) => {
     setIndexDirs(dirs)
-    await wsRequest('preferences_save', { prefs: { indexDirs: dirs } })
+    await wsRequest('settings.preferences_save', { prefs: { indexDirs: dirs } })
   }, [])
 
   const addIndexDir = useCallback(() => {

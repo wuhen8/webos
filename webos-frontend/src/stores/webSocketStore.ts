@@ -47,7 +47,7 @@ export function sendMsg(msg: object) {
 export function refreshChannel(channel: string) {
   const sub = channels.get(channel)
   if (sub) {
-    sendMsg({ type: 'subscribe', channel, interval: sub.interval })
+    sendMsg({ type: 'sub.subscribe', channel, interval: sub.interval })
   }
 }
 
@@ -115,7 +115,7 @@ function getWsUrl(): string | null {
 // Re-send all active subscriptions (after reconnect)
 function syncSubscriptions() {
   for (const [channel, sub] of channels) {
-    sendMsg({ type: 'subscribe', channel, interval: sub.interval })
+    sendMsg({ type: 'sub.subscribe', channel, interval: sub.interval })
   }
   // Invoke reconnect hooks (services re-subscribe their own state)
   for (const hook of reconnectHooks) {
@@ -180,7 +180,7 @@ export const useWebSocketStore = create<WebSocketState>((set) => ({
           const pending = pendingRequests.get(msg.reqId)
           if (pending) {
             pendingRequests.delete(msg.reqId)
-            if (msg.type === 'fs_error' || msg.message) {
+            if (msg.type === 'fs.error' || msg.message) {
               pending.reject(new Error(msg.message || 'Operation failed'))
             } else {
               pending.resolve(msg.data)
@@ -267,7 +267,7 @@ export const useWebSocketStore = create<WebSocketState>((set) => ({
     }
 
     // Send subscribe to server
-    sendMsg({ type: 'subscribe', channel, interval })
+    sendMsg({ type: 'sub.subscribe', channel, interval })
 
     // Return unsubscribe function
     return () => {
@@ -276,7 +276,7 @@ export const useWebSocketStore = create<WebSocketState>((set) => ({
       s.handlers.delete(handler)
       if (s.handlers.size === 0) {
         channels.delete(channel)
-        sendMsg({ type: 'unsubscribe', channel })
+        sendMsg({ type: 'sub.unsubscribe', channel })
       }
     }
   },

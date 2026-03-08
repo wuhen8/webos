@@ -9,7 +9,7 @@ export function TaskPanel({ tasks }: { tasks: UnifiedTask[] }) {
 
   const cancelTask = async (id: string) => {
     try {
-      sendMsg({ type: "task_cancel", data: id })
+      sendMsg({ type: "task.cancel", data: id })
       toast({ title: "成功", description: `已发送取消请求` })
     } catch {
       toast({ title: "失败", description: "取消任务失败", variant: "destructive" })

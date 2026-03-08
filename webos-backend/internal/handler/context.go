@@ -52,7 +52,7 @@ type WSConn struct {
 	LogSubMu   sync.Mutex
 	LogSubDone chan struct{}
 
-	// Cancellable long-running operations, keyed by "type:key" (e.g. "fs_stat:nodeId:path")
+	// Cancellable long-running operations, keyed by "type:key" (e.g. "fs.stat:nodeId:path")
 	CancelMu sync.Mutex
 	Cancels  map[string]context.CancelFunc
 }
@@ -203,26 +203,26 @@ func (c *WSConn) PushData(ch string) {
 
 	var resp wsServerMsg
 	switch ch {
-	case "overview":
+	case "sub.overview":
 		data, err := systemSvc.GetOverview()
 		if err != nil {
 			resp = wsServerMsg{Type: "error", Message: err.Error()}
 		} else {
-			resp = wsServerMsg{Type: "overview", Data: data}
+			resp = wsServerMsg{Type: "sub.overview", Data: data}
 		}
-	case "processes":
+	case "sub.processes":
 		procs, err := systemSvc.GetProcessList()
 		if err != nil {
 			resp = wsServerMsg{Type: "error", Message: err.Error()}
 		} else {
-			resp = wsServerMsg{Type: "processes", Data: map[string]interface{}{
+			resp = wsServerMsg{Type: "sub.processes", Data: map[string]interface{}{
 				"processes": procs,
 				"total":     len(procs),
 			}}
 		}
-	case "docker_containers":
+	case "sub.docker_containers":
 		if !dockerSvc.IsAvailable() {
-			resp = wsServerMsg{Type: "docker_containers", Data: map[string]interface{}{
+			resp = wsServerMsg{Type: "sub.docker_containers", Data: map[string]interface{}{
 				"available":  false,
 				"containers": []interface{}{},
 			}}
@@ -231,15 +231,15 @@ func (c *WSConn) PushData(ch string) {
 			if err != nil {
 				resp = wsServerMsg{Type: "error", Message: err.Error()}
 			} else {
-				resp = wsServerMsg{Type: "docker_containers", Data: map[string]interface{}{
+				resp = wsServerMsg{Type: "sub.docker_containers", Data: map[string]interface{}{
 					"available":  true,
 					"containers": containers,
 				}}
 			}
 		}
-	case "docker_images":
+	case "sub.docker_images":
 		if !dockerSvc.IsAvailable() {
-			resp = wsServerMsg{Type: "docker_images", Data: map[string]interface{}{
+			resp = wsServerMsg{Type: "sub.docker_images", Data: map[string]interface{}{
 				"available": false,
 				"images":    []interface{}{},
 			}}
@@ -248,15 +248,15 @@ func (c *WSConn) PushData(ch string) {
 			if err != nil {
 				resp = wsServerMsg{Type: "error", Message: err.Error()}
 			} else {
-				resp = wsServerMsg{Type: "docker_images", Data: map[string]interface{}{
+				resp = wsServerMsg{Type: "sub.docker_images", Data: map[string]interface{}{
 					"available": true,
 					"images":    images,
 				}}
 			}
 		}
-	case "docker_compose":
+	case "sub.docker_compose":
 		if !dockerSvc.IsAvailable() {
-			resp = wsServerMsg{Type: "docker_compose", Data: map[string]interface{}{
+			resp = wsServerMsg{Type: "sub.docker_compose", Data: map[string]interface{}{
 				"available": false,
 				"projects":  []interface{}{},
 			}}
@@ -282,15 +282,15 @@ func (c *WSConn) PushData(ch string) {
 				}
 
 				projects = service.MergeComposeProjects(projects, scanned, appstoreDirs)
-				resp = wsServerMsg{Type: "docker_compose", Data: map[string]interface{}{
+				resp = wsServerMsg{Type: "sub.docker_compose", Data: map[string]interface{}{
 					"available": true,
 					"projects":  projects,
 				}}
 			}
 		}
-	case "docker_networks":
+	case "sub.docker_networks":
 		if !dockerSvc.IsAvailable() {
-			resp = wsServerMsg{Type: "docker_networks", Data: map[string]interface{}{
+			resp = wsServerMsg{Type: "sub.docker_networks", Data: map[string]interface{}{
 				"available": false,
 				"networks":  []interface{}{},
 			}}
@@ -299,15 +299,15 @@ func (c *WSConn) PushData(ch string) {
 			if err != nil {
 				resp = wsServerMsg{Type: "error", Message: err.Error()}
 			} else {
-				resp = wsServerMsg{Type: "docker_networks", Data: map[string]interface{}{
+				resp = wsServerMsg{Type: "sub.docker_networks", Data: map[string]interface{}{
 					"available": true,
 					"networks":  networks,
 				}}
 			}
 		}
-	case "docker_volumes":
+	case "sub.docker_volumes":
 		if !dockerSvc.IsAvailable() {
-			resp = wsServerMsg{Type: "docker_volumes", Data: map[string]interface{}{
+			resp = wsServerMsg{Type: "sub.docker_volumes", Data: map[string]interface{}{
 				"available": false,
 				"volumes":  []interface{}{},
 			}}
@@ -316,13 +316,13 @@ func (c *WSConn) PushData(ch string) {
 			if err != nil {
 				resp = wsServerMsg{Type: "error", Message: err.Error()}
 			} else {
-				resp = wsServerMsg{Type: "docker_volumes", Data: map[string]interface{}{
+				resp = wsServerMsg{Type: "sub.docker_volumes", Data: map[string]interface{}{
 					"available": true,
 					"volumes":  volumes,
 				}}
 			}
 		}
-	case "disks":
+	case "sub.disks":
 		disks, err := diskSvc.GetDisks()
 		if err != nil {
 			resp = wsServerMsg{Type: "error", Message: err.Error()}
@@ -335,21 +335,21 @@ func (c *WSConn) PushData(ch string) {
 			if lvmInfo := diskSvc.GetLVMInfo(); lvmInfo != nil {
 				data["lvm"] = lvmInfo
 			}
-			resp = wsServerMsg{Type: "disks", Data: data}
+			resp = wsServerMsg{Type: "sub.disks", Data: data}
 		}
-	case "services":
+	case "sub.services":
 		svcs, err := systemSvc.GetServiceList()
 		if err != nil {
 			resp = wsServerMsg{Type: "error", Message: err.Error()}
 		} else {
-			resp = wsServerMsg{Type: "services", Data: map[string]interface{}{
+			resp = wsServerMsg{Type: "sub.services", Data: map[string]interface{}{
 				"services": svcs,
 				"total":    len(svcs),
 			}}
 		}
-	case "tasks":
+	case "sub.tasks":
 		list := service.GetTaskManager().GetAll()
-		resp = wsServerMsg{Type: "tasks", Data: map[string]interface{}{
+		resp = wsServerMsg{Type: "sub.tasks", Data: map[string]interface{}{
 			"tasks": list,
 			"total": len(list),
 		}}
@@ -398,7 +398,7 @@ func InitAI() {
 	// Inject rate limit notification callback for 429 events
 	sink := aiExecutor.GetBroadcastSink()
 	ai.SetNotifyRateLimitCallback(func(level, title, message string) {
-		sink.OnSystemEvent("system_notify", map[string]string{
+		sink.OnSystemEvent("system.notify", map[string]string{
 			"level":   level,
 			"title":   title,
 			"message": message,
@@ -442,11 +442,11 @@ func (s *executorConvSwitcher) Stop() {
 
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"subscribe":   handleSubscribe,
-		"unsubscribe": handleUnsubscribe,
-		"task_cancel":  handleTaskCancel,
-		"task_retry":   handleTaskRetry,
-		"task_list":    handleTaskList,
+		"sub.subscribe":   handleSubscribe,
+		"sub.unsubscribe": handleUnsubscribe,
+		"task.cancel":     handleTaskCancel,
+		"task.retry":      handleTaskRetry,
+		"task.list":       handleTaskList,
 	})
 }
 
@@ -462,7 +462,7 @@ func handleSubscribe(c *WSConn, raw json.RawMessage) {
 	if old, ok := c.Subs[ch]; ok {
 		old.Ticker.Stop()
 		delete(c.Subs, ch)
-	} else if ch == "docker_containers" {
+	} else if ch == "sub.docker_containers" {
 		dockerSvc.StartStats()
 	}
 	c.StartTicker(ch, interval)
@@ -478,14 +478,14 @@ func handleUnsubscribe(c *WSConn, raw json.RawMessage) {
 	ch := p.Channel
 	if ch == "" {
 		for k, sub := range c.Subs {
-			if k == "docker_containers" {
+			if k == "sub.docker_containers" {
 				dockerSvc.StopStats()
 			}
 			sub.Ticker.Stop()
 			delete(c.Subs, k)
 		}
 	} else if sub, ok := c.Subs[ch]; ok {
-		if ch == "docker_containers" {
+		if ch == "sub.docker_containers" {
 			dockerSvc.StopStats()
 		}
 		sub.Ticker.Stop()
@@ -513,12 +513,12 @@ func handleTaskRetry(c *WSConn, raw json.RawMessage) {
 	json.Unmarshal(raw, &p)
 	if p.Data != "" {
 		newID := service.GetTaskManager().Retry(p.Data)
-		c.Reply("task_retry", p.ReqID, map[string]string{"newTaskId": newID})
+		c.Reply("task.retry", p.ReqID, map[string]string{"newTaskId": newID})
 	}
 }
 
 func handleTaskList(c *WSConn, raw json.RawMessage) {
 	var p struct{ baseReq }
 	json.Unmarshal(raw, &p)
-	c.Reply("task_list", p.ReqID, service.GetTaskManager().GetAll())
+	c.Reply("task.list", p.ReqID, service.GetTaskManager().GetAll())
 }

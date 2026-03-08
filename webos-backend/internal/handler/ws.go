@@ -114,13 +114,13 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 
 	// Subscribe to background task updates
 	taskUnsub := service.GetTaskManager().Subscribe(connID, func(task service.BackgroundTask) {
-		wc.WriteJSON(wsServerMsg{Type: "task_update", Data: task})
+		wc.WriteJSON(wsServerMsg{Type: "task.update", Data: task})
 	})
 
 	// Subscribe to scheduler job status changes
 	schedConnID := "ws_sched_" + connID
 	service.GetScheduler().Subscribe(schedConnID, func(status service.JobStatus) {
-		wc.WriteJSON(wsServerMsg{Type: "scheduled_job_changed", Data: status})
+		wc.WriteJSON(wsServerMsg{Type: "scheduled_job.changed", Data: status})
 	})
 
 	// Register per-connection ClientContext (inherits web capabilities) and sink.
@@ -137,7 +137,7 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 	aiSinkID := connID
 	sysCtx.Subscribe(aiSinkID, aiSink)
 	// Send current executor status immediately
-	wc.WriteJSON(wsServerMsg{Type: "chat_status_update", Data: sysCtx.Snapshot().Executor})
+	wc.WriteJSON(wsServerMsg{Type: "chat.status_update", Data: sysCtx.Snapshot().Executor})
 
 	// ── Read goroutine ──
 	type rawMsg struct {
@@ -173,7 +173,7 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 		taskUnsub()
 		service.GetScheduler().Unsubscribe(schedConnID)
 		for k, sub := range wc.Subs {
-			if k == "docker_containers" {
+			if k == "sub.docker_containers" {
 				dockerSvc.StopStats()
 			}
 			sub.Ticker.Stop()

@@ -26,7 +26,7 @@ export { registerDynamicApp, unregisterDynamicApp, getDynamicApps, syncInstalled
 // 从后端加载用户覆盖值
 export async function loadAppOverrides(): Promise<void> {
   try {
-    appOverrides = await wsRequest('app_overrides_get', {}) || {}
+    appOverrides = await wsRequest('settings.app_overrides_get', {}) || {}
   } catch {
     appOverrides = {}
   }
@@ -38,7 +38,7 @@ export async function saveAppOverride(appId: string, overrides: Record<string, a
   const merged = { ...(appOverrides[appId] || {}), ...overrides }
   appOverrides[appId] = merged
   try {
-    await wsRequest('app_override_save', { id: appId, overrides: merged })
+    await wsRequest('settings.app_override_save', { id: appId, overrides: merged })
   } catch {
     // 静默失败，本地缓存已更新
   }
@@ -48,7 +48,7 @@ export async function saveAppOverride(appId: string, overrides: Record<string, a
 export async function deleteAppOverride(appId: string): Promise<void> {
   delete appOverrides[appId]
   try {
-    await wsRequest('app_override_delete', { id: appId })
+    await wsRequest('settings.app_override_delete', { id: appId })
   } catch {
     // 静默失败
   }

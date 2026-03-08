@@ -25,7 +25,7 @@ export default function APITokensTab() {
   const loadTokens = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await wsRequest("api_token_list", {})
+      const data = await wsRequest("api_token.list", {})
       setTokens(data || [])
     } catch {}
     setLoading(false)
@@ -36,7 +36,7 @@ export default function APITokensTab() {
   const createToken = async () => {
     const expiresIn = expiryType === "never" ? 0 : expiryDays * 86400
     try {
-      await wsRequest("api_token_create", { name: newName, expiresIn })
+      await wsRequest("api_token.create", { name: newName, expiresIn })
       setNewName("")
       setExpiryType("never")
       setExpiryDays(30)
@@ -47,7 +47,7 @@ export default function APITokensTab() {
 
   const deleteToken = async (id: number) => {
     try {
-      await wsRequest("api_token_delete", { id })
+      await wsRequest("api_token.delete", { id })
       loadTokens()
     } catch {}
   }

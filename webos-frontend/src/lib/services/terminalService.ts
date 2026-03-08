@@ -11,7 +11,7 @@ let openSeq = 0
 
 // Register push message handlers for terminal events
 registerMessageHandler((msg) => {
-  if (msg.type === 'terminal_opened') {
+  if (msg.type === 'terminal.opened') {
     const reqId = msg.reqId as string
     if (reqId && pendingOpens.has(reqId)) {
       const cb = pendingOpens.get(reqId)!
@@ -20,12 +20,12 @@ registerMessageHandler((msg) => {
     }
     return true
   }
-  if (msg.type === 'terminal_output') {
+  if (msg.type === 'terminal.output') {
     const handler = terminalListeners.get(msg.sid)
     if (handler) handler('output', msg.data)
     return true
   }
-  if (msg.type === 'terminal_exited') {
+  if (msg.type === 'terminal.exited') {
     const handler = terminalListeners.get(msg.sid)
     if (handler) handler('exited')
     return true
@@ -43,7 +43,7 @@ export const terminalService = {
   open(callback: (sid: string) => void) {
     const reqId = `term_open_${++openSeq}_${Date.now()}`
     pendingOpens.set(reqId, callback)
-    sendMsg({ type: 'terminal_open', reqId })
+    sendMsg({ type: 'terminal.open', reqId })
     // Timeout: clean up if server never responds
     setTimeout(() => {
       pendingOpens.delete(reqId)
@@ -51,15 +51,15 @@ export const terminalService = {
   },
 
   input(sid: string, data: string) {
-    sendMsg({ type: 'terminal_input', sid, data })
+    sendMsg({ type: 'terminal.input', sid, data })
   },
 
   resize(sid: string, cols: number, rows: number) {
-    sendMsg({ type: 'terminal_resize', sid, cols, rows })
+    sendMsg({ type: 'terminal.resize', sid, cols, rows })
   },
 
   close(sid: string) {
-    sendMsg({ type: 'terminal_close', sid })
+    sendMsg({ type: 'terminal.close', sid })
     terminalListeners.delete(sid)
   },
 
