@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input"
 import type { FileInfo } from "@/types"
 import { formatFileSize, formatModifiedTime, getFileIconConfig } from "@/utils"
 import { ColumnHeader } from "./ColumnHeader"
+import { useMarqueeSelect } from "./useMarqueeSelect"
 import type { SortField, SortDirection } from "./types"
 import type { ViewMode } from "./Toolbar"
 
@@ -79,6 +80,15 @@ export function FileList({
   const [isDraggingInternal, setIsDraggingInternal] = useState(false)
   const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Marquee (rubber-band) selection
+  const { marqueeRect, handleMouseDown: handleMarqueeMouseDown } = useMarqueeSelect({
+    containerRef: dropZoneRef as React.RefObject<HTMLElement>,
+    itemSelector: '[data-file-path]',
+    onSelectionChange: setSelectedFiles,
+    currentSelection: selectedFiles,
+    disabled: multiSelectMode,
+  })
 
   const toggleSelect = useCallback((filePath: string) => {
     const next = new Set(selectedFiles)
@@ -189,6 +199,7 @@ export function FileList({
     <div ref={dropZoneRef} className={`flex-1 overflow-auto px-3 pb-3 transition-all duration-200 relative ${isDraggingFile ? 'bg-white/10' : ''} ${isDraggingInternal && !dropTargetPath ? 'ring-2 ring-blue-400/60 ring-inset rounded-xl' : ''}`}
       onContextMenu={(e) => handleContextMenu(e)}
       onClick={(e) => { if (e.target === e.currentTarget) setSelectedFiles(new Set()) }}
+      onMouseDown={handleMarqueeMouseDown}
       onScroll={handleScroll}
       onDragEnter={handleZoneDragEnter}
       onDragOver={handleZoneDragOver}
@@ -240,6 +251,7 @@ export function FileList({
             const isDropTarget = file.isDir && dropTargetPath === file.path
             return viewMode === 'grid' ? (
               <div key={file.path}
+                data-file-path={file.path}
                 onClick={(e) => multiSelectMode ? toggleSelect(file.path) : handleFileClick(file, e)}
                 onDoubleClick={() => (!multiSelectMode || file.isDir) && handleFileDoubleClick(file)}
                 onContextMenu={(e) => { if (!multiSelectMode) { e.stopPropagation(); handleContextMenu(e, file) } }}
@@ -266,6 +278,7 @@ export function FileList({
               </div>
             ) : (
               <div key={file.path}
+                data-file-path={file.path}
                 onClick={(e) => multiSelectMode ? toggleSelect(file.path) : handleFileClick(file, e)}
                 onDoubleClick={() => (!multiSelectMode || file.isDir) && handleFileDoubleClick(file)}
                 onContextMenu={(e) => { if (!multiSelectMode) { e.stopPropagation(); handleContextMenu(e, file) } }}
@@ -300,6 +313,17 @@ export function FileList({
             )
           })}
         </div>
+      )}
+      {marqueeRect && (
+        <div
+          className="fixed pointer-events-none z-[9999] border border-blue-400/60 bg-blue-500/10 rounded-sm"
+          style={{
+            left: marqueeRect.left,
+            top: marqueeRect.top,
+            width: marqueeRect.width,
+            height: marqueeRect.height,
+          }}
+        />
       )}
     </div>
   )
