@@ -491,31 +491,35 @@ func handleC2CMessage(data json.RawMessage) {
 
 	activeUserID = userID
 
-	// 处理图片附件
-	imagePaths := []string{}
+	// 处理附件（统一下载，不区分类型）
+	attachmentInfos := []string{}
 	for _, att := range msg.Attachments {
-		if strings.HasPrefix(att.ContentType, "image/") && att.URL != "" {
-			logMsg(fmt.Sprintf("[C2C:%s] 收到图片: %s (%dx%d, %d bytes)", userID, att.Filename, att.Width, att.Height, att.Size))
-			// 下载图片到本地
-			localPath := downloadQQImage(att.URL, att.Filename, userID)
-			if localPath != "" {
-				imagePaths = append(imagePaths, localPath)
-			}
+		if att.URL == "" {
+			continue
 		}
+		
+		// 下载附件到本地
+		localPath := downloadQQImage(att.URL, att.Filename, userID)
+		if localPath == "" {
+			logMsg(fmt.Sprintf("[C2C:%s] 下载附件失败: %s", userID, att.Filename))
+			continue
+		}
+		
+		// 统一处理，不区分类型
+		logMsg(fmt.Sprintf("[C2C:%s] 收到附件: %s (%s, %d bytes)", userID, att.Filename, att.ContentType, att.Size))
+		attachmentInfos = append(attachmentInfos, fmt.Sprintf("[文件: local_1:/opt/webos/%s]", localPath))
 	}
 
 	// 构建消息内容
 	userText := strings.TrimSpace(msg.Content)
-	if len(imagePaths) > 0 {
-		// 有图片，构建带图片路径的消息（使用绝对路径）
-		imageInfo := fmt.Sprintf("[用户发送了 %d 张图片]", len(imagePaths))
-		for i, p := range imagePaths {
-			imageInfo += fmt.Sprintf("\n图片%d: [文件: local_1:/opt/webos/%s]", i+1, p)
-		}
+	
+	// 添加附件信息
+	if len(attachmentInfos) > 0 {
+		attachmentText := strings.Join(attachmentInfos, "\n")
 		if userText != "" {
-			userText = userText + "\n" + imageInfo
+			userText = userText + "\n" + attachmentText
 		} else {
-			userText = imageInfo
+			userText = attachmentText
 		}
 	}
 

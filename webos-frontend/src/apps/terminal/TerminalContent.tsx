@@ -443,6 +443,7 @@ export default function TerminalContent({ windowId, isActive }: TerminalContentP
   const reorderTerminalTabs = useTerminalStore((s) => s.reorderTerminalTabs)
   const [showToolbar, setShowToolbar] = useState(false)
   const [activeModifier, setActiveModifier] = useState<'ctrl' | 'alt' | null>(null)
+  const dragCounterRef = useRef(0)
 
   // Keep a ref map for each tab's SingleTerminal handle
   const terminalRefs = useRef<Map<string, SingleTerminalHandle>>(new Map())
@@ -473,10 +474,52 @@ export default function TerminalContent({ windowId, isActive }: TerminalContentP
     setActiveModifier(null)
   }, [])
 
+  // Drag & drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }, [])
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current++
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current--
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current = 0
+
+    const jsonData = e.dataTransfer.getData('application/json')
+    if (!jsonData) return
+
+    try {
+      const raw = JSON.parse(jsonData)
+      const items = Array.isArray(raw) ? raw : [raw]
+      const paths = items
+        .filter((f: any) => f.path)
+        .map((f: any) => f.path)
+
+      if (paths.length > 0) {
+        handleSendInput(paths.join(' '))
+      }
+    } catch { /* ignore invalid data */ }
+  }, [handleSendInput])
+
   // Fallback: if no tabs exist (e.g. old window state), show single terminal
   if (terminalTabs.length === 0) {
     return (
-      <div className="h-full w-full bg-[#1e1e1e] overflow-hidden relative flex flex-col">
+      <div
+        className="h-full w-full bg-[#1e1e1e] overflow-hidden relative flex flex-col"
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <div className="flex-1 relative">
           <SingleTerminal
             ref={(h) => { if (h) terminalRefs.current.set(windowId, h); else terminalRefs.current.delete(windowId) }}
@@ -491,7 +534,13 @@ export default function TerminalContent({ windowId, isActive }: TerminalContentP
   }
 
   return (
-    <div className="h-full w-full flex flex-col bg-[#1e1e1e] overflow-hidden">
+    <div
+      className="h-full w-full flex flex-col bg-[#1e1e1e] overflow-hidden"
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Tab bar */}
       <div className="flex items-center h-9 px-2 bg-[#252526] border-b border-[#3c3c3c] overflow-x-auto gap-1 shrink-0">
         {terminalTabs.map((tab: any, index: number) => (
