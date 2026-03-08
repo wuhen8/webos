@@ -18,7 +18,6 @@ import {
   Save,
   ChevronDown,
   ChevronUp,
-  Power,
 } from "lucide-react"
 import { appStoreService } from "@/lib/services/appStoreService"
 import { syncInstalledApps } from "@/config/appRegistry"
@@ -199,16 +198,6 @@ export default function AppStoreContent() {
       loadInstalled()
     } catch (e: any) {
       toast({ title: '停止失败', description: e.message, variant: 'destructive' })
-    }
-  }
-
-  const handleToggleAutostart = async (appId: string, current: boolean) => {
-    try {
-      await appStoreService.setAutostart(appId, !current)
-      toast({ title: '成功', description: !current ? '已启用开机自启' : '已禁用开机自启' })
-      loadInstalled()
-    } catch (e: any) {
-      toast({ title: '设置失败', description: e.message, variant: 'destructive' })
     }
   }
 
@@ -641,20 +630,6 @@ export default function AppStoreContent() {
                       >
                         <Trash2 className="w-3 h-3" /> 卸载
                       </button>
-                      {(app.appType === 'docker' || (app.appType === 'sideload' && app.manifest.wasmModule)) && (
-                        <button
-                          onClick={() => handleToggleAutostart(app.id, !!app.autostart)}
-                          className={`h-7 px-2.5 rounded-md text-[0.75rem] transition-colors flex items-center gap-1 ${
-                            app.autostart
-                              ? 'bg-green-50 text-green-600 hover:bg-green-100'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}
-                          title={app.autostart ? '点击禁用开机自启' : '点击启用开机自启'}
-                        >
-                          <Power className="w-3 h-3" />
-                          {app.autostart ? '自启' : '自启'}
-                        </button>
-                      )}
                       {getAppConfigSchema(app).length > 0 ? (
                         <button
                           onClick={() => toggleEditConfig(app)}

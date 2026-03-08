@@ -970,11 +970,13 @@ func UpdateAppStatus(appID, status string) {
 // SetAppAutostart sets the autostart flag for an installed app.
 func SetAppAutostart(appID string, enabled bool) error {
 	val := 0
+	status := "stopped"
 	if enabled {
 		val = 1
+		status = "running"
 	}
-	_, err := database.DB().Exec("UPDATE installed_apps SET autostart = ?, updated_at = ? WHERE id = ?",
-		val, time.Now().UnixMilli(), appID)
+	_, err := database.DB().Exec("UPDATE installed_apps SET autostart = ?, status = ?, updated_at = ? WHERE id = ?",
+		val, status, time.Now().UnixMilli(), appID)
 	return err
 }
 
