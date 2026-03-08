@@ -399,12 +399,8 @@ func (r *Runtime) StartBackgroundApps() {
 		if err != nil || manifest.WasmModule == "" {
 			continue
 		}
-		// 启动条件：manifest 声明 background=true，或 DB 中标记了 autostart
-		shouldStart := manifest.Background
-		if !shouldStart && r.IsAutostart != nil {
-			shouldStart = r.IsAutostart(entry.Name())
-		}
-		if !shouldStart {
+		// 唯一启动条件：DB 中 autostart=true
+		if r.IsAutostart == nil || !r.IsAutostart(entry.Name()) {
 			continue
 		}
 		if err := r.StartProc(entry.Name()); err != nil {
