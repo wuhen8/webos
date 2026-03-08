@@ -82,7 +82,7 @@ export function FileList({
   const scrollThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Marquee (rubber-band) selection
-  const { marqueeRect, handleMouseDown: handleMarqueeMouseDown } = useMarqueeSelect({
+  const { marqueeRect, handleMouseDown: handleMarqueeMouseDown, handleContainerClick } = useMarqueeSelect({
     containerRef: dropZoneRef as React.RefObject<HTMLElement>,
     itemSelector: '[data-file-path]',
     onSelectionChange: setSelectedFiles,
@@ -198,7 +198,7 @@ export function FileList({
   return (
     <div ref={dropZoneRef} className={`flex-1 overflow-auto px-3 pb-3 transition-all duration-200 relative ${isDraggingFile ? 'bg-white/10' : ''} ${isDraggingInternal && !dropTargetPath ? 'ring-2 ring-blue-400/60 ring-inset rounded-xl' : ''}`}
       onContextMenu={(e) => handleContextMenu(e)}
-      onClick={(e) => { if (e.target === e.currentTarget) setSelectedFiles(new Set()) }}
+      onClick={handleContainerClick}
       onMouseDown={handleMarqueeMouseDown}
       onScroll={handleScroll}
       onDragEnter={handleZoneDragEnter}
@@ -316,7 +316,7 @@ export function FileList({
       )}
       {marqueeRect && (
         <div
-          className="fixed pointer-events-none z-[9999] border border-blue-400/60 bg-blue-500/10 rounded-sm"
+          className="absolute pointer-events-none z-[9999] border border-blue-400/60 bg-blue-500/10 rounded-sm"
           style={{
             left: marqueeRect.left,
             top: marqueeRect.top,

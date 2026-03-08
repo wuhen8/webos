@@ -30,13 +30,13 @@ export function useMarqueeSelect({
   const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null)
   const startPointRef = useRef<{ x: number; y: number } | null>(null)
   const isActiveRef = useRef(false)
+  const didMarqueeRef = useRef(false)
   const additiveModeRef = useRef(false)
   const baseSelectionRef = useRef<Set<string>>(new Set())
   const rafRef = useRef<number | null>(null)
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (disabled) return
-    // Only start on left button, on the container background (not on a file item)
     if (e.button !== 0) return
     const target = e.target as HTMLElement
     if (target.closest(itemSelector) || target.closest('input') || target.closest('button')) return
@@ -50,8 +50,21 @@ export function useMarqueeSelect({
 
     startPointRef.current = { x: e.clientX, y: e.clientY }
     isActiveRef.current = false
-    // Don't show rect yet — wait for a small drag threshold
+    didMarqueeRef.current = false
   }, [containerRef, itemSelector, currentSelection, disabled])
+
+  // Expose didMarqueeRef so the click handler can check it
+  const handleContainerClick = useCallback((e: React.MouseEvent) => {
+    // If we just finished a marquee drag, don't clear selection
+    if (didMarqueeRef.current) {
+      didMarqueeRef.current = false
+      return
+    }
+    // Only clear when clicking directly on the container background
+    if (e.target === e.currentTarget) {
+      onSelectionChange(new Set())
+    }
+  }, [onSelectionChange])
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -60,28 +73,41 @@ export function useMarqueeSelect({
       const dx = e.clientX - startPointRef.current.x
       const dy = e.clientY - startPointRef.current.y
 
-      // Activation threshold: 5px to avoid accidental marquee on simple clicks
+      // Activation threshold: 5px
       if (!isActiveRef.current) {
         if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return
         isActiveRef.current = true
+        didMarqueeRef.current = true
       }
 
+      const container = containerRef.current
+      if (!container) return
+
+      // Compute rect relative to the container's position (accounts for scroll)
+      const containerRect = container.getBoundingClientRect()
       const sx = startPointRef.current.x
       const sy = startPointRef.current.y
-      const rect: MarqueeRect = {
-        left: Math.min(e.clientX, sx),
-        top: Math.min(e.clientY, sy),
+
+      // Viewport-space rect for hit-testing (using clientX/Y)
+      const viewLeft = Math.min(e.clientX, sx)
+      const viewTop = Math.min(e.clientY, sy)
+      const viewRight = Math.max(e.clientX, sx)
+      const viewBottom = Math.max(e.clientY, sy)
+
+      // Container-relative rect for rendering (accounts for scroll)
+      const renderRect: MarqueeRect = {
+        left: Math.min(e.clientX, sx) - containerRect.left + container.scrollLeft,
+        top: Math.min(e.clientY, sy) - containerRect.top + container.scrollTop,
         width: Math.abs(dx),
         height: Math.abs(dy),
       }
 
-      setMarqueeRect(rect)
+      setMarqueeRect(renderRect)
 
       // Throttle hit-testing with rAF
       if (rafRef.current) return
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null
-        const container = containerRef.current
         if (!container) return
 
         const items = container.querySelectorAll(itemSelector)
@@ -89,11 +115,12 @@ export function useMarqueeSelect({
 
         items.forEach((item) => {
           const r = item.getBoundingClientRect()
+          // Hit-test in viewport space
           const hit = !(
-            r.right < rect.left ||
-            r.left > rect.left + rect.width ||
-            r.bottom < rect.top ||
-            r.top > rect.top + rect.height
+            r.right < viewLeft ||
+            r.left > viewRight ||
+            r.bottom < viewTop ||
+            r.top > viewBottom
           )
           const path = (item as HTMLElement).dataset.filePath
           if (!path) return
@@ -127,5 +154,5 @@ export function useMarqueeSelect({
     }
   }, [containerRef, itemSelector, onSelectionChange])
 
-  return { marqueeRect, handleMouseDown }
+  return { marqueeRect, handleMouseDown, handleContainerClick }
 }
