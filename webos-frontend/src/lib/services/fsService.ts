@@ -89,6 +89,10 @@ export const fsService = {
     return request('fs_presign', { nodeId, path, method })
   },
 
+  downloadSign(nodeId: string, path: string): Promise<{ nodeId: string; path: string; exp: number; sign: string }> {
+    return request('fs_download_sign', { nodeId, path })
+  },
+
   extract(nodeId: string, path: string, dest?: string): Promise<{ path: string }> {
     return request('fs_extract', { nodeId, path, dest })
   },

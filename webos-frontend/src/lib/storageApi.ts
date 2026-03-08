@@ -141,8 +141,7 @@ export const fsApi = {
 
   async downloadUrl(nodeId: string, path: string): Promise<string> {
     try {
-      const resp = await request.get(`/fs/${nodeId}/download/sign`, { params: { path } })
-      const { exp, sign } = resp.data.data as { exp: number; sign: string }
+      const { exp, sign } = await fsService.downloadSign(nodeId, path)
       return `${getApiBase()}/fs/${nodeId}/download?path=${encodeURIComponent(path)}&exp=${exp}&sign=${sign}`
     } catch {
       return `${getApiBase()}/fs/${nodeId}/download?path=${encodeURIComponent(path)}`

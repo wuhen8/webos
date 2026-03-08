@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"webos-backend/internal/auth"
 	"webos-backend/internal/service"
 	"webos-backend/internal/storage"
 )
@@ -25,6 +26,7 @@ func init() {
 		"fs_copy":             handleFsCopy,
 		"fs_move":             handleFsMove,
 		"fs_presign":          handleFsPresign,
+		"fs_download_sign":    handleFsDownloadSign,
 		"fs_extract":          handleFsExtract,
 		"fs_compress":         handleFsCompress,
 		"fs_offline_download": handleFsOfflineDownload,
@@ -330,6 +332,19 @@ func handleFsPresign(c *WSConn, raw json.RawMessage) {
 				"method": p.Method,
 			})
 		}
+	}()
+}
+func handleFsDownloadSign(c *WSConn, raw json.RawMessage) {
+	var p fsReq
+	json.Unmarshal(raw, &p)
+	go func() {
+		exp, sign := auth.GenerateDownloadSign(p.NodeID, p.Path, 6*60*60)
+		c.Reply("fs_download_sign", p.ReqID, map[string]interface{}{
+			"nodeId": p.NodeID,
+			"path":   p.Path,
+			"exp":    exp,
+			"sign":   sign,
+		})
 	}()
 }
 
