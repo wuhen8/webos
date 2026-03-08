@@ -64,6 +64,7 @@ export interface WasmProcInfo {
   memory?: number      // WASM 内存大小（字节）
   eventCount?: number  // 处理的事件数
   lastUpdated?: number // 更新时间戳
+  autostart?: boolean  // 是否开机自启
 }
 
 export interface UnifiedTask {
