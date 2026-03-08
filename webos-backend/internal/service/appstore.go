@@ -887,9 +887,9 @@ func UninstallApp(ctx context.Context, appID string) error {
 		}
 
 	case "sideload":
-		// Stop wasm process if running
+		// Stop and remove wasm process so it no longer appears in task manager
 		if app.Manifest.WasmModule != "" {
-			wasm.GetRuntime().StopProc(appID)
+			wasm.GetRuntime().RemoveProc(appID)
 		}
 		UninstallWebApp(appID)
 		return nil

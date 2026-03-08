@@ -350,6 +350,17 @@ func (r *Runtime) StopProc(appID string) {
 	r.setProcState(p, ProcStopped, "")
 	log.Printf("[WASM] stopped: %s", appID)
 }
+// RemoveProc stops the process (if running) and removes it from the procs map entirely.
+// Used when an app is uninstalled so it no longer appears in the task manager.
+func (r *Runtime) RemoveProc(appID string) {
+	r.StopProc(appID)
+
+	r.mu.Lock()
+	delete(r.procs, appID)
+	r.mu.Unlock()
+
+	log.Printf("[WASM] removed proc: %s", appID)
+}
 
 // RestartProc stops then starts a process.
 func (r *Runtime) RestartProc(appID string) error {
