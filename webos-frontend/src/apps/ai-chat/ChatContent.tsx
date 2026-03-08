@@ -373,7 +373,7 @@ export default function ChatContent() {
         setCommandProgress(event.commandProgress?.state === 'running' ? event.commandProgress.command : null)
         return
       }
-      if (event.type === 'conv_switched') {
+      if (event.type === 'chat.conv_switched') {
         if (event.convSwitched) {
           const newId = event.convSwitched.convId
           setActiveConvId(newId)
@@ -799,7 +799,7 @@ export default function ChatContent() {
           }
           break
 
-        case 'chat_busy':
+        case 'chat.busy':
           if (event.busyInfo) {
             setMessages(prev => [...prev, {
               id: `busy-${Date.now()}`,
