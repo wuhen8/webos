@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { request as wsRequest } from "@/stores/webSocketStore"
-import { Square, Play, RotateCw } from "lucide-react"
+import { appStoreService } from "@/lib/services/appStoreService"
+import { Square, Play, RotateCw, Power } from "lucide-react"
 import type { WasmProcInfo, SortField } from "./types"
 
 export function WasmPanel({
@@ -10,12 +11,14 @@ export function WasmPanel({
   sortField,
   handleSort,
   SortIcon,
+  onContextMenu,
 }: {
   procs: WasmProcInfo[]
   onRefresh: () => void
   sortField: SortField
   handleSort: (f: SortField) => void
   SortIcon: React.FC<{ field: SortField }>
+  onContextMenu?: (e: React.MouseEvent, appId: string) => void
 }) {
   const { toast } = useToast()
   const [loading, setLoading] = useState<string | null>(null)
@@ -30,6 +33,16 @@ export function WasmPanel({
       toast({ title: "失败", description: e?.message || `${label}失败`, variant: "destructive" })
     } finally {
       setLoading(null)
+    }
+  }
+
+  const toggleAutostart = async (appId: string, current: boolean) => {
+    try {
+      await appStoreService.setAutostart(appId, !current)
+      toast({ title: "成功", description: !current ? `已启用 ${appId} 开机自启` : `已禁用 ${appId} 开机自启` })
+      setTimeout(onRefresh, 300)
+    } catch (e: any) {
+      toast({ title: "失败", description: e?.message || "设置失败", variant: "destructive" })
     }
   }
 
@@ -89,6 +102,7 @@ export function WasmPanel({
               <th className={thClass} onClick={() => handleSort("state")} style={{ width: 80 }}>
                 <span className="flex items-center gap-1">状态 <SortIcon field="state" /></span>
               </th>
+              <th className={thClass} style={{ width: 60 }}>自启</th>
               <th className={thClass} onClick={() => handleSort("memory")} style={{ width: 70 }}>
                 <span className="flex items-center gap-1">内存 <SortIcon field="memory" /></span>
               </th>
@@ -101,13 +115,31 @@ export function WasmPanel({
           </thead>
           <tbody>
             {procs.map((p) => (
-              <tr key={p.appId} className="border-b border-slate-50 hover:bg-slate-50/80">
+              <tr
+                key={p.appId}
+                className="border-b border-slate-50 hover:bg-slate-50/80"
+                onContextMenu={(e) => onContextMenu?.(e, p.appId)}
+              >
                 <td className="px-2 py-1.5 text-slate-700 font-mono text-[0.625rem]">{p.appId}</td>
                 <td className="px-2 py-1.5 text-slate-600">{p.name || p.appId}</td>
                 <td className="px-2 py-1.5">
                   <span className={`inline-block px-1.5 py-0.5 rounded text-[0.625rem] font-medium ${stateColor(p.state)}`}>
                     {stateLabel(p.state)}
                   </span>
+                </td>
+                <td className="px-2 py-1.5">
+                  <button
+                    onClick={() => toggleAutostart(p.appId, !!p.autostart)}
+                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[0.5625rem] font-medium transition-colors ${
+                      p.autostart
+                        ? 'text-green-600 bg-green-50 hover:bg-green-100'
+                        : 'text-slate-400 bg-slate-50 hover:bg-slate-100'
+                    }`}
+                    title={p.autostart ? '点击禁用开机自启' : '点击启用开机自启'}
+                  >
+                    <Power className="w-3 h-3" />
+                    {p.autostart ? '开' : '关'}
+                  </button>
                 </td>
                 <td className="px-2 py-1.5 text-slate-600">
                   {formatBytes(p.memory || 0)}
@@ -158,7 +190,7 @@ export function WasmPanel({
             ))}
             {procs.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-slate-400 text-[0.75rem]">
+                <td colSpan={8} className="text-center py-8 text-slate-400 text-[0.75rem]">
                   暂无 Wasm 进程
                 </td>
               </tr>

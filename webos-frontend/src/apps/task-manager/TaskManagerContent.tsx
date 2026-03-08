@@ -5,6 +5,7 @@ import { exec } from "@/lib/services"
 import { request as wsRequest } from "@/stores/webSocketStore"
 import { useUIStore } from "@/stores/uiStore"
 import { getContextMenu } from "@/config/appRegistry"
+import { appStoreService } from "@/lib/services/appStoreService"
 import type { ContextMenuContext } from "@/types"
 import {
   ArrowUpDown,
@@ -186,6 +187,55 @@ function TaskManagerContent() {
     })
   }
 
+  const handleWasmAction = async (appId: string, action: string) => {
+    const labelMap: Record<string, string> = {
+      start: '启动', stop: '停止', restart: '重启',
+      enableAutostart: '启用开机自启', disableAutostart: '禁用开机自启',
+    }
+    const label = labelMap[action] || action
+    try {
+      if (action === 'start') {
+        await wsRequest('wasm_start', { appId })
+      } else if (action === 'stop') {
+        await wsRequest('wasm_stop', { appId })
+      } else if (action === 'restart') {
+        await wsRequest('wasm_restart', { appId })
+      } else if (action === 'enableAutostart') {
+        await appStoreService.setAutostart(appId, true)
+      } else if (action === 'disableAutostart') {
+        await appStoreService.setAutostart(appId, false)
+      }
+      toast({ title: "成功", description: `${label} ${appId}` })
+      setTimeout(fetchWasmProcs, 300)
+    } catch (e: any) {
+      toast({ title: "失败", description: e?.message || `${label}失败`, variant: "destructive" })
+    }
+  }
+
+  const handleWasmContextMenu = (e: React.MouseEvent, appId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const ctx: ContextMenuContext = { appId }
+    useUIStore.getState().openGlobalMenu({
+      x: e.clientX,
+      y: e.clientY,
+      config: getContextMenu('taskManager', 'wasm'),
+      context: ctx,
+      onAction: (action: string) => {
+        useUIStore.getState().closeGlobalMenu()
+        const actionMap: Record<string, string> = {
+          'wasm.start': 'start',
+          'wasm.stop': 'stop',
+          'wasm.restart': 'restart',
+          'wasm.enableAutostart': 'enableAutostart',
+          'wasm.disableAutostart': 'disableAutostart',
+        }
+        const cmd = actionMap[action]
+        if (cmd) handleWasmAction(appId, cmd)
+      },
+    })
+  }
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"))
@@ -337,6 +387,7 @@ function TaskManagerContent() {
             sortField={wasmSortField}
             handleSort={handleWasmSort}
             SortIcon={WasmSortIcon}
+            onContextMenu={handleWasmContextMenu}
           />
         ) : (
           <ProcessPanel

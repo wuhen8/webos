@@ -31,6 +31,7 @@ func init() {
 		"appstore_update":     handleAppstoreUpdate,
 		"appstore_app_status":    handleAppstoreAppStatus,
 		"appstore_update_config": handleAppstoreUpdateConfig,
+		"appstore_set_autostart": handleAppstoreSetAutostart,
 
 		// Skills marketplace
 		"skills_catalog": asyncHandler[struct {
@@ -166,6 +167,22 @@ func handleAppstoreUpdateConfig(c *WSConn, raw json.RawMessage) {
 	go func() {
 		err := service.UpdateAppConfig(p.AppID, p.AppConfig)
 		c.ReplyResult("appstore_update_config", p.ReqID, nil, err)
+	}()
+}
+
+func handleAppstoreSetAutostart(c *WSConn, raw json.RawMessage) {
+	var p struct {
+		appReq
+		Enabled bool `json:"enabled"`
+	}
+	json.Unmarshal(raw, &p)
+	if p.AppID == "" {
+		c.ReplyErr("appstore_set_autostart", p.ReqID, errRequired("appId"))
+		return
+	}
+	go func() {
+		err := service.SetAppAutostart(p.AppID, p.Enabled)
+		c.ReplyResult("appstore_set_autostart", p.ReqID, nil, err)
 	}()
 }
 

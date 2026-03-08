@@ -161,6 +161,9 @@ var migrations = []string{
 		created_at      INTEGER NOT NULL
 	);
 	CREATE INDEX idx_ai_summary_conv ON ai_summaries(conversation_id);`,
+
+	// version 2: add autostart column to installed_apps
+	`ALTER TABLE installed_apps ADD COLUMN autostart INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func migrate() error {

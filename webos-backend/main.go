@@ -76,6 +76,13 @@ func main() {
 	// Initialize wasm runtime and start background wasm apps (async)
 	wasmRT := wasm.GetRuntime()
 	handler.InitWasmBridge()
+	wasmRT.IsAutostart = func(appID string) bool {
+		app, err := service.GetAppStatus(appID)
+		if err != nil {
+			return false
+		}
+		return app.Autostart
+	}
 	go wasmRT.StartBackgroundApps()
 
 	// Wire up CleanStaleUploads for scheduled jobs

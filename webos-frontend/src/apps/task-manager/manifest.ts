@@ -34,5 +34,15 @@ export const manifest: AppConfig = {
         { id: 'service-disable', label: '禁用开机自启', icon: 'XCircle', action: 'service.disable', variant: 'danger' },
       ],
     },
+    wasm: {
+      id: 'wasm',
+      items: [
+        { id: 'wasm-start', label: '启动', icon: 'Play', action: 'wasm.start' },
+        { id: 'wasm-stop', label: '停止', icon: 'Square', action: 'wasm.stop' },
+        { id: 'wasm-restart', label: '重启', icon: 'RotateCcw', action: 'wasm.restart', dividerAfter: true },
+        { id: 'wasm-enable-autostart', label: '启用开机自启', icon: 'CheckCircle', action: 'wasm.enableAutostart' },
+        { id: 'wasm-disable-autostart', label: '禁用开机自启', icon: 'XCircle', action: 'wasm.disableAutostart', variant: 'danger' },
+      ],
+    },
   },
 }

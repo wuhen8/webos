@@ -342,12 +342,13 @@ type InstalledApp struct {
 	InstallDir  string      `json:"installDir"`
 	InstalledAt int64       `json:"installedAt"`
 	UpdatedAt   int64       `json:"updatedAt"`
+	Autostart   bool        `json:"autostart"`
 }
 
 func ListInstalledApps() ([]InstalledApp, error) {
 	db := database.DB()
 	rows, err := db.Query(`SELECT id, app_type, status, config, manifest, install_dir,
-		installed_at, updated_at FROM installed_apps ORDER BY installed_at DESC`)
+		installed_at, updated_at, autostart FROM installed_apps ORDER BY installed_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -357,11 +358,13 @@ func ListInstalledApps() ([]InstalledApp, error) {
 	for rows.Next() {
 		var a InstalledApp
 		var manifestJSON string
+		var autostart int
 		if err := rows.Scan(&a.ID, &a.AppType, &a.Status, &a.Config, &manifestJSON,
-			&a.InstallDir, &a.InstalledAt, &a.UpdatedAt); err != nil {
+			&a.InstallDir, &a.InstalledAt, &a.UpdatedAt, &autostart); err != nil {
 			continue
 		}
 		json.Unmarshal([]byte(manifestJSON), &a.Manifest)
+		a.Autostart = autostart != 0
 		apps = append(apps, a)
 	}
 	if apps == nil {
@@ -374,14 +377,16 @@ func GetAppStatus(appID string) (*InstalledApp, error) {
 	db := database.DB()
 	var a InstalledApp
 	var manifestJSON string
+	var autostart int
 	err := db.QueryRow(`SELECT id, app_type, status, config, manifest, install_dir,
-		installed_at, updated_at FROM installed_apps WHERE id = ?`, appID).Scan(
+		installed_at, updated_at, autostart FROM installed_apps WHERE id = ?`, appID).Scan(
 		&a.ID, &a.AppType, &a.Status, &a.Config, &manifestJSON,
-		&a.InstallDir, &a.InstalledAt, &a.UpdatedAt)
+		&a.InstallDir, &a.InstalledAt, &a.UpdatedAt, &autostart)
 	if err != nil {
 		return nil, fmt.Errorf("应用 %s 未安装", appID)
 	}
 	json.Unmarshal([]byte(manifestJSON), &a.Manifest)
+	a.Autostart = autostart != 0
 	return &a, nil
 }
 
@@ -514,9 +519,13 @@ func InsertInstalledApp(a *InstalledApp) error {
 	db := database.DB()
 	manifestJSON, _ := json.Marshal(a.Manifest)
 	now := time.Now().UnixMilli()
-	_, err := db.Exec(`INSERT INTO installed_apps (id, app_type, status, config, manifest, install_dir, installed_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.ID, a.AppType, a.Status, a.Config, string(manifestJSON), a.InstallDir, now, now)
+	autostart := 0
+	if a.Autostart {
+		autostart = 1
+	}
+	_, err := db.Exec(`INSERT INTO installed_apps (id, app_type, status, config, manifest, install_dir, installed_at, updated_at, autostart)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.ID, a.AppType, a.Status, a.Config, string(manifestJSON), a.InstallDir, now, now, autostart)
 	return err
 }
 
@@ -919,6 +928,7 @@ func StartApp(appID string) error {
 	}
 
 	UpdateAppStatus(appID, "running")
+	SetAppAutostart(appID, true)
 	return nil
 }
 
@@ -947,6 +957,7 @@ func StopApp(appID string) error {
 	}
 
 	UpdateAppStatus(appID, "stopped")
+	SetAppAutostart(appID, false)
 	return nil
 }
 
@@ -954,6 +965,17 @@ func StopApp(appID string) error {
 func UpdateAppStatus(appID, status string) {
 	database.DB().Exec("UPDATE installed_apps SET status = ?, updated_at = ? WHERE id = ?",
 		status, time.Now().UnixMilli(), appID)
+}
+
+// SetAppAutostart sets the autostart flag for an installed app.
+func SetAppAutostart(appID string, enabled bool) error {
+	val := 0
+	if enabled {
+		val = 1
+	}
+	_, err := database.DB().Exec("UPDATE installed_apps SET autostart = ?, updated_at = ? WHERE id = ?",
+		val, time.Now().UnixMilli(), appID)
+	return err
 }
 
 // ==================== Helpers ====================
@@ -1284,6 +1306,7 @@ func RegisterWebAppInDB(m *WebAppManifest) {
 			Config:     "{}",
 			Manifest:   manifest,
 			InstallDir: installDir,
+			Autostart:  m.Background, // background apps default to autostart
 		}
 		InsertInstalledApp(app)
 	}

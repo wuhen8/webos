@@ -71,6 +71,10 @@ export const appStoreService = {
     return wsRequest('appstore_update_config', { appId, appConfig })
   },
 
+  setAutostart(appId: string, enabled: boolean): Promise<void> {
+    return wsRequest('appstore_set_autostart', { appId, enabled })
+  },
+
   getAppStatus(appId: string): Promise<any> {
     return wsRequest('appstore_app_status', { appId })
   },

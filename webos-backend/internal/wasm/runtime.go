@@ -39,6 +39,7 @@ type ProcInfo struct {
 	Memory      int64     `json:"memory"`      // WASM 内存大小（字节）
 	EventCount  int64     `json:"eventCount"`  // 处理的事件数（近似 CPU 使用）
 	LastUpdated int64     `json:"lastUpdated"` // 更新时间戳
+	Autostart   bool      `json:"autostart"`   // 是否开机自启
 }
 
 // proc is an internal handle for a running wasm reactor process.
@@ -70,6 +71,9 @@ type Runtime struct {
 	// 生命周期回调，由 handler 包设置
 	OnProcStart func(appID string) // 进程启动后调用（注册 sink 等）
 	OnProcStop  func(appID string) // 进程停止前调用（注销 sink 等）
+
+	// IsAutostart 由 service 层设置，检查 DB 中 app 是否标记为开机自启
+	IsAutostart func(appID string) bool
 }
 
 var (
@@ -372,6 +376,10 @@ func (r *Runtime) ListProcs() []ProcInfo {
 		if p.mod != nil && p.mod.Memory() != nil {
 			info.Memory = int64(p.mod.Memory().Size())
 		}
+		// 查询 DB 中的 autostart 标记
+		if r.IsAutostart != nil {
+			info.Autostart = r.IsAutostart(p.appID)
+		}
 		list = append(list, info)
 	}
 	return list
@@ -388,7 +396,15 @@ func (r *Runtime) StartBackgroundApps() {
 			continue
 		}
 		manifest, err := loadManifest(entry.Name())
-		if err != nil || manifest.WasmModule == "" || !manifest.Background {
+		if err != nil || manifest.WasmModule == "" {
+			continue
+		}
+		// 启动条件：manifest 声明 background=true，或 DB 中标记了 autostart
+		shouldStart := manifest.Background
+		if !shouldStart && r.IsAutostart != nil {
+			shouldStart = r.IsAutostart(entry.Name())
+		}
+		if !shouldStart {
 			continue
 		}
 		if err := r.StartProc(entry.Name()); err != nil {
