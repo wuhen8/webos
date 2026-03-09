@@ -229,7 +229,7 @@ func (r *Runtime) StartProc(appID string) error {
 func (r *Runtime) tickLoop(p *proc, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	tickEvent := []byte(`{"type":"tick"}`)
+	tickEvent := []byte(`{"jsonrpc":"2.0","method":"tick"}`)
 	for {
 		select {
 		case <-ticker.C:

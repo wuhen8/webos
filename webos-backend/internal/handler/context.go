@@ -112,9 +112,11 @@ func LookupHandler(msgType string) Handler {
 // ==================== JSON-RPC 2.0 response types ====================
 
 // jsonrpcResponse is a JSON-RPC 2.0 response.
+// NOTE: result uses a custom pointer so that a nil/null result is still
+// serialised (JSON-RPC 2.0 requires exactly one of result/error).
 type jsonrpcResponse struct {
 	JSONRPC string      `json:"jsonrpc"`
-	Result  interface{} `json:"result,omitempty"`
+	Result  interface{} `json:"result"`
 	Error   *jsonrpcErr `json:"error,omitempty"`
 	ID      interface{} `json:"id"`
 }
@@ -134,7 +136,7 @@ type jsonrpcNotification struct {
 
 // ==================== Reply helpers ====================
 
-// Reply sends a success response. Uses JSON-RPC 2.0 format when reqID looks like a JSON-RPC id.
+// Reply sends a success response (JSON-RPC 2.0).
 func (c *WSConn) Reply(msgType, reqID string, data interface{}) {
 	c.WriteJSON(jsonrpcResponse{
 		JSONRPC: "2.0",
@@ -143,9 +145,14 @@ func (c *WSConn) Reply(msgType, reqID string, data interface{}) {
 	})
 }
 
-// ReplyErr sends an error response.
+// ReplyErr sends an error response (JSON-RPC 2.0).
+// Uses a dedicated struct so that "result" is omitted entirely.
 func (c *WSConn) ReplyErr(msgType, reqID string, err error) {
-	c.WriteJSON(jsonrpcResponse{
+	c.WriteJSON(struct {
+		JSONRPC string      `json:"jsonrpc"`
+		Error   *jsonrpcErr `json:"error"`
+		ID      interface{} `json:"id"`
+	}{
 		JSONRPC: "2.0",
 		Error:   &jsonrpcErr{Code: -32000, Message: err.Error()},
 		ID:      reqID,
