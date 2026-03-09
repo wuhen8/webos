@@ -95,24 +95,19 @@ export function TaskIndicator() {
     // Reset any previous adjustment
     el.style.right = '0'
     el.style.left = ''
-    el.style.width = ''
     // Wait for layout
     requestAnimationFrame(() => {
       const rect = el.getBoundingClientRect()
-      const margin = 12
+      const margin = 8
       
-      // Left edge handling
       if (rect.left < margin) {
+        // Left edge: shift right
         el.style.right = 'auto'
         el.style.left = `${-rect.left + margin}px`
-      }
-      // Right edge handling
-      else if (rect.right > window.innerWidth - margin) {
-        el.style.left = 'auto'
-        el.style.right = `${margin}px`
-        // Adjust width to fit within viewport
-        const newWidth = window.innerWidth - rect.left - margin * 2
-        el.style.width = `${newWidth}px`
+      } else if (rect.right > window.innerWidth - margin) {
+        // Right edge: shift left by the overflow amount
+        const overflow = rect.right - (window.innerWidth - margin)
+        el.style.right = `${overflow}px`
       }
     })
   }, [open])
