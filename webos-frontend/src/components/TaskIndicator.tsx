@@ -99,7 +99,7 @@ export function TaskIndicator() {
     // Wait for layout
     requestAnimationFrame(() => {
       const rect = el.getBoundingClientRect()
-      const margin = 4
+      const margin = 12
       
       // Left edge handling
       if (rect.left < margin) {
