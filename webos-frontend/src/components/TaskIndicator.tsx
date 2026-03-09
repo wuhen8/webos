@@ -95,6 +95,7 @@ export function TaskIndicator() {
     // Reset any previous adjustment
     el.style.right = '0'
     el.style.left = ''
+    el.style.width = ''
     // Wait for layout
     requestAnimationFrame(() => {
       const rect = el.getBoundingClientRect()
@@ -109,6 +110,9 @@ export function TaskIndicator() {
       else if (rect.right > window.innerWidth - margin) {
         el.style.left = 'auto'
         el.style.right = `${rect.right - window.innerWidth + margin}px`
+        // Adjust width to fit within viewport
+        const newWidth = window.innerWidth - rect.left - margin
+        el.style.width = `${newWidth}px`
       }
     })
   }, [open])
