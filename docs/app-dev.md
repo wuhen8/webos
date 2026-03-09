@@ -312,7 +312,7 @@ func main() {
 func on_event(ptr uint32, size uint32) uint32 {
     if size == 0 { return 0 }
     data := unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ptr))), size)
-    // data 是 JSON: {"type":"xxx","data":{...}}
+    // data 是 JSON-RPC 2.0 notification: {"jsonrpc":"2.0","method":"xxx","params":{...}}
     return 0
 }
 ```
@@ -329,57 +329,69 @@ import (
     "unsafe"
 )
 
-//go:wasmimport webos log
-func _hostLog(msgPtr, msgLen uint32)
-
-//go:wasmimport webos config_get
-func _hostConfigGet(keyPtr, keyLen uint32) uint64
-
-//go:wasmimport webos kv_get
-func _hostKVGet(keyPtr, keyLen uint32) uint64
-
-//go:wasmimport webos kv_set
-func _hostKVSet(keyPtr, keyLen, valPtr, valLen uint32) uint32
-
-//go:wasmimport webos kv_delete
-func _hostKVDelete(keyPtr, keyLen uint32) uint32
-
 //go:wasmimport webos request
 func _hostRequest(typePtr, typeLen, payloadPtr, payloadLen uint32) uint64
 
+var _sharedBuf [1 << 20]byte
+
+//go:wasmexport get_shared_buf
+func get_shared_buf() uint64 {
+    ptr := uint32(uintptr(unsafe.Pointer(&_sharedBuf[0])))
+    return uint64(ptr)<<32 | uint64(len(_sharedBuf))
+}
+
 func logMsg(msg string) {
     if len(msg) == 0 { return }
-    b := []byte(msg)
-    _hostLog(bytesPtr(b), uint32(len(b)))
+    request("system.log", map[string]interface{}{"message": msg})
 }
 
 func configGet(key string) string {
-    b := []byte(key)
-    return unpackString(_hostConfigGet(bytesPtr(b), uint32(len(b))))
+    result := request("config.get", map[string]interface{}{"key": key})
+    var r struct { Value string `json:"value"`; Error string `json:"error"` }
+    json.Unmarshal([]byte(result), &r)
+    if r.Error != "" { return "" }
+    return r.Value
+}
+
+func configSet(key, val string) {
+    request("config.set", map[string]interface{}{"key": key, "value": val})
 }
 
 func kvGet(key string) string {
-    b := []byte(key)
-    return unpackString(_hostKVGet(bytesPtr(b), uint32(len(b))))
+    result := request("kv.get", map[string]interface{}{"key": key})
+    var r struct { Value string `json:"value"`; Error string `json:"error"` }
+    json.Unmarshal([]byte(result), &r)
+    if r.Error != "" { return "" }
+    return r.Value
 }
 
 func kvSet(key, val string) {
-    kb, vb := []byte(key), []byte(val)
-    _hostKVSet(bytesPtr(kb), uint32(len(kb)), bytesPtr(vb), uint32(len(vb)))
+    request("kv.set", map[string]interface{}{"key": key, "value": val})
 }
 
-func kvDelete(key string) {
-    b := []byte(key)
-    _hostKVDelete(bytesPtr(b), uint32(len(b)))
-}
-
+// request 调用宿主函数，自动解包 JSON-RPC 2.0 response
 func request(msgType string, payload interface{}) string {
     payloadBytes, _ := json.Marshal(payload)
     tb := []byte(msgType)
-    return unpackString(_hostRequest(
-        bytesPtr(tb), uint32(len(tb)),
-        bytesPtr(payloadBytes), uint32(len(payloadBytes)),
-    ))
+    packed := _hostRequest(bytesPtr(tb), uint32(len(tb)), bytesPtr(payloadBytes), uint32(len(payloadBytes)))
+    raw := readSharedBuf(packed)
+    // Unwrap JSON-RPC 2.0 response
+    var rpc struct {
+        Result json.RawMessage `json:"result"`
+        Error  *struct { Code int `json:"code"`; Message string `json:"message"` } `json:"error"`
+    }
+    if json.Unmarshal([]byte(raw), &rpc) == nil {
+        if rpc.Error != nil { return `{"error":"` + rpc.Error.Message + `"}` }
+        if rpc.Result != nil { return string(rpc.Result) }
+    }
+    return raw
+}
+
+func requestJSON(msgType string, payload interface{}) (map[string]interface{}, bool) {
+    resp := request(msgType, payload)
+    var m map[string]interface{}
+    if json.Unmarshal([]byte(resp), &m) != nil { return nil, false }
+    return m, true
 }
 
 func bytesPtr(b []byte) uint32 {
@@ -387,12 +399,10 @@ func bytesPtr(b []byte) uint32 {
     return uint32(uintptr(unsafe.Pointer(&b[0])))
 }
 
-func unpackString(packed uint64) string {
-    ptr := uint32(packed >> 32)
+func readSharedBuf(packed uint64) string {
     length := uint32(packed & 0xFFFFFFFF)
-    if length == 0 { return "" }
-    bytes := unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ptr))), length)
-    return string(bytes)
+    if length == 0 || length > uint32(len(_sharedBuf)) { return "" }
+    return string(_sharedBuf[:length])
 }
 ```
 
@@ -476,23 +486,25 @@ request("process.exec", map[string]interface{}{"command": "ls -la"})
 
 ## 导出函数 on_event
 
-宿主推送事件时调用。事件格式 `{"type":"xxx","data":{...}}`。
+宿主推送事件时调用。事件格式为 JSON-RPC 2.0 notification：`{"jsonrpc":"2.0","method":"xxx","params":{...}}`。
 
-| type | 说明 | data |
-|------|------|------|
+| method | 说明 | params |
+|--------|------|--------|
 | `host.response` | 一次性异步结果（如 `http.request`） | `method`, `requestId`, `success`, `data`, `error` |
 | `host.event` | 持续事件流（如 WebSocket） | `method`, `data` |
-| `chat_delta` | AI 流式文本 | `conversationId`, `content` |
-| `chat_thinking` | AI 思考过程 | `conversationId`, `content` |
-| `chat_done` | AI 回复完成 | `conversationId`, `fullText`, `usage` |
-| `chat_error` | AI 错误 | `conversationId`, `error` |
-| `chat_tool_call` | AI 工具调用 | `conversationId`, `toolCall` |
-| `chat_tool_result` | 工具调用结果 | `conversationId`, `result` |
+| `chat.delta` | AI 流式文本 | `conversationId`, `content` |
+| `chat.thinking` | AI 思考过程 | `conversationId`, `content` |
+| `chat.done` | AI 回复完成 | `conversationId`, `fullText`, `usage` |
+| `chat.error` | AI 错误 | `conversationId`, `error` |
+| `chat.tool_call` | AI 工具调用 | `conversationId`, `toolCall` |
+| `chat.tool_result` | 工具调用结果 | `conversationId`, `result` |
+| `chat.media` | AI 媒体附件 | `conversationId`, `attachment` |
+| `system.notify` | 系统通知 | `level`, `title`, `message` |
 | `tick` | 定时器触发 | 无 |
 
 ## 定时器（pollInterval）
 
-manifest 声明 `"pollInterval": 3000`（毫秒），宿主按间隔推送 `{"type":"tick"}` 到 `on_event`。
+manifest 声明 `"pollInterval": 3000`（毫秒），宿主按间隔推送 `{"jsonrpc":"2.0","method":"tick"}` 到 `on_event`。
 
 ## Wasm 注意事项
 
@@ -569,7 +581,7 @@ export function unmount(ctx) { ctx.container.innerHTML = '' }
 }
 ```
 
-main.go 中 `main()` 读 token 初始化，`on_event` 处理 `tick`（轮询 Telegram）、`chat_delta`/`chat_done`，以及 `host.response`（如 `http.request` 异步结果）。完整代码见 `apps/telegram-ai-bot/`。
+main.go 中 `main()` 读 token 初始化，`on_event` 处理 `tick`（轮询 Telegram）、`chat.delta`/`chat.done`，以及 `host.response`（如 `http.request` 异步结果）。完整代码见 `apps/telegram-ai-bot/`。
 
 ## 前端 + Wasm：带管理界面的后台服务
 

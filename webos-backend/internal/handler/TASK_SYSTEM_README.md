@@ -50,10 +50,10 @@ case "your_operation":
         return someService.DoWork(param1, param2)
     })
 
-    // 3. 立即响应前端
-    writeJSON(wsServerMsg{Type: "your_operation", ReqID: msg.ReqID, Data: map[string]string{
+    // 3. 立即响应前端（JSON-RPC 2.0）
+    c.Reply("your_operation", reqID, map[string]string{
         "status": "submitted",
-    }})
+    })
 ```
 
 ### 示例：解压文件
@@ -71,7 +71,7 @@ case "fs_extract":
         }
         return dest, nil
     })
-    writeJSON(wsServerMsg{Type: "fs_extract", ReqID: msg.ReqID, Data: map[string]string{"path": dest}})
+    c.Reply("fs_extract", reqID, map[string]string{"path": dest})
 ```
 
 ### 示例：压缩文件
@@ -85,18 +85,23 @@ case "fs_compress":
         }
         return output, nil
     })
-    writeJSON(wsServerMsg{Type: "fs_compress", ReqID: msg.ReqID, Data: map[string]string{"path": output}})
+    c.Reply("fs_compress", reqID, map[string]string{"path": output})
 ```
 
 ## 前端
 
-前端无需额外代码。`webSocketStore` 自动处理 `task_update` 推送，`TaskIndicator` 组件自动显示在顶部菜单栏。
+前端无需额外代码。`webSocketStore` 自动处理 `task.update` 推送（JSON-RPC 2.0 notification），`TaskIndicator` 组件自动显示在顶部菜单栏。
 
 ### 数据流
 
 ```
 Submit() → goroutine 执行 → broadcast(running) → 前端 TaskIndicator 显示旋转图标
                            → broadcast(success/failed) → 前端弹出 toast + 更新图标
+```
+
+推送格式：
+```json
+{ "jsonrpc": "2.0", "method": "task.update", "params": { "id": "task_1", "status": "running", ... } }
 ```
 
 ### 手动读取任务状态（如需要）
@@ -119,6 +124,6 @@ const tasks = useTaskStore.getState().tasks
 | `backend/internal/handler/task_manager.go` | TaskManager 单例，内存保留最近 50 个任务 |
 | `backend/internal/handler/system_ws.go` | WS 连接时订阅任务更新，处理 `task_list` 请求 |
 | `frontend/src/stores/taskStore.ts` | Zustand store，管理任务列表状态 |
-| `frontend/src/stores/webSocketStore.ts` | 处理 `task_update` 推送和重连同步 |
+| `frontend/src/stores/webSocketStore.ts` | 处理 `task.update` 推送和重连同步 |
 | `frontend/src/components/TaskIndicator.tsx` | 顶部菜单栏任务指示器 |
 | `frontend/src/components/TopMenuBar.tsx` | 挂载 TaskIndicator |

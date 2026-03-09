@@ -487,20 +487,20 @@ const info = await FM.window.getInfo()
 
 #### FM.on(event, handler)
 
-监听事件，返回取消监听的函数。
+监听服务端推送的 JSON-RPC 2.0 notification，`event` 对应 notification 的 `method` 字段。返回取消监听的函数。
 
 ```js
-// 监听特定事件
-const unsub = FM.on('terminal_output', (data) => {
-  console.log('终端输出:', data)
+// 监听终端输出
+const unsub = FM.on('terminal.output', (params) => {
+  console.log('终端输出:', params)
 })
 
 // 取消监听
 unsub()
 
 // 监听所有事件（通配符）
-FM.on('*', (eventName, data) => {
-  console.log('事件:', eventName, data)
+FM.on('*', (method, params) => {
+  console.log('事件:', method, params)
 })
 ```
 
@@ -509,8 +509,8 @@ FM.on('*', (eventName, data) => {
 移除事件监听。不传 `handler` 则移除该事件的所有监听。
 
 ```js
-FM.off('terminal_output', myHandler)
-FM.off('terminal_output') // 移除所有
+FM.off('terminal.output', myHandler)
+FM.off('terminal.output') // 移除所有
 ```
 
 ---

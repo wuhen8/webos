@@ -69,7 +69,24 @@ func request(msgType string, payload interface{}) string {
 	}
 	tb := []byte(msgType)
 	packed := _hostRequest(bytesPtr(tb), uint32(len(tb)), bytesPtr(payloadBytes), uint32(len(payloadBytes)))
-	return readSharedBuf(packed)
+	raw := readSharedBuf(packed)
+	// Unwrap JSON-RPC 2.0 response: extract "result" field
+	var rpc struct {
+		Result json.RawMessage `json:"result"`
+		Error  *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal([]byte(raw), &rpc) == nil {
+		if rpc.Error != nil {
+			return `{"error":"` + rpc.Error.Message + `"}`
+		}
+		if rpc.Result != nil {
+			return string(rpc.Result)
+		}
+	}
+	return raw
 }
 
 func requestJSON(msgType string, payload interface{}) (map[string]interface{}, bool) {

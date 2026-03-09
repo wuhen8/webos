@@ -107,30 +107,30 @@ func on_event(ptr uint32, size uint32) uint32 {
 	copy(raw, unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ptr))), size))
 
 	var ev struct {
-		Type string          `json:"type"`
-		Data json.RawMessage `json:"data"`
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
 	}
 	if json.Unmarshal(raw, &ev) != nil {
 		return 1
 	}
 
-	switch ev.Type {
+	switch ev.Method {
 	case "host.response":
-		handleHostResponse(ev.Data)
+		handleHostResponse(ev.Params)
 	case "host.event":
-		handleHostEvent(ev.Data)
+		handleHostEvent(ev.Params)
 	case "chat.delta":
-		onChatDelta(ev.Data)
+		onChatDelta(ev.Params)
 	case "chat.done":
 		onChatDone()
 	case "chat.error":
-		onChatError(ev.Data)
+		onChatError(ev.Params)
 	case "chat.command_result":
-		onCommandResult(ev.Data)
+		onCommandResult(ev.Params)
 	case "system.notify":
-		onSystemNotify(ev.Data)
+		onSystemNotify(ev.Params)
 	case "chat.media":
-		onChatMedia(ev.Data)
+		onChatMedia(ev.Params)
 	case "tick":
 		ensureInit()
 		onTick()

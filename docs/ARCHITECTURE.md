@@ -971,28 +971,52 @@ const [state, setState] = useMyAppState(windowId)
 
 ## WebSocket 通信协议
 
-连接地址：`ws://{host}/api/ws?token={JWT}`
+连接地址：`ws://{host}/api/ws`
+
+### 认证
+
+连接后第一条消息必须是 JSON-RPC 2.0 认证请求：
+
+```json
+// 客户端发送
+{ "jsonrpc": "2.0", "method": "auth", "params": { "token": "JWT_TOKEN" } }
+
+// 服务端响应（notification）
+{ "jsonrpc": "2.0", "method": "auth", "params": { "status": "ok", "data": { "username": "admin", "connId": "..." } } }
+```
 
 ### 请求-响应模式
 
 ```json
-// 请求
-{ "type": "fs.list", "reqId": "uuid", "data": { "nodeId": "1", "path": "/" } }
+// 请求（带 id 表示需要响应）
+{ "jsonrpc": "2.0", "method": "fs.list", "params": { "nodeId": "1", "path": "/" }, "id": "r_1_1234567890" }
 
-// 响应
-{ "type": "fs.list", "reqId": "uuid", "data": { "files": [...] } }
+// 成功响应
+{ "jsonrpc": "2.0", "result": { "files": [...] }, "id": "r_1_1234567890" }
+
+// 错误响应
+{ "jsonrpc": "2.0", "error": { "code": -32000, "message": "path not found" }, "id": "r_1_1234567890" }
 ```
 
-每个请求携带唯一 `reqId`，响应通过 `reqId` 匹配。
-
-### 推送订阅模式
+### 通知（服务端推送，无 id）
 
 ```json
-// 订阅
-{ "type": "subscribe", "data": { "channel": "system.stats", "interval": 2000 } }
+{ "jsonrpc": "2.0", "method": "sub.overview", "params": { "cpu": 45.2, "memory": 68.1 } }
+{ "jsonrpc": "2.0", "method": "task.update", "params": { "id": "task_1", "status": "running" } }
+{ "jsonrpc": "2.0", "method": "system.notify", "params": { "level": "info", "title": "...", "message": "..." } }
+```
 
-// 推送
-{ "type": "system.stats", "data": { "cpu": 45.2, "memory": 68.1 } }
+### 订阅模式
+
+```json
+// 订阅（请求）
+{ "jsonrpc": "2.0", "method": "sub.subscribe", "params": { "channel": "sub.overview", "interval": 2000 }, "id": "r_2" }
+
+// 取消订阅
+{ "jsonrpc": "2.0", "method": "sub.unsubscribe", "params": { "channel": "sub.overview" }, "id": "r_3" }
+
+// 推送（notification）
+{ "jsonrpc": "2.0", "method": "sub.overview", "params": { "cpu": 45.2, "memory": 68.1 } }
 ```
 
 ### 主要 WebSocket 操作类型
