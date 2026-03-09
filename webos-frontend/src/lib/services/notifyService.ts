@@ -1,4 +1,4 @@
-// notifyService.ts — Handles system_notify broadcast events from backend.
+// notifyService.ts — Handles system.notify broadcast events from backend.
 // Shows toast notifications for all connected clients.
 
 import { registerMessageHandler } from '@/stores/webSocketStore'
@@ -12,9 +12,9 @@ const levelToVariant: Record<string, ToastVariant> = {
 }
 
 registerMessageHandler((msg: any) => {
-  if (msg.type !== 'system.notify') return false
+  if (msg.method !== 'system.notify') return false
 
-  const { level = 'info', title, message, source } = msg.data || {}
+  const { level = 'info', title, message, source } = msg.params || {}
   const variant = levelToVariant[level] || 'default'
   const prefix = source ? `[${source}] ` : ''
 

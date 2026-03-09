@@ -169,7 +169,7 @@ func handleFsDelete(c *WSConn, raw json.RawMessage) {
 			}
 			r.Report(float64(i+1)/float64(total), int64(i+1), total, 0, 0, "")
 		}
-		c.WriteJSON(wsServerMsg{Type: "fs.trash_changed", Data: map[string]interface{}{"nodeId": nodeID}})
+		c.Notify("fs.trash_changed", map[string]interface{}{"nodeId": nodeID})
 		return fmt.Sprintf("已移到回收站 %d 个项目", total), nil
 	})
 	c.Reply("fs.delete", p.ReqID, nil)
@@ -411,7 +411,7 @@ func handleFsOfflineDownload(c *WSConn, raw json.RawMessage) {
 	destDir := p.Path
 	for _, u := range p.URLs {
 		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-			c.WriteJSON(wsServerMsg{Type: "fs.error", ReqID: p.ReqID, Message: "URL must start with http:// or https://: " + u})
+			c.ReplyErr("fs.offline_download", p.ReqID, fmt.Errorf("URL must start with http:// or https://: %s", u))
 			continue
 		}
 		dlURL := u
@@ -494,7 +494,7 @@ func handleFsWatch(c *WSConn, raw json.RawMessage) {
 	}
 	driver, err := storage.GetDriver(p.NodeID)
 	if err != nil {
-		c.WriteJSON(wsServerMsg{Type: "fs.error", Message: "fs_watch: " + err.Error()})
+		c.Notify("fs.error", map[string]string{"message": "fs_watch: " + err.Error()})
 		return
 	}
 	if _, ok := driver.(*storage.LocalDriver); !ok {
@@ -509,14 +509,14 @@ func handleFsWatch(c *WSConn, raw json.RawMessage) {
 		if err != nil {
 			return
 		}
-		c.WriteJSON(wsServerMsg{Type: "fs.watch", Data: map[string]interface{}{
+		c.Notify("fs.watch", map[string]interface{}{
 			"nodeId": nodeID,
 			"path":   watchPath,
 			"files":  files,
-		}})
+		})
 	})
 	if err != nil {
-		c.WriteJSON(wsServerMsg{Type: "fs.error", Message: "fs_watch subscribe: " + err.Error()})
+		c.Notify("fs.error", map[string]string{"message": "fs_watch subscribe: " + err.Error()})
 	} else {
 		c.FsWatches[watchKey] = absPath
 	}
@@ -562,14 +562,11 @@ func handleFsStat(c *WSConn, raw json.RawMessage) {
 				return
 			default:
 			}
-			c.WriteJSON(wsServerMsg{
-				Type: "fs.stat_size",
-				Data: map[string]interface{}{
-					"path":      p.Path,
-					"nodeId":    p.NodeID,
-					"size":      totalSize,
-					"itemCount": itemCount,
-				},
+			c.Notify("fs.stat_size", map[string]interface{}{
+				"path":      p.Path,
+				"nodeId":    p.NodeID,
+				"size":      totalSize,
+				"itemCount": itemCount,
 			})
 		}
 	}()
@@ -607,7 +604,7 @@ func handleMountWatch(c *WSConn, raw json.RawMessage) {
 	if !c.MountWatching {
 		c.MountWatching = true
 		c.MountWatcher.Subscribe(c.ConnID, func(mounts []service.MountInfo) {
-			c.WriteJSON(wsServerMsg{Type: "fs.mount_watch", Data: mounts})
+			c.Notify("fs.mount_watch", mounts)
 		})
 	}
 }

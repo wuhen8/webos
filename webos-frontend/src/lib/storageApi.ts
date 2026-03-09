@@ -1,7 +1,7 @@
 import request from '@/lib/request'
 import { fsService } from '@/lib/services'
 import { getApiBase } from '@/lib/env'
-import { sendMsg, request as wsRequest } from '@/stores/webSocketStore'
+import { notify, request as wsRequest } from '@/stores/webSocketStore'
 import type { StorageNodeConfig } from '@/types'
 
 // ==================== Storage Node CRUD ====================
@@ -246,7 +246,7 @@ export const fsApi = {
           collectedETags.push({ partNum, etag })
 
           // Notify server of progress via WebSocket
-          sendMsg({ type: 'upload.progress', uploadId, partNum })
+          notify('upload.progress', { uploadId, partNum })
           uploadedBytes += (end - start)
           if (onProgress) onProgress(Math.min(uploadedBytes, file.size), file.size)
         })

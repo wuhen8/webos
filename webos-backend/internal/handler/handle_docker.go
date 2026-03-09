@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -108,22 +109,22 @@ func handleDockerComposeCreate(c *WSConn, raw json.RawMessage) {
 		return
 	}
 	if !filepath.IsAbs(p.ProjectDir) {
-		c.WriteJSON(wsServerMsg{Type: "docker.compose_create", ReqID: p.ReqID, Message: "projectDir 必须是绝对路径"})
+		c.ReplyErr("docker.compose_create", p.ReqID, fmt.Errorf("projectDir 必须是绝对路径"))
 		return
 	}
 	go func() {
 		var yamlCheck interface{}
 		if err := yaml.Unmarshal([]byte(p.YamlContent), &yamlCheck); err != nil {
-			c.WriteJSON(wsServerMsg{Type: "docker.compose_create", ReqID: p.ReqID, Message: "YAML 格式无效: " + err.Error()})
+			c.ReplyErr("docker.compose_create", p.ReqID, fmt.Errorf("YAML 格式无效: %s", err.Error()))
 			return
 		}
 		if err := os.MkdirAll(p.ProjectDir, 0755); err != nil {
-			c.WriteJSON(wsServerMsg{Type: "docker.compose_create", ReqID: p.ReqID, Message: "创建目录失败: " + err.Error()})
+			c.ReplyErr("docker.compose_create", p.ReqID, fmt.Errorf("创建目录失败: %s", err.Error()))
 			return
 		}
 		composePath := filepath.Join(p.ProjectDir, "docker-compose.yml")
 		if err := os.WriteFile(composePath, []byte(p.YamlContent), 0644); err != nil {
-			c.WriteJSON(wsServerMsg{Type: "docker.compose_create", ReqID: p.ReqID, Message: "写入文件失败: " + err.Error()})
+			c.ReplyErr("docker.compose_create", p.ReqID, fmt.Errorf("写入文件失败: %s", err.Error()))
 			return
 		}
 		if p.AutoUp {
@@ -194,10 +195,10 @@ func handleDockerLogsSubscribe(c *WSConn, raw json.RawMessage) {
 		}()
 
 		err := dockerSvc.StreamContainerLogs(ctx, containerID, tail, func(chunk string) {
-			c.WriteJSON(wsServerMsg{Type: "docker.logs", Data: map[string]string{"containerId": containerID, "logs": chunk}})
+			c.Notify("docker.logs", map[string]string{"containerId": containerID, "logs": chunk})
 		})
 		if err != nil && ctx.Err() == nil {
-			c.WriteJSON(wsServerMsg{Type: "docker.logs", Data: map[string]string{"containerId": containerID, "logs": "获取日志失败: " + err.Error()}})
+			c.Notify("docker.logs", map[string]string{"containerId": containerID, "logs": "获取日志失败: " + err.Error()})
 		}
 	}()
 }

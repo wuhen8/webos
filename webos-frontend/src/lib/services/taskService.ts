@@ -1,87 +1,54 @@
-import { sendMsg, request, registerMessageHandler, registerReconnectHook, registerDisconnectHook, refreshChannel } from '@/stores/webSocketStore'
+import { request, notify, registerMessageHandler, registerReconnectHook, registerDisconnectHook, refreshChannel } from '@/stores/webSocketStore'
 import { useTaskStore } from '@/stores/taskStore'
 import { toast } from '@/hooks/use-toast'
 
-// Scheduled job change handlers
 const scheduledJobHandlers = new Set<(job: any) => void>()
 
-// Register push message handlers for task updates and scheduled job changes
 registerMessageHandler((msg) => {
-  // Handle background task updates
-  if (msg.type === 'task.update' && msg.data) {
-    useTaskStore.getState().upsertTask(msg.data)
-    if (!msg.data.silent && (msg.data.status === 'success' || msg.data.status === 'failed')) {
+  if (msg.method === 'task.update' && msg.params) {
+    const data = msg.params
+    useTaskStore.getState().upsertTask(data)
+    if (!data.silent && (data.status === 'success' || data.status === 'failed')) {
       toast({
-        title: msg.data.status === 'success' ? '任务完成' : '任务失败',
-        description: msg.data.title,
-        variant: msg.data.status === 'success' ? 'success' : 'destructive',
+        title: data.status === 'success' ? '任务完成' : '任务失败',
+        description: data.title,
+        variant: data.status === 'success' ? 'success' : 'destructive',
       })
     }
-    // Auto-refresh channels declared by the task
-    if ((msg.data.status === 'success' || msg.data.status === 'failed') && msg.data.refreshChannels?.length) {
-      for (const ch of msg.data.refreshChannels) {
-        refreshChannel(ch)
-      }
+    if ((data.status === 'success' || data.status === 'failed') && data.refreshChannels?.length) {
+      for (const ch of data.refreshChannels) refreshChannel(ch)
     }
     return true
   }
-
-  // Handle scheduled_job_changed push (no reqId)
-  if (msg.type === 'scheduled_job.changed' && !msg.reqId) {
-    for (const handler of scheduledJobHandlers) {
-      handler(msg.data)
-    }
+  if (msg.method === 'scheduled_job.changed' && msg.params) {
+    for (const handler of scheduledJobHandlers) handler(msg.params)
     return true
   }
-
   return false
 })
 
-// Sync background tasks on reconnect
 registerReconnectHook(() => {
-  request('task.list', {}).then((tasks: any) => {
+  request('task.list').then((tasks: any) => {
     useTaskStore.getState().setTasks(tasks || [])
   }).catch(() => {})
 })
 
-// Clear state on disconnect
-registerDisconnectHook(() => {
-  scheduledJobHandlers.clear()
-})
+registerDisconnectHook(() => { scheduledJobHandlers.clear() })
 
 export const taskService = {
-  cancel(taskId: string) {
-    sendMsg({ type: 'task.cancel', data: taskId })
-  },
-
-  retry(taskId: string): Promise<{ newTaskId: string }> {
-    return request('task.retry', { data: taskId })
-  },
-
-  scheduledJobsList(): Promise<any[]> {
-    return request('scheduled_job.list', {})
-  },
-
+  cancel(taskId: string) { notify('task.cancel', { data: taskId }) },
+  retry(taskId: string): Promise<{ newTaskId: string }> { return request('task.retry', { data: taskId }) },
+  scheduledJobsList(): Promise<any[]> { return request('scheduled_job.list') },
   scheduledJobCreate(job: { jobName: string; jobType: string; jobConfig: string; cronExpr: string; enabled?: boolean; silent?: boolean; scheduleType?: string; runAt?: number }): Promise<{ jobId: string }> {
     return request('scheduled_job.create', job)
   },
-
   scheduledJobUpdate(fields: { jobId: string; jobName?: string; jobType?: string; jobConfig?: string; cronExpr?: string; enabled?: boolean; silent?: boolean; scheduleType?: string; runAt?: number }): Promise<void> {
     return request('scheduled_job.update', fields)
   },
-
-  scheduledJobDelete(jobId: string): Promise<void> {
-    return request('scheduled_job.delete', { jobId })
-  },
-
-  scheduledJobRun(jobId: string): Promise<void> {
-    return request('scheduled_job.run', { jobId })
-  },
-
+  scheduledJobDelete(jobId: string): Promise<void> { return request('scheduled_job.delete', { jobId }) },
+  scheduledJobRun(jobId: string): Promise<void> { return request('scheduled_job.run', { jobId }) },
   onScheduledJobChanged(handler: (job: any) => void): () => void {
     scheduledJobHandlers.add(handler)
-    return () => {
-      scheduledJobHandlers.delete(handler)
-    }
+    return () => { scheduledJobHandlers.delete(handler) }
   },
 }

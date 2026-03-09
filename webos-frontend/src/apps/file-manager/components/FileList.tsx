@@ -129,8 +129,6 @@ export function FileList({
     const payload: DragPayload = { nodeId: activeNodeId, paths }
     e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
     e.dataTransfer.effectAllowed = 'all'
-    // Also keep legacy format for backward compat
-    e.dataTransfer.setData("application/json", JSON.stringify(file))
   }, [activeNodeId, selectedFiles, inlineRenamePath])
 
   // Handle drop on a folder item

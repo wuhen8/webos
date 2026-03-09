@@ -7,14 +7,28 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Response 统一响应结构
+// Response 统一响应结构 (legacy format, kept for backward compat)
 type Response struct {
 	Code    int         `json:"code"`
 	Data    interface{} `json:"data"`
 	Message string      `json:"message"`
 }
 
-// Success 成功响应
+// JSONRPCResponse is a JSON-RPC 2.0 response for HTTP endpoints.
+type JSONRPCResponse struct {
+	JSONRPC string      `json:"jsonrpc"`
+	Result  interface{} `json:"result,omitempty"`
+	Error   *JSONRPCErr `json:"error,omitempty"`
+	ID      interface{} `json:"id"`
+}
+
+type JSONRPCErr struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// Success 成功响应 (JSON-RPC 2.0)
 func Success(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, Response{
 		Code:    0,

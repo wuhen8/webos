@@ -54,24 +54,26 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 	conn.SetReadLimit(16 << 20) // 16MB max message size
 
-	// ── First-message authentication ──
+	// ── First-message authentication (JSON-RPC 2.0) ──
 	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	_, raw, err := conn.ReadMessage()
 	if err != nil {
-		conn.WriteJSON(map[string]string{"type": "auth", "message": "auth timeout"})
+		conn.WriteJSON(jsonrpcNotification{JSONRPC: "2.0", Method: "auth", Params: map[string]string{"status": "error", "message": "auth timeout"}})
 		return
 	}
 	var authMsg struct {
-		Type  string `json:"type"`
-		Token string `json:"token"`
+		Method string `json:"method"`
+		Params struct {
+			Token string `json:"token"`
+		} `json:"params"`
 	}
-	if json.Unmarshal(raw, &authMsg) != nil || authMsg.Type != "auth" || authMsg.Token == "" {
-		conn.WriteJSON(map[string]string{"type": "auth", "message": "first message must be {\"type\":\"auth\",\"token\":\"...\"}"})
+	if json.Unmarshal(raw, &authMsg) != nil || authMsg.Method != "auth" || authMsg.Params.Token == "" {
+		conn.WriteJSON(jsonrpcNotification{JSONRPC: "2.0", Method: "auth", Params: map[string]string{"status": "error", "message": "first message must be {\"jsonrpc\":\"2.0\",\"method\":\"auth\",\"params\":{\"token\":\"...\"}}"} })
 		return
 	}
-	claims, err := auth.ValidateToken(authMsg.Token)
+	claims, err := auth.ValidateToken(authMsg.Params.Token)
 	if err != nil {
-		conn.WriteJSON(map[string]string{"type": "auth", "message": "invalid or expired token"})
+		conn.WriteJSON(jsonrpcNotification{JSONRPC: "2.0", Method: "auth", Params: map[string]string{"status": "error", "message": "invalid or expired token"}})
 		return
 	}
 	conn.SetReadDeadline(time.Time{}) // clear deadline
@@ -79,14 +81,17 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 	// Generate connID early so we can include it in the auth response
 	connID := genSid()
 
-	conn.WriteJSON(map[string]interface{}{
-		"type":    "auth",
-		"message": "ok",
-		"data": map[string]interface{}{
-			"username": claims.Username,
-			"avatar":   "",
-			"homePath": "~",
-			"connId":   connID,
+	conn.WriteJSON(jsonrpcNotification{
+		JSONRPC: "2.0",
+		Method:  "auth",
+		Params: map[string]interface{}{
+			"status": "ok",
+			"data": map[string]interface{}{
+				"username": claims.Username,
+				"avatar":   "",
+				"homePath": "~",
+				"connId":   connID,
+			},
 		},
 	})
 
@@ -114,13 +119,13 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 
 	// Subscribe to background task updates
 	taskUnsub := service.GetTaskManager().Subscribe(connID, func(task service.BackgroundTask) {
-		wc.WriteJSON(wsServerMsg{Type: "task.update", Data: task})
+		wc.Notify("task.update", task)
 	})
 
 	// Subscribe to scheduler job status changes
 	schedConnID := "ws_sched_" + connID
 	service.GetScheduler().Subscribe(schedConnID, func(status service.JobStatus) {
-		wc.WriteJSON(wsServerMsg{Type: "scheduled_job.changed", Data: status})
+		wc.Notify("scheduled_job.changed", status)
 	})
 
 	// Register per-connection ClientContext (inherits web capabilities) and sink.
@@ -137,12 +142,14 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 	aiSinkID := connID
 	sysCtx.Subscribe(aiSinkID, aiSink)
 	// Send current executor status immediately
-	wc.WriteJSON(wsServerMsg{Type: "chat.status_update", Data: sysCtx.Snapshot().Executor})
+	wc.Notify("chat.status_update", sysCtx.Snapshot().Executor)
 
 	// ── Read goroutine ──
 	type rawMsg struct {
-		Type string          `json:"type"`
-		Raw  json.RawMessage // the full message
+		Method  string          `json:"method"`
+		ID      interface{}     `json:"id"`
+		Params  json.RawMessage `json:"params"`
+		Raw     json.RawMessage
 	}
 	msgCh := make(chan rawMsg, 64)
 
@@ -153,14 +160,13 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return
 			}
-			var envelope struct {
-				Type string `json:"type"`
-			}
-			if json.Unmarshal(data, &envelope) == nil && envelope.Type != "" {
+			var envelope rawMsg
+			if json.Unmarshal(data, &envelope) == nil && envelope.Method != "" {
+				envelope.Raw = json.RawMessage(data)
 				select {
-				case msgCh <- rawMsg{Type: envelope.Type, Raw: json.RawMessage(data)}:
+				case msgCh <- envelope:
 				default:
-					fmt.Printf("WS[%s] message dropped (channel full): type=%s\n", connID, envelope.Type)
+					fmt.Printf("WS[%s] message dropped (channel full): %s\n", connID, envelope.Method)
 				}
 			}
 		}
@@ -206,16 +212,40 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 			return
 
 		case msg := <-msgCh:
-			if handler := LookupHandler(msg.Type); handler != nil {
-				handler(wc, msg.Raw)
-			} else {
-				var envelope struct {
-					ReqID string `json:"reqId"`
+			if handler := LookupHandler(msg.Method); handler != nil {
+				// Extract params, inject reqId from JSON-RPC id
+				params := msg.Params
+				if len(params) == 0 || string(params) == "null" {
+					params = json.RawMessage(`{}`)
 				}
-				json.Unmarshal(msg.Raw, &envelope)
-				if envelope.ReqID != "" {
-					wc.ReplyErr(msg.Type, envelope.ReqID, fmt.Errorf("unknown message type: %s", msg.Type))
+				// Inject reqId into params so existing handlers can read it
+				if msg.ID != nil {
+					reqID := ""
+					switch v := msg.ID.(type) {
+					case string:
+						reqID = v
+					case float64:
+						reqID = fmt.Sprintf("%.0f", v)
+					}
+					if reqID != "" {
+						var paramsMap map[string]json.RawMessage
+						if json.Unmarshal(params, &paramsMap) == nil {
+							quotedID, _ := json.Marshal(reqID)
+							paramsMap["reqId"] = quotedID
+							params, _ = json.Marshal(paramsMap)
+						}
+					}
 				}
+				handler(wc, params)
+			} else if msg.ID != nil {
+				reqID := ""
+				switch v := msg.ID.(type) {
+				case string:
+					reqID = v
+				case float64:
+					reqID = fmt.Sprintf("%.0f", v)
+				}
+				wc.ReplyErr(msg.Method, reqID, fmt.Errorf("unknown method: %s", msg.Method))
 			}
 
 		case ch := <-wc.TickCh:

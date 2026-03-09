@@ -1,14 +1,14 @@
 /**
- * WebOS Static App SDK v2
+ * WebOS Static App SDK v3 — JSON-RPC 2.0
  *
  * FM.request('domain.action', params) — call any backend method
  * FM.on(event, handler) / FM.off(event, handler) — listen for push events
  *
- * Examples:
- *   FM.request('fs.list', { nodeId: 'local', path: '/' })
- *   FM.request('docker.containers')
- *   FM.request('system.exec', { command: 'ls' })
- *   FM.on('system.notify', data => console.log(data))
+ * Wire format:
+ *   Request:      { jsonrpc: "2.0", method: "fs.list", params: { nodeId, path }, id: "sdk_1" }
+ *   Response:     { jsonrpc: "2.0", result: [...], id: "sdk_1" }
+ *   Error:        { jsonrpc: "2.0", error: { code: -32000, message: "..." }, id: "sdk_1" }
+ *   Notification: { jsonrpc: "2.0", method: "fs.watch", params: { ... } }
  */
 (function () {
   'use strict';
@@ -20,51 +20,57 @@
   var pending = {};
   var eventHandlers = {};
 
-  function genReqId() {
+  function genId() {
     return 'sdk_' + (++reqSeq) + '_' + Date.now();
   }
 
   function request(method, params) {
     return new Promise(function (resolve, reject) {
-      var reqId = genReqId();
+      var id = genId();
       var timer = setTimeout(function () {
-        delete pending[reqId];
+        delete pending[id];
         reject(new Error('FM SDK request timeout: ' + method));
       }, TIMEOUT);
-      pending[reqId] = {
-        resolve: function (data) { clearTimeout(timer); delete pending[reqId]; resolve(data); },
-        reject: function (err) { clearTimeout(timer); delete pending[reqId]; reject(err); }
+      pending[id] = {
+        resolve: function (data) { clearTimeout(timer); delete pending[id]; resolve(data); },
+        reject: function (err) { clearTimeout(timer); delete pending[id]; reject(err); }
       };
       window.parent.postMessage({
-        source: SOURCE, type: 'request', reqId: reqId,
-        method: method, params: params || {}
+        source: SOURCE,
+        jsonrpc: '2.0',
+        method: method,
+        params: params || {},
+        id: id
       }, '*');
     });
   }
 
   window.addEventListener('message', function (event) {
     var msg = event.data;
-    if (!msg || msg.source !== RESPONSE_SOURCE) return;
+    if (!msg || msg.source !== RESPONSE_SOURCE || msg.jsonrpc !== '2.0') return;
 
-    if (msg.type === 'response' && msg.reqId && pending[msg.reqId]) {
+    // Response (has id)
+    if (msg.id && pending[msg.id]) {
       if (msg.error) {
-        pending[msg.reqId].reject(new Error(msg.error));
+        pending[msg.id].reject(new Error(msg.error.message || 'Request failed'));
       } else {
-        pending[msg.reqId].resolve(msg.data);
+        pending[msg.id].resolve(msg.result);
       }
+      return;
     }
 
-    if (msg.type === 'event' && msg.event) {
-      var handlers = eventHandlers[msg.event];
+    // Notification (has method, no id)
+    if (msg.method && !msg.id) {
+      var handlers = eventHandlers[msg.method];
       if (handlers) {
         for (var i = 0; i < handlers.length; i++) {
-          try { handlers[i](msg.data); } catch (e) { console.error('FM event handler error:', e); }
+          try { handlers[i](msg.params); } catch (e) { console.error('FM event handler error:', e); }
         }
       }
       var wildcard = eventHandlers['*'];
       if (wildcard) {
         for (var j = 0; j < wildcard.length; j++) {
-          try { wildcard[j](msg.event, msg.data); } catch (e) { console.error('FM event handler error:', e); }
+          try { wildcard[j](msg.method, msg.params); } catch (e) { console.error('FM event handler error:', e); }
         }
       }
     }
@@ -87,7 +93,7 @@
         else delete eventHandlers[event];
       }
     },
-    version: '2.0.0'
+    version: '3.0.0'
   };
 
   window.parent.postMessage({ source: SOURCE, type: 'sdk_ready' }, '*');

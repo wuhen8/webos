@@ -84,7 +84,7 @@ func (s *wasmEventSink) push(msgType string, data interface{}) {
 	if s.filter != nil && !s.filter[msgType] {
 		return
 	}
-	b, _ := json.Marshal(wsServerMsg{Type: msgType, Data: data})
+	b, _ := json.Marshal(jsonrpcNotification{JSONRPC: "2.0", Method: msgType, Params: data})
 	select {
 	case s.ch <- b:
 	default:

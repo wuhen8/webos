@@ -82,7 +82,7 @@ func hostRequest(ctx context.Context, m api.Module, typePtr, typeLen, payloadPtr
 	appID := m.Name()
 	method, _ := readWasmString(m, typePtr, typeLen)
 	if method == "" {
-		return writeToWasm(m, []byte(`{"error":"empty method"}`))
+		return writeToWasm(m, []byte(`{"jsonrpc":"2.0","error":{"code":-32600,"message":"empty method"},"id":null}`))
 	}
 
 	var payload json.RawMessage
@@ -98,18 +98,22 @@ func hostRequest(ctx context.Context, m api.Module, typePtr, typeLen, payloadPtr
 
 	resp, err := GetRouter().Execute(appID, method, payload)
 	if err != nil {
-		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
-		return writeToWasm(m, errJSON)
+		errResp, _ := json.Marshal(map[string]interface{}{
+			"jsonrpc": "2.0",
+			"error":   map[string]interface{}{"code": -32000, "message": err.Error()},
+			"id":      nil,
+		})
+		return writeToWasm(m, errResp)
 	}
 
 	if resp == nil {
 		resp = map[string]bool{"ok": true}
 	}
-	respBytes, err := json.Marshal(resp)
-	if err != nil {
-		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
-		return writeToWasm(m, errJSON)
-	}
+	respBytes, _ := json.Marshal(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"result":  resp,
+		"id":      nil,
+	})
 	return writeToWasm(m, respBytes)
 }
 
@@ -121,6 +125,7 @@ func nextRequestID(prefix string) string {
 }
 
 func pushHostResponse(appID, method, requestID string, success bool, data interface{}, err error) {
+	// Push as JSON-RPC 2.0 notification with the async result
 	payload := map[string]interface{}{
 		"method":    method,
 		"requestId": requestID,
@@ -133,16 +138,18 @@ func pushHostResponse(appID, method, requestID string, success bool, data interf
 		payload["data"] = data
 	}
 	evt, _ := json.Marshal(map[string]interface{}{
-		"type": "host.response",
-		"data": payload,
+		"jsonrpc": "2.0",
+		"method":  "host.response",
+		"params":  payload,
 	})
 	GetRuntime().PushEvent(appID, evt)
 }
 
 func pushHostEvent(appID, method string, data interface{}) {
 	evt, _ := json.Marshal(map[string]interface{}{
-		"type": "host.event",
-		"data": map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "host.event",
+		"params": map[string]interface{}{
 			"method": method,
 			"data":   data,
 		},

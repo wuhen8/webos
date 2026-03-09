@@ -50,7 +50,7 @@ func handleTerminalOpen(c *WSConn, raw json.RawMessage) {
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		c.WriteJSON(map[string]string{"type": "error", "message": fmt.Sprintf("failed to start shell: %v", err)})
+		c.Notify("error", map[string]string{"message": fmt.Sprintf("failed to start shell: %v", err)})
 		return
 	}
 
@@ -64,7 +64,7 @@ func handleTerminalOpen(c *WSConn, raw json.RawMessage) {
 	}
 	c.Sessions[sid] = sess
 
-	c.WriteJSON(map[string]interface{}{"type": "terminal.opened", "sid": sid, "reqId": p.ReqID})
+	c.Reply("terminal.opened", p.ReqID, map[string]string{"sid": sid})
 
 	// pty -> WS output goroutine
 	go func() {
@@ -75,7 +75,7 @@ func handleTerminalOpen(c *WSConn, raw json.RawMessage) {
 				if err != io.EOF {
 					// normal close
 				}
-				c.WriteJSON(map[string]string{"type": "terminal.exited", "sid": sid})
+				c.Notify("terminal.exited", map[string]string{"sid": sid})
 				sess.Cleanup()
 				return
 			}
@@ -84,8 +84,7 @@ func handleTerminalOpen(c *WSConn, raw json.RawMessage) {
 				if !utf8.Valid(data) {
 					data = []byte(strings.ToValidUTF8(string(data), "?"))
 				}
-				c.WriteJSON(map[string]interface{}{
-					"type": "terminal.output",
+				c.Notify("terminal.output", map[string]interface{}{
 					"sid":  sid,
 					"data": string(data),
 				})

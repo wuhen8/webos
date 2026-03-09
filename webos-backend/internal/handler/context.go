@@ -109,25 +109,47 @@ func LookupHandler(msgType string) Handler {
 	return handlers[msgType]
 }
 
-// ==================== wsServerMsg ====================
+// ==================== JSON-RPC 2.0 response types ====================
 
-type wsServerMsg struct {
-	Type    string      `json:"type"`
-	ReqID   string      `json:"reqId,omitempty"`
+// jsonrpcResponse is a JSON-RPC 2.0 response.
+type jsonrpcResponse struct {
+	JSONRPC string      `json:"jsonrpc"`
+	Result  interface{} `json:"result,omitempty"`
+	Error   *jsonrpcErr `json:"error,omitempty"`
+	ID      interface{} `json:"id"`
+}
+
+type jsonrpcErr struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
-	Message string      `json:"message,omitempty"`
+}
+
+// jsonrpcNotification is a JSON-RPC 2.0 notification (server push).
+type jsonrpcNotification struct {
+	JSONRPC string      `json:"jsonrpc"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params,omitempty"`
 }
 
 // ==================== Reply helpers ====================
 
-// Reply sends a success response.
+// Reply sends a success response. Uses JSON-RPC 2.0 format when reqID looks like a JSON-RPC id.
 func (c *WSConn) Reply(msgType, reqID string, data interface{}) {
-	c.WriteJSON(wsServerMsg{Type: msgType, ReqID: reqID, Data: data})
+	c.WriteJSON(jsonrpcResponse{
+		JSONRPC: "2.0",
+		Result:  data,
+		ID:      reqID,
+	})
 }
 
 // ReplyErr sends an error response.
 func (c *WSConn) ReplyErr(msgType, reqID string, err error) {
-	c.WriteJSON(wsServerMsg{Type: msgType, ReqID: reqID, Message: err.Error()})
+	c.WriteJSON(jsonrpcResponse{
+		JSONRPC: "2.0",
+		Error:   &jsonrpcErr{Code: -32000, Message: err.Error()},
+		ID:      reqID,
+	})
 }
 
 // ReplyResult sends data on success or error message on failure.
@@ -137,6 +159,15 @@ func (c *WSConn) ReplyResult(msgType, reqID string, data interface{}, err error)
 	} else {
 		c.Reply(msgType, reqID, data)
 	}
+}
+
+// Notify sends a JSON-RPC 2.0 notification (server push, no id).
+func (c *WSConn) Notify(method string, params interface{}) {
+	c.WriteJSON(jsonrpcNotification{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+	})
 }
 
 // ==================== Generic async handler ====================
@@ -201,74 +232,54 @@ func (c *WSConn) PushData(ch string) {
 		c.PushMu.Unlock()
 	}()
 
-	var resp wsServerMsg
 	switch ch {
 	case "sub.overview":
 		data, err := systemSvc.GetOverview()
 		if err != nil {
-			resp = wsServerMsg{Type: "error", Message: err.Error()}
+			c.Notify("error", map[string]string{"message": err.Error()})
 		} else {
-			resp = wsServerMsg{Type: "sub.overview", Data: data}
+			c.Notify("sub.overview", data)
 		}
 	case "sub.processes":
 		procs, err := systemSvc.GetProcessList()
 		if err != nil {
-			resp = wsServerMsg{Type: "error", Message: err.Error()}
+			c.Notify("error", map[string]string{"message": err.Error()})
 		} else {
-			resp = wsServerMsg{Type: "sub.processes", Data: map[string]interface{}{
-				"processes": procs,
-				"total":     len(procs),
-			}}
+			c.Notify("sub.processes", map[string]interface{}{"processes": procs, "total": len(procs)})
 		}
 	case "sub.docker_containers":
 		if !dockerSvc.IsAvailable() {
-			resp = wsServerMsg{Type: "sub.docker_containers", Data: map[string]interface{}{
-				"available":  false,
-				"containers": []interface{}{},
-			}}
+			c.Notify("sub.docker_containers", map[string]interface{}{"available": false, "containers": []interface{}{}})
 		} else {
 			containers, err := dockerSvc.ListContainersWithStats()
 			if err != nil {
-				resp = wsServerMsg{Type: "error", Message: err.Error()}
+				c.Notify("error", map[string]string{"message": err.Error()})
 			} else {
-				resp = wsServerMsg{Type: "sub.docker_containers", Data: map[string]interface{}{
-					"available":  true,
-					"containers": containers,
-				}}
+				c.Notify("sub.docker_containers", map[string]interface{}{"available": true, "containers": containers})
 			}
 		}
 	case "sub.docker_images":
 		if !dockerSvc.IsAvailable() {
-			resp = wsServerMsg{Type: "sub.docker_images", Data: map[string]interface{}{
-				"available": false,
-				"images":    []interface{}{},
-			}}
+			c.Notify("sub.docker_images", map[string]interface{}{"available": false, "images": []interface{}{}})
 		} else {
 			images, err := dockerSvc.ListImages()
 			if err != nil {
-				resp = wsServerMsg{Type: "error", Message: err.Error()}
+				c.Notify("error", map[string]string{"message": err.Error()})
 			} else {
-				resp = wsServerMsg{Type: "sub.docker_images", Data: map[string]interface{}{
-					"available": true,
-					"images":    images,
-				}}
+				c.Notify("sub.docker_images", map[string]interface{}{"available": true, "images": images})
 			}
 		}
 	case "sub.docker_compose":
 		if !dockerSvc.IsAvailable() {
-			resp = wsServerMsg{Type: "sub.docker_compose", Data: map[string]interface{}{
-				"available": false,
-				"projects":  []interface{}{},
-			}}
+			c.Notify("sub.docker_compose", map[string]interface{}{"available": false, "projects": []interface{}{}})
 		} else {
 			projects, err := dockerSvc.ListComposeProjects()
 			if err != nil {
-				resp = wsServerMsg{Type: "error", Message: err.Error()}
+				c.Notify("error", map[string]string{"message": err.Error()})
 			} else {
 				composeBaseDir := config.ComposeDir()
 				scanned, _ := dockerSvc.ScanComposeDir(composeBaseDir)
 
-				// Build appstore dirs map for MergeComposeProjects
 				appstoreDirs := make(map[string]bool)
 				rows, err := database.DB().Query("SELECT install_dir FROM installed_apps WHERE install_dir != ''")
 				if err == nil {
@@ -282,50 +293,35 @@ func (c *WSConn) PushData(ch string) {
 				}
 
 				projects = service.MergeComposeProjects(projects, scanned, appstoreDirs)
-				resp = wsServerMsg{Type: "sub.docker_compose", Data: map[string]interface{}{
-					"available": true,
-					"projects":  projects,
-				}}
+				c.Notify("sub.docker_compose", map[string]interface{}{"available": true, "projects": projects})
 			}
 		}
 	case "sub.docker_networks":
 		if !dockerSvc.IsAvailable() {
-			resp = wsServerMsg{Type: "sub.docker_networks", Data: map[string]interface{}{
-				"available": false,
-				"networks":  []interface{}{},
-			}}
+			c.Notify("sub.docker_networks", map[string]interface{}{"available": false, "networks": []interface{}{}})
 		} else {
 			networks, err := dockerSvc.ListNetworks()
 			if err != nil {
-				resp = wsServerMsg{Type: "error", Message: err.Error()}
+				c.Notify("error", map[string]string{"message": err.Error()})
 			} else {
-				resp = wsServerMsg{Type: "sub.docker_networks", Data: map[string]interface{}{
-					"available": true,
-					"networks":  networks,
-				}}
+				c.Notify("sub.docker_networks", map[string]interface{}{"available": true, "networks": networks})
 			}
 		}
 	case "sub.docker_volumes":
 		if !dockerSvc.IsAvailable() {
-			resp = wsServerMsg{Type: "sub.docker_volumes", Data: map[string]interface{}{
-				"available": false,
-				"volumes":  []interface{}{},
-			}}
+			c.Notify("sub.docker_volumes", map[string]interface{}{"available": false, "volumes": []interface{}{}})
 		} else {
 			volumes, err := dockerSvc.ListVolumes()
 			if err != nil {
-				resp = wsServerMsg{Type: "error", Message: err.Error()}
+				c.Notify("error", map[string]string{"message": err.Error()})
 			} else {
-				resp = wsServerMsg{Type: "sub.docker_volumes", Data: map[string]interface{}{
-					"available": true,
-					"volumes":  volumes,
-				}}
+				c.Notify("sub.docker_volumes", map[string]interface{}{"available": true, "volumes": volumes})
 			}
 		}
 	case "sub.disks":
 		disks, err := diskSvc.GetDisks()
 		if err != nil {
-			resp = wsServerMsg{Type: "error", Message: err.Error()}
+			c.Notify("error", map[string]string{"message": err.Error()})
 		} else {
 			data := map[string]interface{}{
 				"os":          runtime.GOOS,
@@ -335,28 +331,21 @@ func (c *WSConn) PushData(ch string) {
 			if lvmInfo := diskSvc.GetLVMInfo(); lvmInfo != nil {
 				data["lvm"] = lvmInfo
 			}
-			resp = wsServerMsg{Type: "sub.disks", Data: data}
+			c.Notify("sub.disks", data)
 		}
 	case "sub.services":
 		svcs, err := systemSvc.GetServiceList()
 		if err != nil {
-			resp = wsServerMsg{Type: "error", Message: err.Error()}
+			c.Notify("error", map[string]string{"message": err.Error()})
 		} else {
-			resp = wsServerMsg{Type: "sub.services", Data: map[string]interface{}{
-				"services": svcs,
-				"total":    len(svcs),
-			}}
+			c.Notify("sub.services", map[string]interface{}{"services": svcs, "total": len(svcs)})
 		}
 	case "sub.tasks":
 		list := service.GetTaskManager().GetAll()
-		resp = wsServerMsg{Type: "sub.tasks", Data: map[string]interface{}{
-			"tasks": list,
-			"total": len(list),
-		}}
+		c.Notify("sub.tasks", map[string]interface{}{"tasks": list, "total": len(list)})
 	default:
-		resp = wsServerMsg{Type: "error", Message: "unknown channel: " + ch}
+		c.Notify("error", map[string]string{"message": "unknown channel: " + ch})
 	}
-	c.WriteJSON(resp)
 }
 
 // StartTicker starts a periodic push for the given channel.
@@ -497,22 +486,22 @@ func handleUnsubscribe(c *WSConn, raw json.RawMessage) {
 
 func handleTaskCancel(c *WSConn, raw json.RawMessage) {
 	var p struct {
-		Data string `json:"data"`
+		TaskID string `json:"taskId"`
 	}
 	json.Unmarshal(raw, &p)
-	if p.Data != "" {
-		service.GetTaskManager().Cancel(p.Data)
+	if p.TaskID != "" {
+		service.GetTaskManager().Cancel(p.TaskID)
 	}
 }
 
 func handleTaskRetry(c *WSConn, raw json.RawMessage) {
 	var p struct {
 		baseReq
-		Data string `json:"data"`
+		TaskID string `json:"taskId"`
 	}
 	json.Unmarshal(raw, &p)
-	if p.Data != "" {
-		newID := service.GetTaskManager().Retry(p.Data)
+	if p.TaskID != "" {
+		newID := service.GetTaskManager().Retry(p.TaskID)
 		c.Reply("task.retry", p.ReqID, map[string]string{"newTaskId": newID})
 	}
 }

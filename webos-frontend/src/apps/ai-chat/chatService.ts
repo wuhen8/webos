@@ -1,4 +1,4 @@
-import { sendMsg, registerMessageHandler } from '@/stores/webSocketStore'
+import { notify, registerMessageHandler } from '@/stores/webSocketStore'
 
 // ── Types ──
 
@@ -47,8 +47,6 @@ export interface ChatEvent {
 
 type ChatEventHandler = (event: ChatEvent) => void
 
-// ── Listeners ──
-
 const listeners = new Set<ChatEventHandler>()
 
 export function onChatEvent(handler: ChatEventHandler): () => void {
@@ -60,130 +58,43 @@ function emit(event: ChatEvent) {
   for (const handler of listeners) handler(event)
 }
 
-// ── Register WS message handler ──
+// ── Register WS message handler (JSON-RPC 2.0 notifications) ──
+
+const methodMap: Record<string, (p: any) => ChatEvent | null> = {
+  'chat.delta': (p) => ({ type: 'delta', conversationId: p.conversationId, content: p.content }),
+  'chat.thinking': (p) => ({ type: 'thinking', conversationId: p.conversationId, content: p.content }),
+  'chat.tool_call_pending': (p) => ({ type: 'tool_call_pending', conversationId: p.conversationId, toolCallPending: p.pending }),
+  'chat.tool_call': (p) => ({ type: 'tool_call', conversationId: p.conversationId, toolCall: p.toolCall }),
+  'chat.tool_result': (p) => ({ type: 'tool_result', conversationId: p.conversationId, toolResult: p.result }),
+  'chat.shell_output': (p) => ({
+    type: 'shell_output', conversationId: p.conversationId,
+    shellOutput: { toolCallId: p.toolCallId, stream: p.output?.stream, data: p.output?.data },
+  }),
+  'chat.done': (p) => ({ type: 'done', conversationId: p.conversationId, usage: p.usage }),
+  'chat.error': (p) => ({ type: 'error', conversationId: p.conversationId, error: p.message }),
+  'chat.command_result': (p) => ({
+    type: 'command_result', conversationId: p.conversationId,
+    commandResult: { text: p.text || '', isError: p.isError || false, clearHistory: p.clearHistory || false },
+  }),
+  'chat.command_progress': (p) => ({ type: 'command_progress', conversationId: '', commandProgress: { command: p.command, state: p.state } }),
+  'chat.ui_action': (p) => ({ type: 'ui_action', conversationId: p.conversationId, uiAction: p.action }),
+  'chat.busy': (p) => ({ type: 'chat.busy', conversationId: p.rejectedConvId || '', busyInfo: p }),
+  'chat.status_update': (p) => ({ type: 'status_update', conversationId: p.runningConvId || '', statusUpdate: p }),
+  'chat.conv_switched': (p) => ({ type: 'chat.conv_switched', conversationId: p.convId || '', convSwitched: p }),
+  'chat.inactive_conv': (p) => ({ type: 'inactive_conv', conversationId: p.conversationId || '', inactiveConv: p }),
+}
 
 registerMessageHandler((msg: any) => {
-  switch (msg.type) {
-    case 'chat.delta':
-      emit({
-        type: 'delta',
-        conversationId: msg.data?.conversationId,
-        content: msg.data?.content,
-      })
-      return true
-    case 'chat.thinking':
-      emit({
-        type: 'thinking',
-        conversationId: msg.data?.conversationId,
-        content: msg.data?.content,
-      })
-      return true
-    case 'chat.tool_call_pending':
-      emit({
-        type: 'tool_call_pending',
-        conversationId: msg.data?.conversationId,
-        toolCallPending: msg.data?.pending,
-      })
-      return true
-    case 'chat.tool_call':
-      emit({
-        type: 'tool_call',
-        conversationId: msg.data?.conversationId,
-        toolCall: msg.data?.toolCall,
-      })
-      return true
-    case 'chat.tool_result':
-      emit({
-        type: 'tool_result',
-        conversationId: msg.data?.conversationId,
-        toolResult: msg.data?.result,
-      })
-      return true
-    case 'chat.shell_output':
-      emit({
-        type: 'shell_output',
-        conversationId: msg.data?.conversationId,
-        shellOutput: {
-          toolCallId: msg.data?.toolCallId,
-          stream: msg.data?.output?.stream,
-          data: msg.data?.output?.data,
-        },
-      })
-      return true
-    case 'chat.done':
-      emit({
-        type: 'done',
-        conversationId: msg.data?.conversationId,
-        usage: msg.data?.usage,
-      })
-      return true
-    case 'chat.error':
-      emit({
-        type: 'error',
-        conversationId: msg.data?.conversationId,
-        error: msg.message,
-      })
-      return true
-    case 'chat.command_result':
-      emit({
-        type: 'command_result',
-        conversationId: msg.data?.conversationId,
-        commandResult: {
-          text: msg.data?.text || '',
-          isError: msg.data?.isError || false,
-          clearHistory: msg.data?.clearHistory || false,
-        },
-      })
-      return true
-    case 'chat.command_progress':
-      emit({
-        type: 'command_progress',
-        conversationId: '',
-        commandProgress: { command: msg.data?.command, state: msg.data?.state },
-      })
-      return true
-    case 'chat.ui_action':
-      emit({
-        type: 'ui_action',
-        conversationId: msg.data?.conversationId,
-        uiAction: msg.data?.action,
-      })
-      return true
-    case 'chat.busy':
-      emit({
-        type: 'chat.busy',
-        conversationId: msg.data?.rejectedConvId || '',
-        busyInfo: msg.data,
-      })
-      return true
-    case 'chat.status_update':
-      emit({
-        type: 'status_update',
-        conversationId: msg.data?.runningConvId || '',
-        statusUpdate: msg.data,
-      })
-      return true
-    case 'chat.conv_switched':
-      emit({
-        type: 'chat.conv_switched',
-        conversationId: msg.data?.convId || '',
-        convSwitched: msg.data,
-      })
-      return true
-    case 'chat.inactive_conv':
-      emit({
-        type: 'inactive_conv',
-        conversationId: msg.data?.conversationId || '',
-        inactiveConv: msg.data,
-      })
-      return true
-    default:
-      return false
-  }
+  if (!msg.method || !msg.params) return false
+  const mapper = methodMap[msg.method]
+  if (!mapper) return false
+  const event = mapper(msg.params)
+  if (event) emit(event)
+  return true
 })
 
 // ── API ──
 
 export function chatSend(conversationId: string, messageContent: string) {
-  sendMsg({ type: 'chat.send', conversationId, messageContent })
+  notify('chat.send', { conversationId, messageContent })
 }

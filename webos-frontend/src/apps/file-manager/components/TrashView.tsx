@@ -53,7 +53,7 @@ export function TrashView({ activeNodeId, toast }: TrashViewProps) {
   // Reload trash list when files are deleted (moved to trash) from file manager
   useEffect(() => {
     return registerMessageHandler((msg: any) => {
-      if (msg.type === 'fs.trash_changed' && msg.data?.nodeId === activeNodeId) {
+      if (msg.method === 'fs.trash_changed' && msg.params?.nodeId === activeNodeId) {
         loadTrash()
         return true
       }
