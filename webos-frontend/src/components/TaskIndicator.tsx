@@ -93,21 +93,27 @@ export function TaskIndicator() {
     if (!open || !dropdownRef.current) return
     const el = dropdownRef.current
     // Reset any previous adjustment
-    el.style.right = '0'
+    el.style.right = ''
     el.style.left = ''
     // Wait for layout
     requestAnimationFrame(() => {
       const rect = el.getBoundingClientRect()
       const margin = 8
-      
-      if (rect.left < margin) {
-        // Left edge: shift right
+      const parentRect = el.offsetParent?.getBoundingClientRect() ?? rect
+
+      // Right edge: ensure margin from viewport right
+      const rightOverflow = rect.right - (window.innerWidth - margin)
+      if (rightOverflow > 0) {
+        el.style.right = `${rightOverflow}px`
+      } else {
+        el.style.right = '0'
+      }
+
+      // Re-check left edge after right adjustment
+      const updatedRect = el.getBoundingClientRect()
+      if (updatedRect.left < margin) {
         el.style.right = 'auto'
-        el.style.left = `${-rect.left + margin}px`
-      } else if (rect.right > window.innerWidth - margin) {
-        // Right edge: shift left by the overflow amount
-        const overflow = rect.right - (window.innerWidth - margin)
-        el.style.right = `${overflow}px`
+        el.style.left = `${margin - parentRect.left}px`
       }
     })
   }, [open])
@@ -161,7 +167,7 @@ export function TaskIndicator() {
       {open && (
         <div
           ref={dropdownRef}
-          className="absolute right-0 top-[1.5rem] w-[18rem] max-w-[calc(100vw-0.5rem)] rounded-[0.875rem] overflow-hidden"
+          className="absolute right-0 top-[1.5rem] w-[18rem] max-w-[calc(100vw-1.5rem)] rounded-[0.875rem] overflow-hidden"
           style={{
             background: 'rgba(255,255,255,0.55)',
             backdropFilter: 'blur(40px) saturate(1.8)',
