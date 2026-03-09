@@ -109,9 +109,9 @@ export function TaskIndicator() {
       // Right edge handling
       else if (rect.right > window.innerWidth - margin) {
         el.style.left = 'auto'
-        el.style.right = `${rect.right - window.innerWidth + margin}px`
+        el.style.right = `${margin}px`
         // Adjust width to fit within viewport
-        const newWidth = window.innerWidth - rect.left - margin
+        const newWidth = window.innerWidth - rect.left - margin * 2
         el.style.width = `${newWidth}px`
       }
     })
