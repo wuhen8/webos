@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -120,7 +121,7 @@ func resolveNodeID(nodeID string) (string, string) {
 // resolveFilePath ensures relative paths are based on DataDir instead of storage root.
 // Absolute paths (starting with /) are returned as-is.
 func resolveFilePath(p string) string {
-	if p == "" || strings.HasPrefix(p, "/") {
+	if p == "" || filepath.IsAbs(p) {
 		return p
 	}
 	return filepath.Join(config.DataDir(), p)
@@ -279,7 +280,18 @@ func hostShell(parent context.Context, command string, timeout int, onOutput fun
 	ctx, cancel := context.WithTimeout(parent, time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, service.UserShell(), "-c", command)
+	shell := service.UserShell()
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// On Windows, cmd.exe uses /c, PowerShell uses -Command
+		if strings.Contains(strings.ToLower(shell), "powershell") || strings.Contains(strings.ToLower(shell), "pwsh") {
+			cmd = exec.CommandContext(ctx, shell, "-Command", command)
+		} else {
+			cmd = exec.CommandContext(ctx, shell, "/c", command)
+		}
+	} else {
+		cmd = exec.CommandContext(ctx, shell, "-c", command)
+	}
 	setProcAttr(cmd)
 
 	var stdout, stderr bytes.Buffer

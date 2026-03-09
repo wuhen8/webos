@@ -7,6 +7,25 @@ import {
 import { isTouchDevice } from "@/lib/env"
 import type { SortField, SortDirection } from "./types"
 
+/** Compute parent path, handling both Unix "/" and Windows "C:/" roots. */
+function getParentPath(p: string): string {
+  // Already at Unix root
+  if (p === "/") return "/"
+  // Already at Windows drive root like "C:/"
+  if (/^[A-Za-z]:\/$/.test(p)) return p
+  const parent = p.substring(0, p.lastIndexOf("/"))
+  // If parent is empty → Unix root
+  if (!parent) return "/"
+  // If parent is just a drive letter like "C:" → return "C:/"
+  if (/^[A-Za-z]:$/.test(parent)) return parent + "/"
+  return parent
+}
+
+/** Check if path is already at its root (/ or C:/) */
+function isRootPath(p: string): boolean {
+  return p === "/" || /^[A-Za-z]:\/$/.test(p)
+}
+
 export type ViewMode = "list" | "grid"
 
 interface ToolbarProps {
@@ -67,7 +86,7 @@ export function Toolbar({
           <Button variant="ghost" size="icon" onClick={goForward} disabled={!canGoForward} className="h-9 w-9 rounded-xl hover:bg-white/20">
             <ArrowRight className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => navigateTo(currentPath === "/" ? "/" : currentPath.substring(0, currentPath.lastIndexOf("/")) || "/")} disabled={currentPath === "/"} className="h-9 w-9 rounded-xl hover:bg-white/20">
+          <Button variant="ghost" size="icon" onClick={() => navigateTo(getParentPath(currentPath))} disabled={isRootPath(currentPath)} className="h-9 w-9 rounded-xl hover:bg-white/20">
             <ArrowUp className="h-4 w-4" />
           </Button>
           <span className="text-sm text-slate-700 font-medium ml-1">已选 {selectedCount} 项</span>
@@ -126,7 +145,7 @@ export function Toolbar({
         <Button variant="ghost" size="icon" onClick={goForward} disabled={!canGoForward} className="h-9 w-9 rounded-xl hover:bg-white/20">
           <ArrowRight className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => navigateTo(currentPath === "/" ? "/" : currentPath.substring(0, currentPath.lastIndexOf("/")) || "/")} disabled={currentPath === "/"} className="h-9 w-9 rounded-xl hover:bg-white/20">
+        <Button variant="ghost" size="icon" onClick={() => navigateTo(getParentPath(currentPath))} disabled={isRootPath(currentPath)} className="h-9 w-9 rounded-xl hover:bg-white/20">
           <ArrowUp className="h-4 w-4" />
         </Button>
       </div>

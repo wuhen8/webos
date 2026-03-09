@@ -42,6 +42,18 @@ func ExpandHome(path string) string {
 	return path
 }
 
+// NormalizePath converts OS-native path separators to forward slashes for
+// consistent frontend communication. On Unix this is a no-op.
+func NormalizePath(path string) string {
+	return filepath.ToSlash(path)
+}
+
+// FromClientPath converts a forward-slash path from the frontend to the
+// OS-native format. On Unix this is a no-op.
+func FromClientPath(path string) string {
+	return filepath.FromSlash(path)
+}
+
 // NewLocalDriver creates a new LocalDriver.
 // uploadsDir is the directory for chunked upload temp files.
 func NewLocalDriver(uploadsDir string) *LocalDriver {
@@ -54,6 +66,7 @@ func NewLocalDriver(uploadsDir string) *LocalDriver {
 }
 
 func (d *LocalDriver) List(path string) ([]FileInfo, error) {
+	path = FromClientPath(path)
 	path = ExpandHome(path)
 	entries, err := os.ReadDir(path)
 	if err != nil {
@@ -103,7 +116,7 @@ func (d *LocalDriver) List(path string) ([]FileInfo, error) {
 		}
 		files = append(files, FileInfo{
 			Name:          entry.Name(),
-			Path:          fullPath,
+			Path:          NormalizePath(fullPath),
 			IsDir:         isDir,
 			Size:          size,
 			Extension:     ext,
@@ -116,10 +129,11 @@ func (d *LocalDriver) List(path string) ([]FileInfo, error) {
 }
 
 func (d *LocalDriver) Read(path string) ([]byte, error) {
-	return os.ReadFile(ExpandHome(path))
+	return os.ReadFile(ExpandHome(FromClientPath(path)))
 }
 
 func (d *LocalDriver) Write(path string, content []byte) error {
+	path = FromClientPath(path)
 	path = ExpandHome(path)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
@@ -128,10 +142,11 @@ func (d *LocalDriver) Write(path string, content []byte) error {
 }
 
 func (d *LocalDriver) CreateDir(path string) error {
-	return os.MkdirAll(ExpandHome(path), 0755)
+	return os.MkdirAll(ExpandHome(FromClientPath(path)), 0755)
 }
 
 func (d *LocalDriver) Delete(path string) error {
+	path = FromClientPath(path)
 	path = ExpandHome(path)
 	// 符号链接只删链接本身，不跟随到目标
 	if linfo, err := os.Lstat(path); err == nil && linfo.Mode()&os.ModeSymlink != 0 {
@@ -141,11 +156,11 @@ func (d *LocalDriver) Delete(path string) error {
 }
 
 func (d *LocalDriver) Rename(oldPath, newPath string) error {
-	return os.Rename(ExpandHome(oldPath), ExpandHome(newPath))
+	return os.Rename(ExpandHome(FromClientPath(oldPath)), ExpandHome(FromClientPath(newPath)))
 }
 
 func (d *LocalDriver) Copy(srcPath, dstPath string, onProgress ProgressFunc) error {
-	srcPath, dstPath = ExpandHome(srcPath), ExpandHome(dstPath)
+	srcPath, dstPath = ExpandHome(FromClientPath(srcPath)), ExpandHome(FromClientPath(dstPath))
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 		return err
 	}
@@ -153,7 +168,7 @@ func (d *LocalDriver) Copy(srcPath, dstPath string, onProgress ProgressFunc) err
 }
 
 func (d *LocalDriver) Move(srcPath, dstPath string) error {
-	srcPath, dstPath = ExpandHome(srcPath), ExpandHome(dstPath)
+	srcPath, dstPath = ExpandHome(FromClientPath(srcPath)), ExpandHome(FromClientPath(dstPath))
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 		return err
 	}
@@ -167,7 +182,7 @@ func (d *LocalDriver) Move(srcPath, dstPath string) error {
 }
 
 func (d *LocalDriver) Stat(path string) (*FileInfo, error) {
-	path = ExpandHome(path)
+	path = ExpandHome(FromClientPath(path))
 	isSymlink := false
 	symlinkTarget := ""
 
@@ -191,7 +206,7 @@ func (d *LocalDriver) Stat(path string) (*FileInfo, error) {
 		}
 		return &FileInfo{
 			Name:          linfo.Name(),
-			Path:          path,
+			Path:          NormalizePath(path),
 			IsDir:         false,
 			Size:          linfo.Size(),
 			Extension:     ext,
@@ -207,7 +222,7 @@ func (d *LocalDriver) Stat(path string) (*FileInfo, error) {
 	}
 	return &FileInfo{
 		Name:          info.Name(),
-		Path:          path,
+		Path:          NormalizePath(path),
 		IsDir:         info.IsDir(),
 		Size:          info.Size(),
 		Extension:     ext,
@@ -249,7 +264,7 @@ func (d *LocalDriver) DirSize(ctx context.Context, dirPath string) (int64, int, 
 }
 
 func (d *LocalDriver) ReadStream(path string) (io.ReadCloser, *FileInfo, error) {
-	path = ExpandHome(path)
+	path = ExpandHome(FromClientPath(path))
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, nil, err
@@ -263,7 +278,7 @@ func (d *LocalDriver) ReadStream(path string) (io.ReadCloser, *FileInfo, error) 
 	}
 	return f, &FileInfo{
 		Name:         info.Name(),
-		Path:         path,
+		Path:         NormalizePath(path),
 		IsDir:        false,
 		Size:         info.Size(),
 		Extension:    filepath.Ext(info.Name()),
@@ -280,7 +295,7 @@ func (d *LocalDriver) PresignPutURL(path string, expires time.Duration) (string,
 }
 
 func (d *LocalDriver) WriteStream(path string, reader io.Reader, size int64, onProgress ProgressFunc) error {
-	path = ExpandHome(path)
+	path = ExpandHome(FromClientPath(path))
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}

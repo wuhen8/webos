@@ -162,7 +162,9 @@ export function FileList({
         const payload: DragPayload = JSON.parse(raw)
         // Only move if source is different from current directory
         const allInCurrent = payload.paths.every(p => {
-          const parent = p.substring(0, p.lastIndexOf("/")) || "/"
+          const lastSlash = p.lastIndexOf("/")
+          let parent = lastSlash > 0 ? p.substring(0, lastSlash) : "/"
+          if (/^[A-Za-z]:$/.test(parent)) parent += "/"
           return parent === currentPath
         })
         if (!allInCurrent) onMoveFiles(payload.nodeId, payload.paths, currentPath)

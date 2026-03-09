@@ -103,8 +103,9 @@ func (s *FileService) Write(nodeID, path string, content []byte) error {
 		return err
 	}
 
+	normalizedPath := storage.NormalizePath(path)
 	IndexAdd(nodeID, storage.FileInfo{
-		Name: filepath.Base(path), Path: path, IsDir: false,
+		Name: filepath.Base(path), Path: normalizedPath, IsDir: false,
 		Size: int64(len(content)), Extension: filepath.Ext(path), ModifiedTime: time.Now(),
 	})
 	return nil
@@ -118,14 +119,15 @@ func (s *FileService) CreateDir(nodeID, path, name string) (string, error) {
 	}
 
 	fullPath := filepath.Join(path, name)
+	normalizedPath := storage.NormalizePath(fullPath)
 	if err := driver.CreateDir(fullPath); err != nil {
 		return "", err
 	}
 
 	IndexAdd(nodeID, storage.FileInfo{
-		Name: name, Path: fullPath, IsDir: true, ModifiedTime: time.Now(),
+		Name: name, Path: normalizedPath, IsDir: true, ModifiedTime: time.Now(),
 	})
-	return fullPath, nil
+	return normalizedPath, nil
 }
 
 // Delete moves a file or directory to the trash instead of permanently deleting it.
@@ -210,7 +212,7 @@ func (s *FileService) Rename(nodeID, path, oldName, newName string) (string, err
 	}
 
 	IndexRename(nodeID, oldPath, newPath)
-	return newPath, nil
+	return storage.NormalizePath(newPath), nil
 }
 
 // Copy copies a file or directory
@@ -235,7 +237,7 @@ func (s *FileService) Copy(nodeID, from, to string, onProgress storage.ProgressF
 	}
 
 	IndexRefreshDir(nodeID, to)
-	return dstPath, nil
+	return storage.NormalizePath(dstPath), nil
 }
 
 // deduplicatePath generates a non-conflicting path by appending " (副本)", " (副本 2)", etc.
@@ -289,7 +291,7 @@ func (s *FileService) Move(nodeID, from, to string) (string, error) {
 	absSrc, err1 := filepath.Abs(from)
 	absDst, err2 := filepath.Abs(dstPath)
 	if err1 == nil && err2 == nil && absSrc == absDst {
-		return dstPath, nil
+		return storage.NormalizePath(dstPath), nil
 	}
 
 	if err := driver.Move(from, dstPath); err != nil {
@@ -298,7 +300,7 @@ func (s *FileService) Move(nodeID, from, to string) (string, error) {
 
 	IndexDelete(nodeID, from)
 	IndexRefreshDir(nodeID, to)
-	return dstPath, nil
+	return storage.NormalizePath(dstPath), nil
 }
 
 // CreateFile creates a new empty file
@@ -309,15 +311,16 @@ func (s *FileService) CreateFile(nodeID, path, name string) (string, error) {
 	}
 
 	fullPath := filepath.Join(path, name)
+	normalizedPath := storage.NormalizePath(fullPath)
 	if err := driver.Write(fullPath, []byte("")); err != nil {
 		return "", err
 	}
 
 	IndexAdd(nodeID, storage.FileInfo{
-		Name: name, Path: fullPath, IsDir: false,
+		Name: name, Path: normalizedPath, IsDir: false,
 		Size: 0, Extension: filepath.Ext(name), ModifiedTime: time.Now(),
 	})
-	return fullPath, nil
+	return normalizedPath, nil
 }
 
 // Upload uploads a file from a stream
@@ -328,15 +331,16 @@ func (s *FileService) Upload(nodeID, path, filename string, reader io.Reader, si
 	}
 
 	uploadPath := filepath.Join(path, filename)
+	normalizedPath := storage.NormalizePath(uploadPath)
 	if err := driver.WriteStream(uploadPath, reader, size, onProgress); err != nil {
 		return "", err
 	}
 
 	IndexAdd(nodeID, storage.FileInfo{
-		Name: filename, Path: uploadPath, IsDir: false,
+		Name: filename, Path: normalizedPath, IsDir: false,
 		Size: size, Extension: filepath.Ext(filename), ModifiedTime: time.Now(),
 	})
-	return uploadPath, nil
+	return normalizedPath, nil
 }
 
 // CopyAcross copies a file from one storage node to another via streaming.

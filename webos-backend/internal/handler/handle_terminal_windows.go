@@ -1,3 +1,5 @@
+//go:build windows
+
 package handler
 
 import (
@@ -12,8 +14,6 @@ import (
 	"unicode/utf8"
 
 	"webos-backend/internal/config"
-
-	"github.com/creack/pty"
 )
 
 func init() {
@@ -39,38 +39,65 @@ func handleTerminalOpen(c *WSConn, raw json.RawMessage) {
 
 	sid := genSid()
 
-	shell := os.Getenv("SHELL")
+	// Detect shell: prefer PowerShell, fall back to COMSPEC (cmd.exe)
+	shell := os.Getenv("COMSPEC")
 	if shell == "" {
-		shell = "/bin/sh"
+		shell = "cmd.exe"
 	}
 
-	cmd := exec.Command(shell, "-l")
+	cmd := exec.Command(shell)
 	cmd.Dir = config.UserHome()
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8")
 
-	ptmx, err := pty.Start(cmd)
+	// Use pipes for stdin/stdout/stderr on Windows (no pty support)
+	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
+		c.Notify("error", map[string]string{"message": fmt.Sprintf("failed to create stdin pipe: %v", err)})
+		return
+	}
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		c.Notify("error", map[string]string{"message": fmt.Sprintf("failed to create stdout pipe: %v", err)})
+		return
+	}
+	cmd.Stderr = cmd.Stdout // merge stderr into stdout
+
+	if err := cmd.Start(); err != nil {
 		c.Notify("error", map[string]string{"message": fmt.Sprintf("failed to start shell: %v", err)})
 		return
 	}
 
-	_ = pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
+	// Use Ptmx field to hold a writable pipe for input.
+	// On Windows we store the stdin pipe writer as an *os.File via a temporary pipe trick.
+	// Instead, we store the stdinPipe in a wrapper. Since TerminalSession.Ptmx is *os.File,
+	// we create a pipe pair and bridge it.
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		c.Notify("error", map[string]string{"message": fmt.Sprintf("failed to create pipe: %v", err)})
+		cmd.Process.Kill()
+		return
+	}
+
+	// Bridge: read from pr and write to stdinPipe
+	go func() {
+		defer stdinPipe.Close()
+		io.Copy(stdinPipe, pr)
+	}()
 
 	sess := &TerminalSession{
 		Sid:  sid,
 		Cmd:  cmd,
-		Ptmx: ptmx,
+		Ptmx: pw, // write end of pipe -> stdin of process
 		Done: make(chan struct{}),
 	}
 	c.Sessions[sid] = sess
 
 	c.Reply("terminal.opened", p.ReqID, map[string]string{"sid": sid})
 
-	// pty -> WS output goroutine
+	// stdout -> WS output goroutine
 	go func() {
 		buf := make([]byte, 4096)
 		for {
-			n, err := ptmx.Read(buf)
+			n, err := stdoutPipe.Read(buf)
 			if err != nil {
 				if err != io.EOF {
 					// normal close
@@ -109,22 +136,9 @@ func handleTerminalInput(c *WSConn, raw json.RawMessage) {
 	}
 }
 
-func handleTerminalResize(c *WSConn, raw json.RawMessage) {
-	var p struct {
-		Sid  string `json:"sid"`
-		Cols uint16 `json:"cols"`
-		Rows uint16 `json:"rows"`
-	}
-	json.Unmarshal(raw, &p)
-
-	if sess, ok := c.Sessions[p.Sid]; ok {
-		if p.Cols > 0 && p.Rows > 0 {
-			_ = pty.Setsize(sess.Ptmx, &pty.Winsize{
-				Rows: p.Rows,
-				Cols: p.Cols,
-			})
-		}
-	}
+func handleTerminalResize(c *WSConn, _ json.RawMessage) {
+	// Windows pipe-based terminal does not support resize.
+	// This is a no-op to avoid errors on the frontend.
 }
 
 func handleTerminalClose(c *WSConn, raw json.RawMessage) {

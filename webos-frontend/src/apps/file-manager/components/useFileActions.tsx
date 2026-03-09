@@ -54,7 +54,10 @@ export function useFileActions(ctx: FileActionsContext) {
       setInlineRenamePath(null); setInlineRenameOldName(""); setInlineRenameValue("")
       return
     }
-    const parentPath = inlineRenamePath.substring(0, inlineRenamePath.lastIndexOf("/")) || "/"
+    const lastSlash = inlineRenamePath.lastIndexOf("/")
+    let parentPath = lastSlash > 0 ? inlineRenamePath.substring(0, lastSlash) : "/"
+    // Preserve Windows drive root: "C:" → "C:/"
+    if (/^[A-Za-z]:$/.test(parentPath)) parentPath += "/"
     try {
       await fsApi.rename(activeNodeId, parentPath, inlineRenameOldName, newName)
       await loadFiles()

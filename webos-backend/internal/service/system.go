@@ -40,6 +40,13 @@ func UserShell() string {
 	if s := os.Getenv("SHELL"); s != "" {
 		return s
 	}
+	// On Windows, SHELL is typically unset; use COMSPEC (usually cmd.exe)
+	if s := os.Getenv("COMSPEC"); s != "" {
+		return s
+	}
+	if runtime.GOOS == "windows" {
+		return "cmd.exe"
+	}
 	return "/bin/sh"
 }
 
@@ -726,7 +733,17 @@ func (s *SystemService) GetServiceList() ([]ServiceInfo, error) {
 
 // Exec executes a shell command and returns stdout, stderr, and exit code
 func (s *SystemService) Exec(command string) (stdout, stderr string, exitCode int, err error) {
-	cmd := exec.Command(UserShell(), "-c", command)
+	shell := UserShell()
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		if strings.Contains(strings.ToLower(shell), "powershell") || strings.Contains(strings.ToLower(shell), "pwsh") {
+			cmd = exec.Command(shell, "-Command", command)
+		} else {
+			cmd = exec.Command(shell, "/c", command)
+		}
+	} else {
+		cmd = exec.Command(shell, "-c", command)
+	}
 	var outBuf, errBuf strings.Builder
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf

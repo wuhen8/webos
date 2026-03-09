@@ -500,7 +500,7 @@ func handleFsWatch(c *WSConn, raw json.RawMessage) {
 	if _, ok := driver.(*storage.LocalDriver); !ok {
 		return
 	}
-	absPath := storage.ExpandHome(p.Path)
+	absPath := storage.ExpandHome(storage.FromClientPath(p.Path))
 	nodeID := p.NodeID
 	watchPath := p.Path
 	connID := c.ConnID
