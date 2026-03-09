@@ -98,10 +98,17 @@ export function TaskIndicator() {
     // Wait for layout
     requestAnimationFrame(() => {
       const rect = el.getBoundingClientRect()
-      if (rect.left < 4) {
-        // Shift right so left edge stays on screen with 4px margin
+      const margin = 4
+      
+      // Left edge handling
+      if (rect.left < margin) {
         el.style.right = 'auto'
-        el.style.left = `${-rect.left + 4}px`
+        el.style.left = `${-rect.left + margin}px`
+      }
+      // Right edge handling
+      else if (rect.right > window.innerWidth - margin) {
+        el.style.left = 'auto'
+        el.style.right = `${rect.right - window.innerWidth + margin}px`
       }
     })
   }, [open])
