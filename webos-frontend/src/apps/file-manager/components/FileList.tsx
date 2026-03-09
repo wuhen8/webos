@@ -128,8 +128,14 @@ export function FileList({
       : [file.path]
     const payload: DragPayload = { nodeId: activeNodeId, paths }
     e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
+    // Also set application/json for cross-app drops (terminal, AI chat)
+    const dragFiles = paths.map(p => {
+      const f = files.find(ff => ff.path === p)
+      return { path: p, nodeId: activeNodeId, name: f?.name ?? p.split('/').pop(), isDir: f?.isDir ?? false }
+    })
+    e.dataTransfer.setData('application/json', JSON.stringify(dragFiles))
     e.dataTransfer.effectAllowed = 'all'
-  }, [activeNodeId, selectedFiles, inlineRenamePath])
+  }, [activeNodeId, selectedFiles, inlineRenamePath, files])
 
   // Handle drop on a folder item
   const handleFolderDrop = useCallback((targetFolder: FileInfo, e: React.DragEvent) => {
