@@ -903,24 +903,28 @@ func sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, di
 	downloadURL := fmt.Sprintf("%s/im/v1/messages/%s/resources/%s?type=%s",
 		feishuBaseURL, messageID, fileKey, mediaType)
 
-	// 生成保存路径（使用环境变量占位符）
+	// 生成保存路径
 	fileName := fileKey
 	if mediaType == "image" {
 		fileName = fileKey + ".jpg"
 	}
 	savePath := fmt.Sprintf("${WEBOS_DATA_DIR}/uploads/feishu/%s/%s", chatID, fileName)
 
-	// 构建请求头（包含 __save_path 元字段）
-	headers := map[string]string{
-		"Authorization": "Bearer " + token,
-		"__save_path":   savePath,
+	// 使用 saveTo 参数让宿主机直接保存响应体到文件
+	params := map[string]interface{}{
+		"method":  "GET",
+		"url":     downloadURL,
+		"headers": map[string]string{"Authorization": "Bearer " + token},
+		"saveTo":  savePath,
 	}
-	headersJSON, _ := json.Marshal(headers)
-
-	// 发起异步请求，注册到 pendingDownloads
-	reqID := sendHTTPRequestAsync("GET", downloadURL, "", string(headersJSON))
-	if reqID == "" {
+	result, ok := requestJSON("http.request", params)
+	if !ok {
 		logMsg("ERROR: 发起下载请求失败")
+		return ""
+	}
+	reqID, _ := result["requestId"].(string)
+	if reqID == "" {
+		logMsg("ERROR: 发起下载请求失败: 无 requestId")
 		return ""
 	}
 
@@ -935,30 +939,6 @@ func sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, di
 	return reqID
 }
 
-// sendHTTPRequestAsync 发起 HTTP 请求并返回 requestID
-func sendHTTPRequestAsync(method, url, body, headers string) string {
-		headersMap := map[string]string{}
-		if headers != "" {
-			if json.Unmarshal([]byte(headers), &headersMap) != nil {
-				return ""
-			}
-		}
-		params := map[string]interface{}{"method": method, "url": url, "headers": headersMap, "body": map[string]interface{}{}}
-		if body != "" {
-			var bodyMap map[string]interface{}
-			if json.Unmarshal([]byte(body), &bodyMap) == nil {
-				params["body"] = bodyMap
-			}
-		}
-		result, ok := requestJSON("http.request", params)
-	if !ok {
-		return ""
-	}
-	if reqID, _ := result["requestId"].(string); reqID != "" {
-		return reqID
-	}
-	return ""
-}
 
 // handleDownloadComplete 处理下载完成事件
 func handleDownloadComplete(pending PendingDownload, respBody string) {

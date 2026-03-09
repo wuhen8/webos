@@ -266,13 +266,14 @@ func httpRequestCapability(appID string, params json.RawMessage) (interface{}, e
 		Body      map[string]interface{} `json:"body"`
 		Format    string                 `json:"format"`
 		FileField string                 `json:"fileField"`
+		SaveTo    string                 `json:"saveTo"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil { return nil, err }
 	if p.URL == "" { return nil, fmt.Errorf("url is required") }
 	if p.Method == "" { p.Method = "POST" }
 	if p.Format == "" { p.Format = "json" }
 	requestID := nextRequestID("http")
-	go httpRequestWithFiles(appID, requestID, p.Method, p.URL, p.Headers, p.Body, p.Format, p.FileField)
+	go httpRequestWithFiles(appID, requestID, p.Method, p.URL, p.Headers, p.Body, p.Format, p.FileField, p.SaveTo)
 	return map[string]interface{}{"ok": true, "requestId": requestID}, nil
 }
 
@@ -369,10 +370,13 @@ func systemLog(appID string, params json.RawMessage) (interface{}, error) {
 	return map[string]bool{"success": true}, nil
 }
 
-func httpRequestWithFiles(appID, requestID, method, targetURL string, headers map[string]string, body map[string]interface{}, format, fileField string) {
+func httpRequestWithFiles(appID, requestID, method, targetURL string, headers map[string]string, body map[string]interface{}, format, fileField, saveTo string) {
 	pushErr := func(err error) {
 		pushHostResponse(appID, "http.request", requestID, false, nil, err)
 	}
+
+	// Remove __save_path from headers if present (legacy compat)
+	delete(headers, "__save_path")
 
 	type fileMarker struct { key, nodeID, filePath string }
 	var fileMarkers []fileMarker
@@ -416,7 +420,7 @@ func httpRequestWithFiles(appID, requestID, method, targetURL string, headers ma
 		_ = writer.Close()
 		reqBody = buf.Bytes()
 		contentType = writer.FormDataContentType()
-	} else {
+	} else if len(body) > 0 || len(fileMarkers) > 0 {
 		for _, marker := range fileMarkers {
 			driver, err := storage.GetDriver(marker.nodeID)
 			if err != nil { pushErr(fmt.Errorf("storage node not found: %w", err)); return }
@@ -432,7 +436,9 @@ func httpRequestWithFiles(appID, requestID, method, targetURL string, headers ma
 
 	req, err := http.NewRequest(method, targetURL, bytes.NewReader(reqBody))
 	if err != nil { pushErr(fmt.Errorf("create request failed: %w", err)); return }
-	req.Header.Set("Content-Type", contentType)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
 	for k, v := range headers { req.Header.Set(k, v) }
 	client := &http.Client{Timeout: 300 * time.Second}
 	if proxyStr, cfgErr := GetAppConfig(appID, "proxy"); cfgErr == nil && proxyStr != "" {
@@ -443,6 +449,41 @@ func httpRequestWithFiles(appID, requestID, method, targetURL string, headers ma
 	resp, err := client.Do(req)
 	if err != nil { pushErr(fmt.Errorf("http request failed: %w", err)); return }
 	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		pushErr(fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody)))
+		return
+	}
+
+	// saveTo mode: stream response body to file
+	if saveTo != "" {
+		// Expand ${WEBOS_DATA_DIR} placeholder
+		if dataDir := os.Getenv("WEBOS_DATA_DIR"); dataDir != "" {
+			saveTo = strings.ReplaceAll(saveTo, "${WEBOS_DATA_DIR}", dataDir)
+		}
+		// Ensure parent directory exists
+		if err := os.MkdirAll(filepath.Dir(saveTo), 0755); err != nil {
+			pushErr(fmt.Errorf("mkdir failed: %w", err))
+			return
+		}
+		f, err := os.Create(saveTo)
+		if err != nil { pushErr(fmt.Errorf("create file failed: %w", err)); return }
+		n, err := io.Copy(f, resp.Body)
+		f.Close()
+		if err != nil {
+			os.Remove(saveTo)
+			pushErr(fmt.Errorf("write file failed: %w", err))
+			return
+		}
+		pushHostResponse(appID, "http.request", requestID, true, map[string]interface{}{
+			"path": saveTo,
+			"size": n,
+		}, nil)
+		return
+	}
+
+	// Normal mode: return body as string
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil { pushErr(err); return }
 	pushHostResponse(appID, "http.request", requestID, true, map[string]interface{}{"status": resp.StatusCode, "body": string(respBody)}, nil)

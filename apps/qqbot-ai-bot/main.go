@@ -490,52 +490,59 @@ func handleC2CMessage(data json.RawMessage) {
 	}
 
 	activeUserID = userID
-
-	// 处理附件（统一下载，不区分类型）
-	attachmentInfos := []string{}
-	for _, att := range msg.Attachments {
-		if att.URL == "" {
-			continue
-		}
-		
-		// 下载附件到本地
-		localPath := downloadQQImage(att.URL, att.Filename, userID)
-		if localPath == "" {
-			logMsg(fmt.Sprintf("[C2C:%s] 下载附件失败: %s", userID, att.Filename))
-			continue
-		}
-		
-		// 统一处理，不区分类型
-		logMsg(fmt.Sprintf("[C2C:%s] 收到附件: %s (%s, %d bytes)", userID, att.Filename, att.ContentType, att.Size))
-		attachmentInfos = append(attachmentInfos, fmt.Sprintf("[文件: local_1:/opt/webos/%s]", localPath))
-	}
-
-	// 构建消息内容
 	userText := strings.TrimSpace(msg.Content)
-	
-	// 添加附件信息
-	if len(attachmentInfos) > 0 {
-		attachmentText := strings.Join(attachmentInfos, "\n")
-		if userText != "" {
-			userText = userText + "\n" + attachmentText
-		} else {
-			userText = attachmentText
+
+	// 收集有效附件
+	var validAtts []struct {
+		URL      string
+		Filename string
+	}
+	for _, att := range msg.Attachments {
+		if att.URL != "" {
+			validAtts = append(validAtts, struct {
+				URL      string
+				Filename string
+			}{att.URL, att.Filename})
+			logMsg(fmt.Sprintf("[C2C:%s] 收到附件: %s (%s, %d bytes)", userID, att.Filename, att.ContentType, att.Size))
 		}
 	}
 
-	if userText == "" {
+	// 无附件 — 直接发给 AI
+	if len(validAtts) == 0 {
+		if userText == "" {
+			return
+		}
+		logMsg(fmt.Sprintf("[C2C:%s] %s", userID, userText[:min(len(userText), 100)]))
+		deltaCount = 0
+		replyBuf.Reset()
+		request("chat.send", map[string]interface{}{
+			"messageContent": userText,
+			"clientId":       "qq-ai-bot",
+		})
 		return
 	}
 
-	logMsg(fmt.Sprintf("[C2C:%s] %s", userID, userText[:min(len(userText), 100)]))
+	// 有附件 — 异步下载，所有附件完成后统一发给 AI
+	pd := &PendingDownload{
+		UserID:   userID,
+		UserText: userText,
+		Total:    len(validAtts),
+	}
+	for _, att := range validAtts {
+		savePath := fmt.Sprintf("${WEBOS_DATA_DIR}/uploads/qqbot/%s/%s", userID, att.Filename)
+		reqID := downloadFileAsync(att.URL, savePath, "")
+		if reqID == "" {
+			logMsg(fmt.Sprintf("[C2C:%s] 发起下载失败: %s", userID, att.Filename))
+			pd.Done++
+			continue
+		}
+		pendingDownloads[reqID] = pd
+	}
 
-	// 调用 AI
-	deltaCount = 0
-	replyBuf.Reset()
-	request("chat.send", map[string]interface{}{
-		"messageContent": userText,
-		"clientId":       "qq-ai-bot",
-	})
+	// 如果所有下载都立即失败了，直接发文本
+	if pd.Done >= pd.Total {
+		sendTextToAI(pd)
+	}
 }
 
 // handleGroupAtMessage 处理群聊@消息
@@ -889,19 +896,53 @@ func isQQUserAllowed(uid string) bool {
 // ==================== 工具函数 ====================
 
 // downloadQQImage 下载 QQ 图片到本地
-func downloadQQImage(url, filename, userID string) string {
-	// 生成保存路径: uploads/qqbot/{userID}/{filename}
-	savePath := fmt.Sprintf("/opt/webos/uploads/qqbot/%s/%s", userID, filename)
-
-	// 下载图片
-	if downloadFile(url, savePath) {
-		// 返回相对路径给 AI 使用
-		relativePath := fmt.Sprintf("uploads/qqbot/%s/%s", userID, filename)
-		logMsg("✅ 图片已保存: " + relativePath)
-		return relativePath
+// handleDownloadComplete 处理单个附件下载完成
+func handleDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
+	pd.Done++
+	if errMsg != "" {
+		logMsg(fmt.Sprintf("[C2C:%s] 下载附件失败: %s", pd.UserID, errMsg))
+	} else if savedPath != "" {
+		// 从绝对路径提取相对路径用于 AI
+		relativePath := savedPath
+		if idx := strings.Index(savedPath, "/uploads/"); idx >= 0 {
+			relativePath = savedPath[idx+1:] // "uploads/qqbot/..."
+		}
+		pd.Paths = append(pd.Paths, relativePath)
+		logMsg(fmt.Sprintf("✅ 附件已保存: %s", relativePath))
 	}
-	logMsg("ERROR: 下载图片失败: " + url[:min(len(url), 50)])
-	return ""
+
+	// 所有附件处理完毕，发给 AI
+	if pd.Done >= pd.Total {
+		sendTextToAI(pd)
+	}
+}
+
+// sendTextToAI 将用户文本 + 已下载附件路径拼接后发给 AI
+func sendTextToAI(pd *PendingDownload) {
+	userText := pd.UserText
+
+	// 拼接附件路径
+	for _, p := range pd.Paths {
+		info := fmt.Sprintf("[文件: local_1:/opt/webos/%s]", p)
+		if userText != "" {
+			userText = userText + "\n" + info
+		} else {
+			userText = info
+		}
+	}
+
+	if userText == "" {
+		return
+	}
+
+	activeUserID = pd.UserID
+	logMsg(fmt.Sprintf("[C2C:%s] %s", pd.UserID, userText[:min(len(userText), 100)]))
+	deltaCount = 0
+	replyBuf.Reset()
+	request("chat.send", map[string]interface{}{
+		"messageContent": userText,
+		"clientId":       "qq-ai-bot",
+	})
 }
 
 func stripQQAtMention(text string) string {

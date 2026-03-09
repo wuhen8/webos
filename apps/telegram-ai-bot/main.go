@@ -347,6 +347,92 @@ func onSystemNotify(data json.RawMessage) {
 		sendTelegramAsync(cid, text, nil)
 	}
 }
+// startTelegramDownload 第一步：调 getFile 获取文件路径，然后异步下载
+func startTelegramDownload(fileID, fileName string, chatID int, userName, userText string) {
+	getFileURL := fmt.Sprintf("https://api.telegram.org/bot%s/getFile?file_id=%s", token, fileID)
+	httpRequestAsync("GET", getFileURL, "", "", func(resp string) {
+		var r struct {
+			OK     bool `json:"ok"`
+			Result struct {
+				FilePath string `json:"file_path"`
+			} `json:"result"`
+		}
+		if json.Unmarshal([]byte(resp), &r) != nil || !r.OK || r.Result.FilePath == "" {
+			logMsg("ERROR: getFile failed: " + resp[:min(len(resp), 200)])
+			// 降级：只发文本
+			if userText != "" {
+				activeChatID = chatID
+				deltaCount = 0
+				replyBuf.Reset()
+				request("chat.send", map[string]interface{}{
+					"messageContent": userText,
+					"clientId":       "telegram-ai-bot",
+				})
+			}
+			return
+		}
+
+		// 构建下载 URL 和保存路径
+		downloadURL := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", token, r.Result.FilePath)
+		savePath := fmt.Sprintf("${WEBOS_DATA_DIR}/uploads/telegram/%d/%s", chatID, fileName)
+
+		reqID := downloadFileAsync(downloadURL, savePath)
+		if reqID == "" {
+			logMsg("ERROR: 发起下载失败: " + fileName)
+			return
+		}
+		pendingDownloads[reqID] = &PendingDownload{
+			ChatID:   chatID,
+			UserName: userName,
+			UserText: userText,
+			FileName: fileName,
+		}
+		logMsg(fmt.Sprintf("开始下载 Telegram 文件: %s (reqID=%s)", fileName, reqID))
+	})
+}
+
+// onDownloadComplete 文件下载完成后，拼接路径发给 AI
+func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
+	if errMsg != "" {
+		logMsg(fmt.Sprintf("[chat:%d] 下载文件失败: %s", pd.ChatID, errMsg))
+		// 降级：只发文本
+		if pd.UserText != "" {
+			activeChatID = pd.ChatID
+			deltaCount = 0
+			replyBuf.Reset()
+			request("chat.send", map[string]interface{}{
+				"messageContent": pd.UserText,
+				"clientId":       "telegram-ai-bot",
+			})
+		}
+		return
+	}
+
+	// 从绝对路径提取相对路径
+	relativePath := savedPath
+	if idx := strings.Index(savedPath, "/uploads/"); idx >= 0 {
+		relativePath = savedPath[idx+1:]
+	}
+	logMsg(fmt.Sprintf("✅ 文件已保存: %s", relativePath))
+
+	// 拼接消息
+	fileInfo := fmt.Sprintf("[文件: local_1:/opt/webos/%s]", relativePath)
+	userText := pd.UserText
+	if userText != "" {
+		userText = userText + "\n" + fileInfo
+	} else {
+		userText = fileInfo
+	}
+
+	activeChatID = pd.ChatID
+	logMsg(fmt.Sprintf("[chat:%d] %s", pd.ChatID, userText[:min(len(userText), 100)]))
+	deltaCount = 0
+	replyBuf.Reset()
+	request("chat.send", map[string]interface{}{
+		"messageContent": userText,
+		"clientId":       "telegram-ai-bot",
+	})
+}
 
 func pollOnce() {
 	if token == "" || polling {
@@ -382,7 +468,7 @@ func pollOnce() {
 		}
 		for _, update := range tgResp.Result {
 			kvSet("last_update_id", strconv.Itoa(update.UpdateID))
-			if update.Message == nil || update.Message.Text == "" {
+			if update.Message == nil {
 				continue
 			}
 			msg := update.Message
@@ -416,13 +502,43 @@ func pollOnce() {
 				continue
 			}
 
+			// 判断消息类型：图片、文件、纯文本
 			userText := msg.Text
+			if userText == "" {
+				userText = msg.Caption // 图片/文件可能带 caption
+			}
+
+			// 处理图片
+			if len(msg.Photo) > 0 {
+				// 取最大尺寸的图片
+				best := msg.Photo[len(msg.Photo)-1]
+				logMsg(fmt.Sprintf("[chat:%d] %s: [图片 %dx%d]", incomingCID, userName, best.Width, best.Height))
+				sendTypingAction(incomingCID)
+				startTelegramDownload(best.FileID, best.FileUniqueID+".jpg", incomingCID, userName, userText)
+				continue
+			}
+
+			// 处理文件
+			if msg.Document != nil {
+				fileName := msg.Document.FileName
+				if fileName == "" {
+					fileName = msg.Document.FileID
+				}
+				logMsg(fmt.Sprintf("[chat:%d] %s: [文件 %s]", incomingCID, userName, fileName))
+				sendTypingAction(incomingCID)
+				startTelegramDownload(msg.Document.FileID, fileName, incomingCID, userName, userText)
+				continue
+			}
+
+			// 纯文本
+			if userText == "" {
+				continue
+			}
 			logMsg(fmt.Sprintf("[chat:%d] %s: %s", incomingCID, userName, userText))
 			if userText == "/start" {
 				sendTelegramAsync(incomingCID, "你好！我是 WebOS AI 助手。直接发消息给我就可以对话。", nil)
 				continue
 			}
-			// 设置活跃 chat_id，AI 回复会发到这里
 			activeChatID = incomingCID
 			sendTypingAction(incomingCID)
 			deltaCount = 0

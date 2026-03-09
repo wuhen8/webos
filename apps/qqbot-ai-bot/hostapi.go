@@ -3,8 +3,6 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"strings"
 	"unsafe"
 )
 
@@ -27,10 +25,22 @@ var hostCallbacks = map[string]func(success bool, data interface{}, err string){
 func handleHTTPResponse(data json.RawMessage) {
 	var d struct {
 		RequestID string `json:"requestId"`
-		Data      struct { Body string `json:"body"` } `json:"data"`
-		Error     string `json:"error"`
+		Data      struct {
+			Body string `json:"body"`
+			Path string `json:"path"`
+			Size int64  `json:"size"`
+		} `json:"data"`
+		Error string `json:"error"`
 	}
 	if json.Unmarshal(data, &d) != nil { return }
+
+	// Check pending downloads first
+	if pd, ok := pendingDownloads[d.RequestID]; ok {
+		delete(pendingDownloads, d.RequestID)
+		handleDownloadComplete(pd, d.Data.Path, d.Error)
+		return
+	}
+
 	cb, ok := httpCallbacks[d.RequestID]
 	if !ok { return }
 	delete(httpCallbacks, d.RequestID)
@@ -153,16 +163,31 @@ func buildHTTPRequestParams(method, url, body, headers string) map[string]interf
 	return params
 }
 
-func downloadFile(url, savePath string) bool {
-	cmd := fmt.Sprintf("mkdir -p %s && curl -sL -o '%s' '%s'", savePath[:strings.LastIndex(savePath, "/")], savePath, url)
-	result := request("shell.exec", map[string]interface{}{"command": cmd})
-	logMsg("shell.exec result: " + result[:min(len(result), 300)])
-	var r struct { Success bool `json:"success"`; Error string `json:"error"`; ExitCode int `json:"exitCode"` }
-	if json.Unmarshal([]byte(result), &r) == nil {
-		if r.Error != "" { logMsg("shell.exec error: " + r.Error) }
-		return r.Success
+
+// ==================== Async file download via saveTo ====================
+
+type PendingDownload struct {
+	UserID   string
+	FileName string
+	UserText string // 用户消息文本（最后一个附件下载完后发送）
+	Total    int    // 总附件数
+	Done     int    // 已完成数
+	Paths    []string // 已下载的相对路径
+}
+
+var pendingDownloads = map[string]*PendingDownload{}
+
+// downloadFileAsync 异步下载文件到本地，完成后通过 handleDownloadComplete 处理
+func downloadFileAsync(url, savePath, reqTag string) string {
+	params := map[string]interface{}{
+		"method": "GET",
+		"url":    url,
+		"saveTo": savePath,
 	}
-	return false
+	result, ok := requestJSON("http.request", params)
+	if !ok { return "" }
+	reqID, _ := result["requestId"].(string)
+	return reqID
 }
 
 func bytesPtr(b []byte) uint32 {

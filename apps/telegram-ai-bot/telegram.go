@@ -17,10 +17,28 @@ type Update struct {
 }
 
 type Message struct {
-	MessageID int    `json:"message_id"`
-	From      *User  `json:"from"`
-	Chat      Chat   `json:"chat"`
-	Text      string `json:"text"`
+	MessageID int         `json:"message_id"`
+	From      *User       `json:"from"`
+	Chat      Chat        `json:"chat"`
+	Text      string      `json:"text"`
+	Caption   string      `json:"caption"`
+	Photo     []PhotoSize `json:"photo"`
+	Document  *Document   `json:"document"`
+}
+
+type PhotoSize struct {
+	FileID       string `json:"file_id"`
+	FileUniqueID string `json:"file_unique_id"`
+	Width        int    `json:"width"`
+	Height       int    `json:"height"`
+	FileSize     int    `json:"file_size"`
+}
+
+type Document struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
+	FileSize int    `json:"file_size"`
 }
 
 type User struct {

@@ -21,6 +21,31 @@ func get_shared_buf() uint64 {
 var httpCallbacks = map[string]func(resp string){}
 var hostCallbacks = map[string]func(success bool, data interface{}, err string){}
 
+// ==================== Async file download via saveTo ====================
+
+type PendingDownload struct {
+	ChatID   int
+	UserName string
+	UserText string
+	FileName string
+}
+
+var pendingDownloads = map[string]*PendingDownload{}
+
+func downloadFileAsync(url, savePath string) string {
+	params := map[string]interface{}{
+		"method": "GET",
+		"url":    url,
+		"saveTo": savePath,
+	}
+	result, ok := requestJSON("http.request", params)
+	if !ok {
+		return ""
+	}
+	reqID, _ := result["requestId"].(string)
+	return reqID
+}
+
 func logMsg(msg string) {
 	if len(msg) == 0 {
 		return
@@ -182,12 +207,22 @@ func handleHTTPResponse(data json.RawMessage) {
 		Success   bool   `json:"success"`
 		Data      struct {
 			Body string `json:"body"`
+			Path string `json:"path"`
+			Size int64  `json:"size"`
 		} `json:"data"`
 		Error string `json:"error"`
 	}
 	if json.Unmarshal(data, &d) != nil {
 		return
 	}
+
+	// Check pending downloads first
+	if pd, ok := pendingDownloads[d.RequestID]; ok {
+		delete(pendingDownloads, d.RequestID)
+		onDownloadComplete(pd, d.Data.Path, d.Error)
+		return
+	}
+
 	cb, ok := httpCallbacks[d.RequestID]
 	if !ok {
 		return
