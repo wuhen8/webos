@@ -50,12 +50,18 @@ const (
 
 // AIProvider represents a single OpenAI-compatible provider with its models.
 type AIProvider struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	BaseURL   string   `json:"baseUrl"`
-	APIKey    string   `json:"apiKey"`
-	Models    []string `json:"models"`
-	APIFormat string   `json:"apiFormat,omitempty"` // "openai" (default) or "anthropic"
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	BaseURL        string   `json:"baseUrl"`
+	APIKey         string   `json:"apiKey"`
+	Models         []string `json:"models"`
+	APIFormat      string   `json:"apiFormat,omitempty"`      // "openai" (default) or "anthropic"
+	Proxy          string   `json:"proxy,omitempty"`          // HTTP/HTTPS/SOCKS5 代理地址，如 http://127.0.0.1:7890
+	MaxTokens      int      `json:"maxTokens,omitempty"`      // 最大输出 token 数
+	MaxInputTokens int      `json:"maxInputTokens,omitempty"` // 模型最大输入 token 限制，默认 128000
+	MaxToolRounds  int      `json:"maxToolRounds,omitempty"`  // 最大工具调用轮次
+	RPM            int      `json:"rpm,omitempty"`            // API 请求速率限制（每分钟请求数）
+	RecentMessages int      `json:"recentMessages,omitempty"` // 保留最近消息数，默认 5
 }
 
 // AIMultiConfig is the top-level AI configuration supporting multiple providers.
@@ -63,11 +69,6 @@ type AIMultiConfig struct {
 	Providers      []AIProvider `json:"providers"`
 	ActiveProvider string       `json:"activeProvider"`
 	ActiveModel    string       `json:"activeModel"`
-	MaxTokens      int          `json:"maxTokens,omitempty"`
-	MaxInputTokens int          `json:"maxInputTokens,omitempty"` // 模型最大输入 token 限制，默认 128000
-	MaxToolRounds  int          `json:"maxToolRounds,omitempty"`
-	RPM            int          `json:"rpm,omitempty"`            // API requests per minute limit, default 10
-	RecentMessages int          `json:"recentMessages,omitempty"` // 保留最近消息数，默认 5
 }
 
 // AIConfig stores the flat LLM API configuration used by ChatStream.
@@ -76,6 +77,7 @@ type AIConfig struct {
 	APIKey         string `json:"apiKey"`
 	Model          string `json:"model"`
 	APIFormat      string `json:"apiFormat,omitempty"`       // "openai" (default) or "anthropic"
+	Proxy          string `json:"proxy,omitempty"`           // HTTP/HTTPS/SOCKS5 代理地址
 	MaxTokens      int    `json:"maxTokens,omitempty"`
 	MaxInputTokens int    `json:"maxInputTokens,omitempty"` // 模型最大输入 token 限制，默认 128000
 	MaxToolRounds  int    `json:"maxToolRounds,omitempty"`

@@ -2,7 +2,9 @@ package service
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +19,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 // SystemService handles system monitoring business logic
@@ -35,12 +41,80 @@ func NewSystemService() *SystemService {
 	return &SystemService{}
 }
 
+func DecodeWindowsOutput(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	if utf8.Valid(data) {
+		return string(data)
+	}
+	if len(data) >= 2 {
+		if bytes.HasPrefix(data, []byte{0xff, 0xfe}) {
+			return string(utf16.Decode(bytesToUint16s(data[2:], binary.LittleEndian)))
+		}
+		if bytes.HasPrefix(data, []byte{0xfe, 0xff}) {
+			return string(utf16.Decode(bytesToUint16s(data[2:], binary.BigEndian)))
+		}
+		if looksLikeUTF16(data, binary.LittleEndian) {
+			return string(utf16.Decode(bytesToUint16s(data, binary.LittleEndian)))
+		}
+		if looksLikeUTF16(data, binary.BigEndian) {
+			return string(utf16.Decode(bytesToUint16s(data, binary.BigEndian)))
+		}
+	}
+	if decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes(data); err == nil && utf8.Valid(decoded) {
+		return string(decoded)
+	}
+	return string(bytes.Runes(data))
+}
+
+func bytesToUint16s(data []byte, order binary.ByteOrder) []uint16 {
+	if len(data) < 2 {
+		return nil
+	}
+	if len(data)%2 != 0 {
+		data = data[:len(data)-1]
+	}
+	words := make([]uint16, 0, len(data)/2)
+	for i := 0; i+1 < len(data); i += 2 {
+		words = append(words, order.Uint16(data[i:i+2]))
+	}
+	return words
+}
+
+func looksLikeUTF16(data []byte, order binary.ByteOrder) bool {
+	if len(data) < 4 || len(data)%2 != 0 {
+		return false
+	}
+	zeros := 0
+	asciiish := 0
+	for i := 0; i+1 < len(data); i += 2 {
+		word := order.Uint16(data[i : i+2])
+		if word == 0 {
+			zeros++
+			continue
+		}
+		if word >= 0x09 && word <= 0x7f {
+			asciiish++
+		}
+	}
+	pairs := len(data) / 2
+	return zeros*2 <= pairs && asciiish*2 >= pairs
+}
+
 // UserShell returns the user's default shell, falling back to /bin/sh.
 func UserShell() string {
+	if runtime.GOOS == "windows" {
+		if pwsh, err := exec.LookPath("pwsh.exe"); err == nil {
+			return pwsh
+		}
+		if powershell, err := exec.LookPath("powershell.exe"); err == nil {
+			return powershell
+		}
+	}
 	if s := os.Getenv("SHELL"); s != "" {
 		return s
 	}
-	// On Windows, SHELL is typically unset; use COMSPEC (usually cmd.exe)
 	if s := os.Getenv("COMSPEC"); s != "" {
 		return s
 	}
@@ -749,8 +823,13 @@ func (s *SystemService) Exec(command string) (stdout, stderr string, exitCode in
 	cmd.Stderr = &errBuf
 
 	runErr := cmd.Run()
-	stdout = outBuf.String()
-	stderr = errBuf.String()
+	if runtime.GOOS == "windows" {
+		stdout = DecodeWindowsOutput([]byte(outBuf.String()))
+		stderr = DecodeWindowsOutput([]byte(errBuf.String()))
+	} else {
+		stdout = outBuf.String()
+		stderr = errBuf.String()
+	}
 
 	if runErr != nil {
 		if exitErr, ok := runErr.(*exec.ExitError); ok {

@@ -9,17 +9,18 @@ interface AIProvider {
   apiKey: string
   models: string[]
   apiFormat?: 'openai' | 'anthropic' | 'responses'
+  proxy?: string
+  maxTokens?: number
+  maxInputTokens?: number
+  maxToolRounds?: number
+  rpm?: number
+  recentMessages?: number
 }
 
 interface AIMultiConfig {
   providers: AIProvider[]
   activeProvider: string
   activeModel: string
-  maxTokens: number
-  maxInputTokens: number
-  maxToolRounds: number
-  rpm: number
-  recentMessages: number
 }
 
 function newProvider(): AIProvider {
@@ -27,7 +28,7 @@ function newProvider(): AIProvider {
 }
 
 function emptyMultiConfig(): AIMultiConfig {
-  return { providers: [newProvider()], activeProvider: '', activeModel: '', maxTokens: 4096, maxInputTokens: 128000, maxToolRounds: 25, rpm: 10, recentMessages: 5 }
+  return { providers: [newProvider()], activeProvider: '', activeModel: '' }
 }
 
 function Field({ label, value, onChange, placeholder, type = 'text' }: {
@@ -223,11 +224,13 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
                 </div>
               </div>
               <hr className="border-slate-200" />
-              <Field label="最大输出 Tokens" value={String(cfg.maxTokens || 8192)} onChange={v => setCfg(prev => ({ ...prev, maxTokens: parseInt(v) || 4096 }))} placeholder="4096" />
-              <Field label="最大输入 Tokens" value={String(cfg.maxInputTokens || 128000)} onChange={v => setCfg(prev => ({ ...prev, maxInputTokens: parseInt(v) || 128000 }))} placeholder="128000" />
-              <Field label="最大工具调用轮次" value={String(cfg.maxToolRounds || 25)} onChange={v => setCfg(prev => ({ ...prev, maxToolRounds: parseInt(v) || 25 }))} placeholder="25" />
-              <Field label="每分钟请求数 (RPM)" value={String(cfg.rpm || 10)} onChange={v => setCfg(prev => ({ ...prev, rpm: parseInt(v) || 10 }))} placeholder="10" />
-              <Field label="保留最近消息数" value={String(cfg.recentMessages || 5)} onChange={v => setCfg(prev => ({ ...prev, recentMessages: parseInt(v) || 5 }))} placeholder="5" />
+              <div className="text-xs font-medium text-slate-600 mb-2">供应商配置</div>
+              <Field label="代理地址（可选）" value={provider.proxy || ''} onChange={v => updateProvider({ proxy: v })} placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080" />
+              <Field label="最大输出 Tokens" value={String(provider.maxTokens || 4096)} onChange={v => updateProvider({ maxTokens: parseInt(v) || 4096 })} placeholder="4096" />
+              <Field label="最大输入 Tokens" value={String(provider.maxInputTokens || 128000)} onChange={v => updateProvider({ maxInputTokens: parseInt(v) || 128000 })} placeholder="128000" />
+              <Field label="最大工具调用轮次" value={String(provider.maxToolRounds || 25)} onChange={v => updateProvider({ maxToolRounds: parseInt(v) || 25 })} placeholder="25" />
+              <Field label="每分钟请求数 (RPM)" value={String(provider.rpm || 10)} onChange={v => updateProvider({ rpm: parseInt(v) || 10 })} placeholder="10" />
+              <Field label="保留最近消息数" value={String(provider.recentMessages || 5)} onChange={v => updateProvider({ recentMessages: parseInt(v) || 5 })} placeholder="5" />
             </>
           )}
         </div>

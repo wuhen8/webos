@@ -312,7 +312,12 @@ func hostShell(parent context.Context, command string, timeout int, onOutput fun
 			scanner := bufio.NewScanner(stdoutPR)
 			scanner.Buffer(make([]byte, 64*1024), 256*1024)
 			for scanner.Scan() {
-				onOutput("stdout", scanner.Text()+"\n")
+				line := scanner.Bytes()
+				if runtime.GOOS == "windows" {
+					onOutput("stdout", service.DecodeWindowsOutput(append([]byte(nil), line...))+"\n")
+				} else {
+					onOutput("stdout", scanner.Text()+"\n")
+				}
 			}
 		}()
 		go func() {
@@ -320,7 +325,12 @@ func hostShell(parent context.Context, command string, timeout int, onOutput fun
 			scanner := bufio.NewScanner(stderrPR)
 			scanner.Buffer(make([]byte, 64*1024), 256*1024)
 			for scanner.Scan() {
-				onOutput("stderr", scanner.Text()+"\n")
+				line := scanner.Bytes()
+				if runtime.GOOS == "windows" {
+					onOutput("stderr", service.DecodeWindowsOutput(append([]byte(nil), line...))+"\n")
+				} else {
+					onOutput("stderr", scanner.Text()+"\n")
+				}
 			}
 		}()
 
@@ -368,8 +378,14 @@ func hostShell(parent context.Context, command string, timeout int, onOutput fun
 				}
 			}
 
-			outStr := stdout.String()
-			errStr := stderr.String()
+			var outStr, errStr string
+			if runtime.GOOS == "windows" {
+				outStr = service.DecodeWindowsOutput(stdout.Bytes())
+				errStr = service.DecodeWindowsOutput(stderr.Bytes())
+			} else {
+				outStr = stdout.String()
+				errStr = stderr.String()
+			}
 			const maxLen = 50000
 			if len(outStr) > maxLen {
 				outStr = outStr[:maxLen] + "\n... (输出已截断)"
@@ -413,8 +429,14 @@ func hostShell(parent context.Context, command string, timeout int, onOutput fun
 		}
 	}
 
-	outStr := stdout.String()
-	errStr := stderr.String()
+	var outStr, errStr string
+	if runtime.GOOS == "windows" {
+		outStr = service.DecodeWindowsOutput(stdout.Bytes())
+		errStr = service.DecodeWindowsOutput(stderr.Bytes())
+	} else {
+		outStr = stdout.String()
+		errStr = stderr.String()
+	}
 
 	const maxLen = 50000
 	if len(outStr) > maxLen {

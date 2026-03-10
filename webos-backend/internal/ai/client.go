@@ -8,10 +8,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/proxy"
 )
 
 // Per-provider rate limiter: enforce minimum interval between API requests.
@@ -77,6 +81,44 @@ const (
 	maxRetryCount  = 5                // max retry attempts for 429/5xx/connection errors
 )
 
+// getHTTPClient returns an HTTP client with optional proxy support.
+// If proxyURL is empty, returns the default client.
+func getHTTPClient(proxyURL string) (*http.Client, error) {
+	if proxyURL == "" {
+		return httpClient, nil
+	}
+
+	parsedURL, err := url.Parse(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid proxy URL: %w", err)
+	}
+
+	transport := &http.Transport{
+		ResponseHeaderTimeout: 30 * time.Second,
+	}
+
+	switch parsedURL.Scheme {
+	case "http", "https":
+		transport.Proxy = http.ProxyURL(parsedURL)
+	case "socks5":
+		// SOCKS5 proxy support
+		dialer, err := proxy.SOCKS5("tcp", parsedURL.Host, nil, proxy.Direct)
+		if err != nil {
+			return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
+		}
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.Dial(network, addr)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported proxy scheme: %s (支持 http/https/socks5)", parsedURL.Scheme)
+	}
+
+	return &http.Client{
+		Timeout:   10 * time.Minute,
+		Transport: transport,
+	}, nil
+}
+
 // httpClient is a shared HTTP client with reasonable timeouts for streaming.
 var httpClient = &http.Client{
 	Timeout: 10 * time.Minute,
@@ -98,6 +140,12 @@ type apiRequest struct {
 func doAPIRequest(ctx context.Context, cfg AIConfig, ar apiRequest) (*http.Response, error) {
 	wait := retryBaseWait
 
+	// Get HTTP client with proxy support
+	client, err := getHTTPClient(cfg.Proxy)
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP client: %w", err)
+	}
+
 	for attempt := 1; attempt <= maxRetryCount; attempt++ {
 		if err := waitRateLimit(ctx, cfg.BaseURL, cfg.RPM); err != nil {
 			return nil, fmt.Errorf("rate limit wait cancelled: %w", err)
@@ -111,7 +159,7 @@ func doAPIRequest(ctx context.Context, cfg AIConfig, ar apiRequest) (*http.Respo
 			req.Header.Set(k, v)
 		}
 
-		resp, err := httpClient.Do(req)
+		resp, err := client.Do(req)
 
 		// Connection error — retryable
 		if err != nil {

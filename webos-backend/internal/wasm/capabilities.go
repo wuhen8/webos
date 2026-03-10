@@ -3,6 +3,7 @@ package wasm
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,9 +16,13 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"webos-backend/internal/auth"
 	"webos-backend/internal/storage"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 // CapabilityRouter routes all host capability calls from WASM apps.
@@ -325,23 +330,52 @@ func fsMkdir(appID string, params json.RawMessage) (interface{}, error) {
 }
 
 func processExec(appID string, params json.RawMessage) (interface{}, error) {
-	var p struct { Command string `json:"command"`; Timeout int `json:"timeout"` }
-	if err := json.Unmarshal(params, &p); err != nil { return nil, err }
-	if p.Timeout == 0 { p.Timeout = 30 }
+	var p struct {
+		Command string `json:"command"`
+		Timeout int    `json:"timeout"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.Timeout == 0 {
+		p.Timeout = 30
+	}
 	parts := strings.Fields(p.Command)
-	if len(parts) == 0 { return nil, fmt.Errorf("empty command") }
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("empty command")
+	}
 	cmd := exec.Command(parts[0], parts[1:]...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
 	done := make(chan error, 1)
 	go func() { done <- cmd.Run() }()
+
 	select {
 	case err := <-done:
-		stdout, _ := cmd.Output()
-		stderr := ""
+		var outStr, errStr string
+		if runtime.GOOS == "windows" {
+			outStr = decodeWindowsOutput(stdout.Bytes())
+			errStr = decodeWindowsOutput(stderr.Bytes())
+		} else {
+			outStr = stdout.String()
+			errStr = stderr.String()
+		}
 		exitCode := 0
 		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok { stderr = string(exitErr.Stderr); exitCode = exitErr.ExitCode() } else { return nil, err }
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				exitCode = exitErr.ExitCode()
+			} else {
+				return nil, err
+			}
 		}
-		return map[string]interface{}{"stdout": string(stdout), "stderr": stderr, "exitCode": exitCode, "success": exitCode == 0}, nil
+		return map[string]interface{}{
+			"stdout":   outStr,
+			"stderr":   errStr,
+			"exitCode": exitCode,
+			"success":  exitCode == 0,
+		}, nil
 	case <-time.After(time.Duration(p.Timeout) * time.Second):
 		_ = cmd.Process.Kill()
 		return nil, fmt.Errorf("command timeout after %d seconds", p.Timeout)
@@ -352,6 +386,67 @@ func systemInfo(appID string, params json.RawMessage) (interface{}, error) {
 	hostname, _ := os.Hostname()
 	wd, _ := os.Getwd()
 	return map[string]interface{}{"os": runtime.GOOS, "arch": runtime.GOARCH, "hostname": hostname, "cwd": wd, "goVersion": runtime.Version()}, nil
+}
+
+func decodeWindowsOutput(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	if utf8.Valid(data) {
+		return string(data)
+	}
+	if len(data) >= 2 {
+		if bytes.HasPrefix(data, []byte{0xff, 0xfe}) {
+			return string(utf16.Decode(bytesToUint16s(data[2:], binary.LittleEndian)))
+		}
+		if bytes.HasPrefix(data, []byte{0xfe, 0xff}) {
+			return string(utf16.Decode(bytesToUint16s(data[2:], binary.BigEndian)))
+		}
+		if looksLikeUTF16(data, binary.LittleEndian) {
+			return string(utf16.Decode(bytesToUint16s(data, binary.LittleEndian)))
+		}
+		if looksLikeUTF16(data, binary.BigEndian) {
+			return string(utf16.Decode(bytesToUint16s(data, binary.BigEndian)))
+		}
+	}
+	if decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes(data); err == nil && utf8.Valid(decoded) {
+		return string(decoded)
+	}
+	return string(bytes.Runes(data))
+}
+
+func bytesToUint16s(data []byte, order binary.ByteOrder) []uint16 {
+	if len(data) < 2 {
+		return nil
+	}
+	if len(data)%2 != 0 {
+		data = data[:len(data)-1]
+	}
+	words := make([]uint16, 0, len(data)/2)
+	for i := 0; i+1 < len(data); i += 2 {
+		words = append(words, order.Uint16(data[i:i+2]))
+	}
+	return words
+}
+
+func looksLikeUTF16(data []byte, order binary.ByteOrder) bool {
+	if len(data) < 4 || len(data)%2 != 0 {
+		return false
+	}
+	zeros := 0
+	asciiish := 0
+	for i := 0; i+1 < len(data); i += 2 {
+		word := order.Uint16(data[i : i+2])
+		if word == 0 {
+			zeros++
+			continue
+		}
+		if word >= 0x09 && word <= 0x7f {
+			asciiish++
+		}
+	}
+	pairs := len(data) / 2
+	return zeros*2 <= pairs && asciiish*2 >= pairs
 }
 
 func systemEnv(appID string, params json.RawMessage) (interface{}, error) {

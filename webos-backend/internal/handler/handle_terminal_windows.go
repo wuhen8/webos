@@ -10,10 +10,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strings"
-	"unicode/utf8"
 
 	"webos-backend/internal/config"
+	"webos-backend/internal/service"
 )
 
 func init() {
@@ -39,11 +38,8 @@ func handleTerminalOpen(c *WSConn, raw json.RawMessage) {
 
 	sid := genSid()
 
-	// Detect shell: prefer PowerShell, fall back to COMSPEC (cmd.exe)
-	shell := os.Getenv("COMSPEC")
-	if shell == "" {
-		shell = "cmd.exe"
-	}
+	// Prefer pwsh/PowerShell on Windows, then fall back to COMSPEC/cmd.exe
+	shell := service.UserShell()
 
 	cmd := exec.Command(shell)
 	cmd.Dir = config.UserHome()
@@ -107,13 +103,10 @@ func handleTerminalOpen(c *WSConn, raw json.RawMessage) {
 				return
 			}
 			if n > 0 {
-				data := buf[:n]
-				if !utf8.Valid(data) {
-					data = []byte(strings.ToValidUTF8(string(data), "?"))
-				}
+				data := service.DecodeWindowsOutput(buf[:n])
 				c.Notify("terminal.output", map[string]interface{}{
 					"sid":  sid,
-					"data": string(data),
+					"data": data,
 				})
 			}
 		}

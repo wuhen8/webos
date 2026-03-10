@@ -846,11 +846,12 @@ func resolveMultiConfig(multi *AIMultiConfig) (*AIConfig, error) {
 		APIKey:         provider.APIKey,
 		Model:          model,
 		APIFormat:      apiFormat,
-		MaxTokens:      multi.MaxTokens,
-		MaxInputTokens: multi.MaxInputTokens,
-		MaxToolRounds:  multi.MaxToolRounds,
-		RPM:            multi.RPM,
-		RecentMessages: multi.RecentMessages,
+		Proxy:          provider.Proxy,
+		MaxTokens:      provider.MaxTokens,
+		MaxInputTokens: provider.MaxInputTokens,
+		MaxToolRounds:  provider.MaxToolRounds,
+		RPM:            provider.RPM,
+		RecentMessages: provider.RecentMessages,
 	}, nil
 }
 
