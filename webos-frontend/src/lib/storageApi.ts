@@ -98,20 +98,20 @@ export const fsApi = {
     return fsService.create(nodeId, path, name)
   },
 
-  delete(nodeId: string, paths: string[]) {
-    return fsService.delete(nodeId, paths)
+  delete(nodeId: string, paths: string[], reqId?: string) {
+    return fsService.delete(nodeId, paths, reqId)
   },
 
   rename(nodeId: string, path: string, oldName: string, newName: string) {
     return fsService.rename(nodeId, path, oldName, newName)
   },
 
-  copy(srcNodeId: string, paths: string[], to: string, dstNodeId?: string) {
-    return fsService.copy(srcNodeId, paths, to, dstNodeId)
+  copy(srcNodeId: string, paths: string[], to: string, dstNodeId?: string, reqId?: string) {
+    return fsService.copy(srcNodeId, paths, to, dstNodeId, reqId)
   },
 
-  move(srcNodeId: string, paths: string[], to: string, dstNodeId?: string) {
-    return fsService.move(srcNodeId, paths, to, dstNodeId)
+  move(srcNodeId: string, paths: string[], to: string, dstNodeId?: string, reqId?: string) {
+    return fsService.move(srcNodeId, paths, to, dstNodeId, reqId)
   },
 
   // These remain HTTP-based (binary streams not suitable for WebSocket)
@@ -161,12 +161,12 @@ export const fsApi = {
     fsService.statCancel(nodeId, path)
   },
 
-  extract(nodeId: string, path: string, dest?: string) {
-    return fsService.extract(nodeId, path, dest)
+  extract(nodeId: string, path: string, dest?: string, password?: string, reqId?: string) {
+    return fsService.extract(nodeId, path, dest, password, reqId)
   },
 
-  compress(nodeId: string, paths: string[], output: string) {
-    return fsService.compress(nodeId, paths, output)
+  compress(nodeId: string, paths: string[], output: string, reqId?: string) {
+    return fsService.compress(nodeId, paths, output, reqId)
   },
 
   offlineDownload(nodeId: string, path: string, urls: string[]) {

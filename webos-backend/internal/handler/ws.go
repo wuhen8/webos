@@ -230,9 +230,12 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 					if reqID != "" {
 						var paramsMap map[string]json.RawMessage
 						if json.Unmarshal(params, &paramsMap) == nil {
-							quotedID, _ := json.Marshal(reqID)
-							paramsMap["reqId"] = quotedID
-							params, _ = json.Marshal(paramsMap)
+							// Only inject if reqId doesn't already exist in params
+							if _, exists := paramsMap["reqId"]; !exists {
+								quotedID, _ := json.Marshal(reqID)
+								paramsMap["reqId"] = quotedID
+								params, _ = json.Marshal(paramsMap)
+							}
 						}
 					}
 				}

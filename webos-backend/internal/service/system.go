@@ -841,6 +841,68 @@ func (s *SystemService) Exec(command string) (stdout, stderr string, exitCode in
 	return
 }
 
+// ExecWithLog executes a command and streams output line-by-line to the log callback.
+func (s *SystemService) ExecWithLog(ctx context.Context, command string, logFn func(string)) (exitCode int, err error) {
+	shell := UserShell()
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		if strings.Contains(strings.ToLower(shell), "powershell") || strings.Contains(strings.ToLower(shell), "pwsh") {
+			cmd = exec.Command(shell, "-Command", command)
+		} else {
+			cmd = exec.Command(shell, "/c", command)
+		}
+	} else {
+		cmd = exec.Command(shell, "-c", command)
+	}
+
+	// Merge stdout and stderr
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return 0, err
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return 0, err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+
+	// Read stdout and stderr concurrently
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	readPipe := func(pipe io.ReadCloser) {
+		defer wg.Done()
+		scanner := bufio.NewScanner(pipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if runtime.GOOS == "windows" {
+				line = DecodeWindowsOutput([]byte(line))
+			}
+			logFn(line)
+		}
+	}
+
+	go readPipe(stdoutPipe)
+	go readPipe(stderrPipe)
+
+	// Wait for pipes to finish
+	wg.Wait()
+
+	// Wait for command to finish
+	runErr := cmd.Wait()
+	if runErr != nil {
+		if exitErr, ok := runErr.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			err = runErr
+		}
+	}
+	return
+}
+
 // ==================== System update ====================
 
 // Version is set at build time via -ldflags.

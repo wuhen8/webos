@@ -50,19 +50,22 @@ func handleExec(c *WSConn, raw json.RawMessage) {
 		if len(p.RefreshChannels) > 0 {
 			opts = append(opts, service.WithRefreshChannels(p.RefreshChannels))
 		}
+		opts = append(opts, service.WithOutputMode(service.TaskOutputLog))
 		service.GetTaskManager().Submit("exec", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
-			stdout, stderr, exitCode, err := systemSvc.Exec(p.Command)
+			r.AppendLog("$ " + p.Command)
+			exitCode, err := systemSvc.ExecWithLog(ctx, p.Command, func(line string) {
+				r.AppendLog(line)
+			})
 			if err != nil {
+				r.AppendLog(fmt.Sprintf("执行失败: %v", err))
 				return "", fmt.Errorf("exec failed: %w", err)
 			}
 			if exitCode != 0 {
-				msg := stderr
-				if msg == "" {
-					msg = stdout
-				}
-				return "", fmt.Errorf("%s", msg)
+				r.AppendLog(fmt.Sprintf("退出码: %d", exitCode))
+				return "", fmt.Errorf("命令执行失败，退出码: %d", exitCode)
 			}
-			return title + "成功", nil
+			r.AppendLog("执行完成")
+			return "执行成功", nil
 		}, opts...)
 		c.Reply("system.exec", p.ReqID, map[string]interface{}{
 			"background": true,

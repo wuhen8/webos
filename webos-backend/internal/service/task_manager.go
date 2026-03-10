@@ -17,23 +17,32 @@ const (
 	TaskCancelled TaskStatus = "cancelled"
 )
 
+type TaskOutputMode string
+
+const (
+	TaskOutputProgress TaskOutputMode = "progress" // 进度型：显示进度条、文件数、字节数
+	TaskOutputLog      TaskOutputMode = "log"      // 日志型：实时输出日志行
+)
+
 type BackgroundTask struct {
-	ID              string     `json:"id"`
-	Type            string     `json:"type"`
-	Title           string     `json:"title"`
-	Category        string     `json:"category,omitempty"`
-	Status          TaskStatus `json:"status"`
-	Message         string     `json:"message"`
-	CreatedAt       int64      `json:"createdAt"`
-	DoneAt          int64      `json:"doneAt,omitempty"`
-	Progress        *float64   `json:"progress,omitempty"`
-	ItemCurrent     int64      `json:"itemCurrent,omitempty"`
-	ItemTotal       int64      `json:"itemTotal,omitempty"`
-	BytesCurrent    int64      `json:"bytesCurrent,omitempty"`
-	BytesTotal      int64      `json:"bytesTotal,omitempty"`
-	Cancellable     bool       `json:"cancellable"`
-	Silent          bool       `json:"silent,omitempty"`
-	RefreshChannels []string   `json:"refreshChannels,omitempty"`
+	ID              string         `json:"id"`
+	Type            string         `json:"type"`
+	Title           string         `json:"title"`
+	Category        string         `json:"category,omitempty"`
+	Status          TaskStatus     `json:"status"`
+	Message         string         `json:"message"`
+	CreatedAt       int64          `json:"createdAt"`
+	DoneAt          int64          `json:"doneAt,omitempty"`
+	Progress        *float64       `json:"progress,omitempty"`
+	ItemCurrent     int64          `json:"itemCurrent,omitempty"`
+	ItemTotal       int64          `json:"itemTotal,omitempty"`
+	BytesCurrent    int64          `json:"bytesCurrent,omitempty"`
+	BytesTotal      int64          `json:"bytesTotal,omitempty"`
+	Cancellable     bool           `json:"cancellable"`
+	Silent          bool           `json:"silent,omitempty"`
+	RefreshChannels []string       `json:"refreshChannels,omitempty"`
+	OutputMode      TaskOutputMode `json:"outputMode,omitempty"` // 输出模式
+	Logs            []string       `json:"logs,omitempty"`       // 日志行（仅 log 模式）
 }
 
 // ProgressReporter allows task functions to report progress.
@@ -93,6 +102,30 @@ func (r *ProgressReporter) Flush() {
 	r.tm.broadcast(task)
 }
 
+// AppendLog appends a log line to the task (for log-mode tasks).
+func (r *ProgressReporter) AppendLog(line string) {
+	r.tm.mu.Lock()
+	for i := range r.tm.tasks {
+		if r.tm.tasks[i].ID == r.taskID {
+			r.tm.tasks[i].Logs = append(r.tm.tasks[i].Logs, line)
+			break
+		}
+	}
+	r.tm.mu.Unlock()
+
+	// Broadcast immediately for log updates
+	r.tm.mu.Lock()
+	var task BackgroundTask
+	for _, t := range r.tm.tasks {
+		if t.ID == r.taskID {
+			task = t
+			break
+		}
+	}
+	r.tm.mu.Unlock()
+	r.tm.broadcast(task)
+}
+
 type taskListener struct {
 	handler func(BackgroundTask)
 }
@@ -140,6 +173,13 @@ func WithRefreshChannels(channels []string) SubmitOption {
 	}
 }
 
+// WithOutputMode sets the output mode for the task.
+func WithOutputMode(mode TaskOutputMode) SubmitOption {
+	return func(t *BackgroundTask) {
+		t.OutputMode = mode
+	}
+}
+
 // Submit creates a background task and runs fn in a goroutine.
 // Returns the task ID immediately.
 func (tm *TaskManager) Submit(taskType, title string, fn func(ctx context.Context, r *ProgressReporter) (string, error), opts ...SubmitOption) string {
@@ -161,6 +201,7 @@ func (tm *TaskManager) submit(taskType, title string, silent bool, fn func(ctx c
 		CreatedAt:   time.Now().UnixMilli(),
 		Cancellable: true,
 		Silent:      silent,
+		OutputMode:  TaskOutputProgress, // 默认为进度模式
 	}
 
 	for _, opt := range opts {

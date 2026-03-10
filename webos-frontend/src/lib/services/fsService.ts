@@ -50,17 +50,23 @@ export const fsService = {
   create(nodeId: string, path: string, name: string): Promise<{ path: string }> {
     return request('fs.create', { nodeId, path, name })
   },
-  delete(nodeId: string, paths: string[]): Promise<void> {
-    return request('fs.delete', { nodeId, paths })
+  delete(nodeId: string, paths: string[], reqId?: string): Promise<void> {
+    const params: any = { nodeId, paths }
+    if (reqId) params.reqId = reqId
+    return request('fs.delete', params)
   },
   rename(nodeId: string, path: string, oldName: string, newName: string): Promise<{ path: string }> {
     return request('fs.rename', { nodeId, path, oldName, newName })
   },
-  copy(srcNodeId: string, paths: string[], to: string, dstNodeId?: string): Promise<void> {
-    return request('fs.copy', { nodeId: srcNodeId, paths, to, dstNodeId })
+  copy(srcNodeId: string, paths: string[], to: string, dstNodeId?: string, reqId?: string): Promise<void> {
+    const params: any = { nodeId: srcNodeId, paths, to, dstNodeId }
+    if (reqId) params.reqId = reqId
+    return request('fs.copy', params)
   },
-  move(srcNodeId: string, paths: string[], to: string, dstNodeId?: string): Promise<void> {
-    return request('fs.move', { nodeId: srcNodeId, paths, to, dstNodeId })
+  move(srcNodeId: string, paths: string[], to: string, dstNodeId?: string, reqId?: string): Promise<void> {
+    const params: any = { nodeId: srcNodeId, paths, to, dstNodeId }
+    if (reqId) params.reqId = reqId
+    return request('fs.move', params)
   },
   presign(nodeId: string, path: string, method: string = 'GET'): Promise<{ url: string; method: string }> {
     return request('fs.presign', { nodeId, path, method })
@@ -68,11 +74,15 @@ export const fsService = {
   downloadSign(nodeId: string, path: string): Promise<{ nodeId: string; path: string; exp: number; sign: string }> {
     return request('fs.download_sign', { nodeId, path })
   },
-  extract(nodeId: string, path: string, dest?: string): Promise<{ path: string }> {
-    return request('fs.extract', { nodeId, path, dest })
+  extract(nodeId: string, path: string, dest?: string, password?: string, reqId?: string): Promise<{ path: string }> {
+    const params: any = { nodeId, path, dest, password }
+    if (reqId) params.reqId = reqId
+    return request('fs.extract', params)
   },
-  compress(nodeId: string, paths: string[], output: string): Promise<{ path: string }> {
-    return request('fs.compress', { nodeId, paths, output })
+  compress(nodeId: string, paths: string[], output: string, reqId?: string): Promise<{ path: string }> {
+    const params: any = { nodeId, paths, output }
+    if (reqId) params.reqId = reqId
+    return request('fs.compress', params)
   },
   stat(nodeId: string, path: string): Promise<FileInfo> {
     return request('fs.stat', { nodeId, path })

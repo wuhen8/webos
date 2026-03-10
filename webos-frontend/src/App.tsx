@@ -15,6 +15,7 @@ import { loadAppOverrides, syncInstalledApps } from "@/config/appRegistry"
 import { dispatchMenuAction } from "@/config/actionRegistry"
 import { desktopContextMenu } from "@/config/contextMenus"
 import ContextMenuRenderer from "@/components/ContextMenuRenderer"
+import { ProgressDialog } from "@/components/ProgressDialog"
 
 import '@/lib/services'  // Register all service message handlers before WS connects
 
@@ -27,6 +28,7 @@ import Launchpad from "@/components/Launchpad"
 import type { ContextMenuItemConfig } from "@/types"
 
 import { useAuthStore, useSettingsStore, useUIStore, useWindowStore, useWebSocketStore } from "@/stores"
+import { useProgressDialogStore } from "@/stores/progressDialogStore"
 import GlobalMusicPlayer from "@/apps/music-player/GlobalMusicPlayer"
 
 function App() {
@@ -49,6 +51,8 @@ function App() {
   const setSpotlightOpen = useUIStore((s) => s.setSpotlightOpen)
   const launchpadOpen = useUIStore((s) => s.launchpadOpen)
   const setLaunchpadOpen = useUIStore((s) => s.setLaunchpadOpen)
+
+  const progressDialogState = useProgressDialogStore((s) => s.state)
 
   const windows = useWindowStore((s) => s.windows)
   const openWebviewWindow = useWindowStore((s) => s.openWebviewWindow)
@@ -214,6 +218,18 @@ function App() {
 
         {/* 启动台 */}
         <Launchpad open={launchpadOpen} onClose={() => setLaunchpadOpen(false)} />
+
+        {/* 全局进度对话框 */}
+        {progressDialogState && (
+          <ProgressDialog
+            open={progressDialogState.open}
+            title={progressDialogState.title}
+            message={progressDialogState.message}
+            progress={progressDialogState.progress}
+            cancellable={progressDialogState.cancellable}
+            onCancel={progressDialogState.onCancel}
+          />
+        )}
 
         {/* 全局确认弹窗 */}
         <Dialog open={!!confirmDialog} onOpenChange={(open) => !open && closeConfirm()}>

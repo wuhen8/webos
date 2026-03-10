@@ -493,22 +493,22 @@ func handleUnsubscribe(c *WSConn, raw json.RawMessage) {
 
 func handleTaskCancel(c *WSConn, raw json.RawMessage) {
 	var p struct {
-		TaskID string `json:"taskId"`
+		Data string `json:"data"`
 	}
 	json.Unmarshal(raw, &p)
-	if p.TaskID != "" {
-		service.GetTaskManager().Cancel(p.TaskID)
+	if p.Data != "" {
+		service.GetTaskManager().Cancel(p.Data)
 	}
 }
 
 func handleTaskRetry(c *WSConn, raw json.RawMessage) {
 	var p struct {
 		baseReq
-		TaskID string `json:"taskId"`
+		Data string `json:"data"`
 	}
 	json.Unmarshal(raw, &p)
-	if p.TaskID != "" {
-		newID := service.GetTaskManager().Retry(p.TaskID)
+	if p.Data != "" {
+		newID := service.GetTaskManager().Retry(p.Data)
 		c.Reply("task.retry", p.ReqID, map[string]string{"newTaskId": newID})
 	}
 }

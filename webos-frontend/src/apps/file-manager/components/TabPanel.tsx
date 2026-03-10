@@ -14,6 +14,7 @@ import { Toolbar } from "./Toolbar"
 import { FileList } from "./FileList"
 import { PathBar } from "./PathBar"
 import { OfflineDownloadDialog } from "./OfflineDownloadDialog"
+import { ExtractPasswordDialog } from "./ExtractPasswordDialog"
 import { useFileActions } from "./useFileActions"
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts"
 import { useFileSort } from "./useFileSort"
@@ -121,6 +122,7 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
       activeNodeId: nodeId, currentPath: path, history: [path], historyIndex: 0, selectedFiles: [], title,
     })
   }, [windowId, tabIndex, updateFmTabState, saveCurrentViewState])
+
 
   // File loading with path cache integration
   const pendingScrollRef = useRef<number | null>(null)
@@ -440,6 +442,17 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
       <OfflineDownloadDialog
         open={showOfflineDownload} onOpenChange={setShowOfflineDownload}
         activeNodeId={activeNodeId} currentPath={currentPath} toast={toast}
+      />
+
+      <ExtractPasswordDialog
+        open={actions.passwordDialogOpen}
+        onOpenChange={actions.setPasswordDialogOpen}
+        fileName={actions.passwordDialogFile?.name || ""}
+        onConfirm={(password) => {
+          if (actions.passwordDialogFile) {
+            actions.handleExtract(actions.passwordDialogFile, password)
+          }
+        }}
       />
 
     </div>

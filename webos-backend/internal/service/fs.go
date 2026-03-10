@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -23,12 +25,12 @@ import (
 
 	"webos-backend/internal/database"
 	"webos-backend/internal/storage"
+)
 
-	"github.com/ulikunitz/xz"
-
-	"github.com/bodgit/sevenzip"
-
-	"github.com/nwaples/rardecode/v2"
+// Archive extraction errors
+var (
+	ErrPasswordRequired   = errors.New("archive is encrypted and requires a password")
+	ErrPasswordIncorrect  = errors.New("incorrect password for encrypted archive")
 )
 
 // FileService handles file system business logic
@@ -542,9 +544,15 @@ func (s *FileService) PresignPutURL(nodeID, path string, expires time.Duration) 
 	return driver.PresignPutURL(path, expires)
 }
 
+// ProgressCallback is called during extraction to report progress.
+// progress: 0.0 - 1.0, message: current file being extracted
+type ProgressCallback func(progress float64, message string)
+
 // Extract extracts an archive file to the specified destination directory.
-// Supports .zip, .rar, .tar, .tar.gz/.tgz, .tar.bz2, .tar.xz
-func (s *FileService) Extract(nodeID, filePath, destDir string) error {
+// Supports .zip, .rar, .tar, .tar.gz/.tgz, .tar.bz2, .tar.xz, .7z
+// For encrypted archives (.rar, .7z, .zip), provide the password parameter.
+// The onProgress callback is called periodically to report extraction progress.
+func (s *FileService) Extract(nodeID, filePath, destDir, password string, onProgress ProgressCallback) error {
 	driver, err := storage.GetDriver(nodeID)
 	if err != nil {
 		return err
@@ -561,23 +569,19 @@ func (s *FileService) Extract(nodeID, filePath, destDir string) error {
 	ext := strings.ToLower(filepath.Ext(absPath))
 	name := strings.ToLower(filepath.Base(absPath))
 
+	// Try standard library first (fast, no dependencies)
 	switch {
-	case ext == ".zip":
-		err = extractZip(absPath, absDest)
-	case ext == ".rar":
-		err = extractRar(absPath, absDest)
+	case ext == ".zip" && password == "":
+		err = extractZip(absPath, absDest, onProgress)
 	case name == ".tar" || ext == ".tar":
-		err = extractTar(absPath, absDest, "")
+		err = extractTar(absPath, absDest, "", onProgress)
 	case ext == ".gz" || ext == ".tgz":
-		err = extractTar(absPath, absDest, "gz")
+		err = extractTar(absPath, absDest, "gz", onProgress)
 	case ext == ".bz2":
-		err = extractTar(absPath, absDest, "bz2")
-	case ext == ".xz":
-		err = extractTar(absPath, absDest, "xz")
-	case ext == ".7z":
-		err = extract7z(absPath, absDest)
+		err = extractTar(absPath, absDest, "bz2", onProgress)
 	default:
-		return fmt.Errorf("unsupported archive format: %s", ext)
+		// Fallback to system commands for special formats
+		err = extractWithSystemCmd(absPath, absDest, password)
 	}
 
 	if err != nil {
@@ -590,7 +594,7 @@ func (s *FileService) Extract(nodeID, filePath, destDir string) error {
 
 // Compress creates a ZIP archive from the given source paths.
 // The output file is written to outputPath (relative to storage root).
-func (s *FileService) Compress(nodeID string, paths []string, outputPath string) error {
+func (s *FileService) Compress(nodeID string, paths []string, outputPath string, onProgress ProgressCallback) error {
 	driver, err := storage.GetDriver(nodeID)
 	if err != nil {
 		return err
@@ -603,7 +607,7 @@ func (s *FileService) Compress(nodeID string, paths []string, outputPath string)
 	absOutput := outputPath
 	absPaths := paths
 
-	if err := compressZip(absPaths, absOutput); err != nil {
+	if err := compressZip(absPaths, absOutput, onProgress); err != nil {
 		return err
 	}
 
@@ -618,7 +622,7 @@ func (s *FileService) Compress(nodeID string, paths []string, outputPath string)
 	return nil
 }
 
-func compressZip(sources []string, dest string) error {
+func compressZip(sources []string, dest string, onProgress ProgressCallback) error {
 	outFile, err := os.Create(dest)
 	if err != nil {
 		return fmt.Errorf("failed to create zip file: %w", err)
@@ -628,6 +632,26 @@ func compressZip(sources []string, dest string) error {
 	w := zip.NewWriter(outFile)
 	defer w.Close()
 
+	// First, count total files to compress
+	totalFiles := 0
+	for _, src := range sources {
+		info, err := os.Stat(src)
+		if err != nil {
+			return fmt.Errorf("failed to stat %s: %w", src, err)
+		}
+		if !info.IsDir() {
+			totalFiles++
+		} else {
+			filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+				if err == nil && !d.IsDir() {
+					totalFiles++
+				}
+				return nil
+			})
+		}
+	}
+
+	processedFiles := 0
 	for _, src := range sources {
 		info, err := os.Stat(src)
 		if err != nil {
@@ -637,6 +661,10 @@ func compressZip(sources []string, dest string) error {
 		if !info.IsDir() {
 			if err := addFileToZip(w, src, filepath.Base(src)); err != nil {
 				return err
+			}
+			processedFiles++
+			if onProgress != nil && totalFiles > 0 {
+				onProgress(float64(processedFiles)/float64(totalFiles), filepath.Base(src))
 			}
 			continue
 		}
@@ -654,7 +682,14 @@ func compressZip(sources []string, dest string) error {
 				_, err := w.Create(relPath + "/")
 				return err
 			}
-			return addFileToZip(w, path, relPath)
+			if err := addFileToZip(w, path, relPath); err != nil {
+				return err
+			}
+			processedFiles++
+			if onProgress != nil && totalFiles > 0 {
+				onProgress(float64(processedFiles)/float64(totalFiles), filepath.Base(path))
+			}
+			return nil
 		})
 		if err != nil {
 			return err
@@ -691,14 +726,21 @@ func addFileToZip(w *zip.Writer, filePath, zipPath string) error {
 	return err
 }
 
-func extractZip(src, dest string) error {
+func extractZip(src, dest string, onProgress ProgressCallback) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
 		return fmt.Errorf("failed to open zip: %w", err)
 	}
 	defer r.Close()
 
-	for _, f := range r.File {
+	totalFiles := len(r.File)
+
+	for i, f := range r.File {
+		// Check if file is encrypted
+		if f.Flags&0x1 != 0 {
+			return ErrPasswordRequired
+		}
+
 		target := filepath.Join(dest, f.Name)
 		// Prevent zip slip
 		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)+string(os.PathSeparator)) && filepath.Clean(target) != filepath.Clean(dest) {
@@ -731,11 +773,17 @@ func extractZip(src, dest string) error {
 		if err != nil {
 			return err
 		}
+
+		// Report progress
+		if onProgress != nil && totalFiles > 0 {
+			progress := float64(i+1) / float64(totalFiles)
+			onProgress(progress, f.Name)
+		}
 	}
 	return nil
 }
 
-func extractTar(src, dest, compression string) error {
+func extractTar(src, dest, compression string, onProgress ProgressCallback) error {
 	f, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("failed to open archive: %w", err)
@@ -754,15 +802,10 @@ func extractTar(src, dest, compression string) error {
 		reader = gr
 	case "bz2":
 		reader = bzip2.NewReader(f)
-	case "xz":
-		xr, err := xz.NewReader(f)
-		if err != nil {
-			return fmt.Errorf("failed to create xz reader: %w", err)
-		}
-		reader = xr
 	}
 
 	tr := tar.NewReader(reader)
+	fileCount := 0
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -794,90 +837,107 @@ func extractTar(src, dest, compression string) error {
 			if err != nil {
 				return err
 			}
+
+			// Report progress (indeterminate for tar since we don't know total count)
+			if onProgress != nil {
+				fileCount++
+				onProgress(-1, header.Name) // -1 means indeterminate
+			}
 		}
 	}
 	return nil
 }
 
-func extractRar(src, dest string) error {
-	r, err := rardecode.OpenReader(src)
+// extractWithSystemCmd uses system commands to extract archives.
+// Supports .zip (with password), .rar, .7z, .tar.xz, .tar.zst, etc.
+func extractWithSystemCmd(src, dest, password string) error {
+	ext := strings.ToLower(filepath.Ext(src))
+	name := strings.ToLower(filepath.Base(src))
+
+	var cmd *exec.Cmd
+	var toolName string
+
+	switch {
+	case ext == ".zip":
+		// unzip -P password file.zip -d dest
+		toolName = "unzip"
+		if password != "" {
+			cmd = exec.Command("unzip", "-P", password, src, "-d", dest)
+		} else {
+			cmd = exec.Command("unzip", src, "-d", dest)
+		}
+
+	case ext == ".rar":
+		// unrar x -ppassword file.rar dest/
+		toolName = "unrar"
+		if password != "" {
+			cmd = exec.Command("unrar", "x", "-p"+password, src, dest+"/")
+		} else {
+			cmd = exec.Command("unrar", "x", src, dest+"/")
+		}
+
+	case ext == ".7z":
+		// 7z x -ppassword file.7z -odest
+		toolName = "7z"
+		if password != "" {
+			cmd = exec.Command("7z", "x", src, "-o"+dest, "-p"+password)
+		} else {
+			cmd = exec.Command("7z", "x", src, "-o"+dest)
+		}
+
+	case ext == ".xz" || (ext == ".tar" && strings.HasSuffix(name, ".tar.xz")):
+		// tar -xJf file.tar.xz -C dest
+		toolName = "tar"
+		cmd = exec.Command("tar", "-xJf", src, "-C", dest)
+
+	case ext == ".zst" || (ext == ".tar" && strings.HasSuffix(name, ".tar.zst")):
+		// tar --zstd -xf file.tar.zst -C dest
+		toolName = "tar"
+		cmd = exec.Command("tar", "--zstd", "-xf", src, "-C", dest)
+
+	default:
+		return fmt.Errorf("unsupported archive format: %s", ext)
+	}
+
+	// Check if tool is available
+	if _, err := exec.LookPath(toolName); err != nil {
+		return fmt.Errorf("tool '%s' not found, please install it first (e.g., apt-get install %s)", toolName, getPackageName(toolName))
+	}
+
+	// Create destination directory
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// Run command
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to open rar: %w", err)
+		errMsg := string(output)
+		// Check for password errors
+		if strings.Contains(errMsg, "password") || strings.Contains(errMsg, "encrypted") || strings.Contains(errMsg, "wrong password") {
+			if password == "" {
+				return ErrPasswordRequired
+			}
+			return ErrPasswordIncorrect
+		}
+		return fmt.Errorf("extraction failed: %s", errMsg)
 	}
-	defer r.Close()
 
-	for {
-		header, err := r.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("rar read error: %w", err)
-		}
-
-		target := filepath.Join(dest, header.Name)
-		// Prevent path traversal
-		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)+string(os.PathSeparator)) && filepath.Clean(target) != filepath.Clean(dest) {
-			continue
-		}
-
-		if header.IsDir {
-			os.MkdirAll(target, 0755)
-			continue
-		}
-
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-			return err
-		}
-		outFile, err := os.Create(target)
-		if err != nil {
-			return err
-		}
-		_, err = io.Copy(outFile, r)
-		outFile.Close()
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
-func extract7z(src, dest string) error {
-	r, err := sevenzip.OpenReader(src)
-	if err != nil {
-		return fmt.Errorf("failed to open 7z: %w", err)
+// getPackageName returns the package name for installation hint
+func getPackageName(tool string) string {
+	packages := map[string]string{
+		"unzip": "unzip",
+		"unrar": "unrar",
+		"7z":    "p7zip-full",
+		"tar":   "tar",
 	}
-	defer r.Close()
-
-	for _, f := range r.File {
-		target := filepath.Join(dest, f.Name)
-		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)+string(os.PathSeparator)) && filepath.Clean(target) != filepath.Clean(dest) {
-			continue
-		}
-		if f.FileInfo().IsDir() {
-			os.MkdirAll(target, 0755)
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-			return err
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return err
-		}
-		outFile, err := os.Create(target)
-		if err != nil {
-			rc.Close()
-			return err
-		}
-		_, err = io.Copy(outFile, rc)
-		outFile.Close()
-		rc.Close()
-		if err != nil {
-			return err
-		}
+	if pkg, ok := packages[tool]; ok {
+		return pkg
 	}
-	return nil
+	return tool
 }
 
 // ==================== Share Links ====================

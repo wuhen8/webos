@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,7 @@ type ScheduledJob struct {
 	Config       string // JSON config
 	ScheduleType string // "cron" | "once"
 	RunAt        int64  // unix ms timestamp for one-time jobs
+	CreatedAt    int64  // unix ms timestamp
 }
 
 // JobStatus is the public view of a scheduled job.
@@ -44,6 +46,7 @@ type JobStatus struct {
 	LastMessage  string `json:"lastMessage"`
 	ScheduleType string `json:"scheduleType"`
 	RunAt        int64  `json:"runAt"`
+	CreatedAt    int64  `json:"createdAt"`
 }
 
 type runningJob struct {
@@ -374,7 +377,7 @@ func (s *Scheduler) UpdateJob(id string, name string, cronExpr string, jobType s
 	s.notifyChange(rj)
 }
 
-// GetAllStatus returns status of all jobs.
+// GetAllStatus returns status of all jobs, sorted by creation time.
 func (s *Scheduler) GetAllStatus() []JobStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -382,6 +385,10 @@ func (s *Scheduler) GetAllStatus() []JobStatus {
 	for _, rj := range s.jobs {
 		result = append(result, s.jobStatus(rj))
 	}
+	// Sort by creation time (oldest first)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedAt < result[j].CreatedAt
+	})
 	return result
 }
 
@@ -409,6 +416,7 @@ func (s *Scheduler) jobStatus(rj *runningJob) JobStatus {
 		LastMessage:  rj.lastMessage,
 		ScheduleType: schedType,
 		RunAt:        rj.job.RunAt,
+		CreatedAt:    rj.job.CreatedAt,
 	}
 }
 
@@ -575,8 +583,8 @@ type SystemExecer interface {
 type FileCopier interface {
 	CopyAcross(srcNode, srcPath, dstNode, dstPath string, progress storage.ProgressFunc) error
 	Copy(nodeID, srcPath, dstPath string, progress storage.ProgressFunc) (string, error)
-	Compress(nodeID string, paths []string, output string) error
-	Extract(nodeID, archivePath, dest string) error
+	Compress(nodeID string, paths []string, output string, onProgress ProgressCallback) error
+	Extract(nodeID, archivePath, dest, password string, onProgress ProgressCallback) error
 }
 
 // CleanStaleUploadsFn is set by the handler package to avoid circular imports.
@@ -764,7 +772,7 @@ func makeBuiltinRun(jobID string, bc builtinConfig, submitFn func(string, string
 				return
 			}
 			submitFn("fs.compress", "定时: 压缩 "+filepath.Base(bc.Output), func(ctx context.Context, r *ProgressReporter) (string, error) {
-				if err := fileSvc.Compress(bc.NodeID, bc.Paths, bc.Output); err != nil {
+				if err := fileSvc.Compress(bc.NodeID, bc.Paths, bc.Output, nil); err != nil {
 					reportResult("failed", err.Error())
 					return "", err
 				}
@@ -783,7 +791,7 @@ func makeBuiltinRun(jobID string, bc builtinConfig, submitFn func(string, string
 				dest = filepath.Dir(bc.Path)
 			}
 			submitFn("fs.extract", "定时: 解压 "+filepath.Base(bc.Path), func(ctx context.Context, r *ProgressReporter) (string, error) {
-				if err := fileSvc.Extract(bc.NodeID, bc.Path, dest); err != nil {
+				if err := fileSvc.Extract(bc.NodeID, bc.Path, dest, "", nil); err != nil {
 					reportResult("failed", err.Error())
 					return "", err
 				}
@@ -823,7 +831,7 @@ func SeedDefaultJobs() {
 // LoadPersistedJobs loads user-defined jobs from DB and registers them with the scheduler.
 func LoadPersistedJobs(systemSvc SystemExecer, fileSvc FileCopier) {
 	rows, err := database.DB().Query(
-		`SELECT id, name, job_type, config, cron_expr, enabled, silent, last_run_at, last_status, last_message, schedule_type, run_at FROM scheduled_jobs`,
+		`SELECT id, name, job_type, config, cron_expr, enabled, silent, last_run_at, last_status, last_message, schedule_type, run_at, created_at FROM scheduled_jobs`,
 	)
 	if err != nil {
 		log.Printf("[scheduler] failed to load persisted jobs: %v", err)
@@ -839,8 +847,8 @@ func LoadPersistedJobs(systemSvc SystemExecer, fileSvc FileCopier) {
 		var lastRunAt *int64
 		var lastStatus, lastMessage *string
 		var scheduleType string
-		var runAt int64
-		if err := rows.Scan(&id, &name, &jobType, &cfg, &cronExpr, &enabled, &silent, &lastRunAt, &lastStatus, &lastMessage, &scheduleType, &runAt); err != nil {
+		var runAt, createdAt int64
+		if err := rows.Scan(&id, &name, &jobType, &cfg, &cronExpr, &enabled, &silent, &lastRunAt, &lastStatus, &lastMessage, &scheduleType, &runAt, &createdAt); err != nil {
 			log.Printf("[scheduler] scan job row: %v", err)
 			continue
 		}
@@ -864,6 +872,7 @@ func LoadPersistedJobs(systemSvc SystemExecer, fileSvc FileCopier) {
 			Config:       cfg,
 			ScheduleType: scheduleType,
 			RunAt:        runAt,
+			CreatedAt:    createdAt,
 		}
 		sched.AddJob(job)
 		count++

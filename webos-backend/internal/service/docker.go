@@ -874,6 +874,76 @@ func (s *DockerService) ComposeAction(projectDir, action string) (string, error)
 	return string(out), nil
 }
 
+// ComposeActionWithLog executes a compose action and streams output line-by-line.
+func (s *DockerService) ComposeActionWithLog(ctx context.Context, projectDir, action string, logFn func(string)) error {
+	allowed := map[string]bool{"up": true, "down": true, "restart": true, "stop": true, "start": true, "pull": true}
+	if !allowed[action] {
+		return fmt.Errorf("unsupported action: %s", action)
+	}
+
+	var args []string
+	if action == "up" {
+		s.EnsureDefaultNetwork()
+		args = []string{"up", "-d"}
+	} else {
+		args = []string{action}
+	}
+
+	composeCmd := s.detectComposeCmd()
+	var cmd *exec.Cmd
+	if composeCmd == "docker compose" {
+		cmd = exec.Command("docker", append([]string{"compose"}, args...)...)
+	} else {
+		cmd = exec.Command("docker-compose", args...)
+	}
+	if projectDir != "" {
+		cmd.Dir = projectDir
+	}
+
+	// Capture combined output
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	// Read both pipes concurrently
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	readPipe := func(pipe io.ReadCloser) {
+		defer wg.Done()
+		buf := make([]byte, 1024)
+		for {
+			n, err := pipe.Read(buf)
+			if n > 0 {
+				lines := strings.Split(string(buf[:n]), "\n")
+				for _, line := range lines {
+					if line = strings.TrimSpace(line); line != "" {
+						logFn(line)
+					}
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+	}
+
+	go readPipe(stdout)
+	go readPipe(stderr)
+
+	wg.Wait()
+	return cmd.Wait()
+}
+
 // GetComposeLogs returns logs for a Docker Compose project.
 func (s *DockerService) GetComposeLogs(projectDir, tail string) (string, error) {
 	out, err := s.execCompose(projectDir, "logs", "--tail", tail, "--timestamps")

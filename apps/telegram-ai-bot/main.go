@@ -17,9 +17,6 @@ var (
 	activeChatID   int          // 当前活跃的 chat_id（AI 回复发到这里）
 	initialized    bool
 	polling        bool // 防止重复轮询
-	replyBuf       strings.Builder
-	deltaCount     int
-	inCodeBlock    bool
 )
 
 func main() {}
@@ -139,22 +136,17 @@ func onChatDelta(data json.RawMessage) {
 		Content string `json:"content"`
 	}
 	json.Unmarshal(data, &d)
-	replyBuf.WriteString(d.Content)
-
-	deltaCount++
-	if deltaCount%20 == 0 {
-		sendTypingAction(activeChatID)
+	if d.Content == "" {
+		return
 	}
-
-	flushReplyBuf(false)
+	noteReplyStreamDelta(activeChatID, d.Content)
 }
 
 func onChatDone() {
 	if activeChatID == 0 {
 		return
 	}
-	flushReplyBuf(true)
-	inCodeBlock = false
+	finishReplyStream(activeChatID)
 }
 
 func onChatError(data json.RawMessage) {
@@ -165,135 +157,8 @@ func onChatError(data json.RawMessage) {
 		Error string `json:"error"`
 	}
 	json.Unmarshal(data, &d)
-	flushReplyBuf(true)
-	inCodeBlock = false
+	finishReplyStream(activeChatID)
 	sendTelegramAsync(activeChatID, "AI 错误: "+d.Error, nil)
-}
-
-// flushReplyBuf 从 buffer 中切出可安全发送的段落。
-// force=true 时无条件发送所有剩余内容（用于 done/error）。
-func flushReplyBuf(force bool) {
-	for {
-		s := replyBuf.String()
-		if strings.TrimSpace(s) == "" {
-			replyBuf.Reset()
-			return
-		}
-		if force {
-			replyBuf.Reset()
-			sendTelegramAsync(activeChatID, s, nil)
-			return
-		}
-
-		cutPos := findCutPoint(s)
-		if cutPos <= 0 {
-			// 没有安全切点，但如果 buffer 太大就强制切（防止无限积压）
-			if len(s) > 3500 {
-				replyBuf.Reset()
-				sendTelegramAsync(activeChatID, s, nil)
-			}
-			return
-		}
-
-		segment := s[:cutPos]
-		replyBuf.Reset()
-		replyBuf.WriteString(s[cutPos:])
-
-		// 同步 inCodeBlock 状态
-		for _, line := range strings.SplitAfter(segment, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if inCodeBlock {
-				if isCodeFenceClose(trimmed) {
-					inCodeBlock = false
-				}
-			} else {
-				if isCodeFenceOpen(trimmed) {
-					inCodeBlock = true
-				}
-			}
-		}
-		sendTelegramAsync(activeChatID, segment, nil)
-	}
-}
-
-// findCutPoint 在 buffer 中找到一个安全的切割位置。
-// 返回 0 表示当前不应切割。
-//
-// 规则：
-//   - ``` 代码块未闭合 → 不切
-//   - 闭合后在空行或句末标点处切割
-//   - 兜底：buffer 超过 3000 强制切（在 flushReplyBuf 中处理）
-func findCutPoint(s string) int {
-	lastNL := strings.LastIndex(s, "\n")
-	if lastNL < 0 {
-		return 0
-	}
-	completed := s[:lastNL+1]
-	lines := strings.SplitAfter(completed, "\n")
-
-	localInCode := inCodeBlock
-	pos := 0
-	var codeCloses []int
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		pos += len(line)
-		if localInCode {
-			// 在代码块内，只有单独的 ``` 才是闭合
-			if isCodeFenceClose(trimmed) {
-				localInCode = false
-				codeCloses = append(codeCloses, pos)
-			}
-		} else {
-			if isCodeFenceOpen(trimmed) {
-				localInCode = true
-			}
-		}
-	}
-
-	if localInCode {
-		return 0
-	}
-
-	if len(codeCloses) > 0 && codeCloses[0] < len(completed) {
-		return codeCloses[0]
-	}
-
-	pos = len(completed)
-	for i := len(lines) - 1; i >= 0; i-- {
-		pos -= len(lines[i])
-		trimmed := strings.TrimSpace(lines[i])
-		lineEnd := pos + len(lines[i])
-		if trimmed == "" || endsWithSentence(trimmed) {
-			if lineEnd < len(completed) {
-				return lineEnd
-			}
-		}
-	}
-	return 0
-}
-// isCodeFenceClose 判断一行是否是代码块的闭合行。
-// 已在代码块内时，只有 trim 后恰好是 ``` 才算闭合，```python 这种不算。
-func isCodeFenceClose(trimmed string) bool {
-	return trimmed == "```"
-}
-
-// isCodeFenceOpen 判断一行是否是代码块的开启行。
-// ``` 或 ```language 都算开启。
-func isCodeFenceOpen(trimmed string) bool {
-	return strings.HasPrefix(trimmed, "```")
-}
-
-
-// endsWithSentence 检测行尾是否是句末标点
-func endsWithSentence(s string) bool {
-	s = strings.TrimRight(s, " \t\n")
-	if s == "" {
-		return false
-	}
-	return strings.HasSuffix(s, ".") || strings.HasSuffix(s, "!") || strings.HasSuffix(s, "?") ||
-		strings.HasSuffix(s, "。") || strings.HasSuffix(s, "！") || strings.HasSuffix(s, "？") ||
-		strings.HasSuffix(s, "；") || strings.HasSuffix(s, "：")
 }
 func onCommandResult(data json.RawMessage) {
 	if activeChatID == 0 {
@@ -361,9 +226,7 @@ func startTelegramDownload(fileID, fileName string, chatID int, userName, userTe
 			logMsg("ERROR: getFile failed: " + resp[:min(len(resp), 200)])
 			// 降级：只发文本
 			if userText != "" {
-				activeChatID = chatID
-				deltaCount = 0
-				replyBuf.Reset()
+				beginReplyStream(chatID)
 				request("chat.send", map[string]interface{}{
 					"messageContent": userText,
 					"clientId":       "telegram-ai-bot",
@@ -397,9 +260,7 @@ func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 		logMsg(fmt.Sprintf("[chat:%d] 下载文件失败: %s", pd.ChatID, errMsg))
 		// 降级：只发文本
 		if pd.UserText != "" {
-			activeChatID = pd.ChatID
-			deltaCount = 0
-			replyBuf.Reset()
+			beginReplyStream(pd.ChatID)
 			request("chat.send", map[string]interface{}{
 				"messageContent": pd.UserText,
 				"clientId":       "telegram-ai-bot",
@@ -424,10 +285,8 @@ func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 		userText = fileInfo
 	}
 
-	activeChatID = pd.ChatID
+	beginReplyStream(pd.ChatID)
 	logMsg(fmt.Sprintf("[chat:%d] %s", pd.ChatID, userText[:min(len(userText), 100)]))
-	deltaCount = 0
-	replyBuf.Reset()
 	request("chat.send", map[string]interface{}{
 		"messageContent": userText,
 		"clientId":       "telegram-ai-bot",
@@ -539,9 +398,8 @@ func pollOnce() {
 				sendTelegramAsync(incomingCID, "你好！我是 WebOS AI 助手。直接发消息给我就可以对话。", nil)
 				continue
 			}
-			activeChatID = incomingCID
+			beginReplyStream(incomingCID)
 			sendTypingAction(incomingCID)
-			deltaCount = 0
 			request("chat.send", map[string]interface{}{
 				"messageContent": userText,
 				"clientId":       "telegram-ai-bot",

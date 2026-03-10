@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 type TelegramResponse struct {
@@ -50,39 +51,117 @@ type Chat struct {
 	ID int `json:"id"`
 }
 
-// ==================== 顺序发送队列 ====================
-
-type sendItem struct {
-	chatID int
-	text   string
+type telegramQueueItem struct {
+	kind           string // "send", "draft", "edit"
+	chatID         int
+	messageID      int
+	draftID        int
+	text           string
+	enableMarkdown bool
+	callback       func(success bool, resp string)
 }
 
 var (
-	sendQueue []sendItem
-	sending   bool // 是否有正在发送的请求
+	sendQueue []telegramQueueItem
+	sending   bool
 )
 
 const tgMaxMessageLen = 4096
 
-// sendTelegramAsync 入队一条消息，保证按顺序发送。
-// 超过 Telegram 4096 字符限制时自动拆分。
-func sendTelegramAsync(chatID int, text string, _ func(string)) {
-	for len(text) > tgMaxMessageLen {
-		// 尽量在换行处切，避免把一行切成两半
-		cut := tgMaxMessageLen
-		if idx := strings.LastIndex(text[:cut], "\n"); idx > cut/2 {
+func splitTelegramText(text string, limit int) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	var out []string
+	for len(text) > limit {
+		cut := limit
+		prefix := text[:cut]
+		if idx := strings.LastIndex(prefix, "\n\n"); idx >= limit/2 {
+			cut = idx + 2
+		} else if idx := strings.LastIndex(prefix, "\n"); idx >= limit/2 {
+			cut = idx + 1
+		} else if idx := strings.LastIndexAny(prefix, "。！？；：.!?;:"); idx >= limit/2 {
+			_, size := utf8.DecodeRuneInString(prefix[idx:])
+			if size > 0 {
+				cut = idx + size
+			} else {
+				cut = idx + 1
+			}
+		} else if idx := strings.LastIndexAny(prefix, " \t"); idx >= limit/2 {
 			cut = idx + 1
 		}
-		sendQueue = append(sendQueue, sendItem{chatID: chatID, text: text[:cut]})
-		text = text[cut:]
+		out = append(out, text[:cut])
+		text = strings.TrimLeft(text[cut:], "\n")
 	}
 	if text != "" {
-		sendQueue = append(sendQueue, sendItem{chatID: chatID, text: text})
+		out = append(out, text)
 	}
+	return out
+}
+
+// sendTelegramAsync 发送普通消息（用于非流式场景）
+func sendTelegramAsync(chatID int, text string, cb func(string)) {
+	chunks := splitTelegramText(text, tgMaxMessageLen)
+	if len(chunks) == 0 {
+		return
+	}
+	for i, chunk := range chunks {
+		isLast := i == len(chunks)-1
+		queueTelegramItem(telegramQueueItem{
+			kind:           "send",
+			chatID:         chatID,
+			text:           chunk,
+			enableMarkdown: true,
+			callback: func(success bool, resp string) {
+				if isLast && cb != nil {
+					cb(resp)
+				}
+			},
+		})
+	}
+}
+
+// sendTelegramDraftAsync 发送草稿（流式输出，不排队直接发）
+func sendTelegramDraftAsync(chatID, draftID int, text string, cb func(success bool)) {
+	// 不走队列，直接发送
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessageDraft", token)
+
+	var escapedText string
+	var parseMode interface{} = nil
+	if escaped, ok := escapeMarkdownV2(text); ok {
+		escapedText = escaped
+		parseMode = "MarkdownV2"
+	} else {
+		escapedText = text
+	}
+
+	payload := map[string]interface{}{
+		"chat_id":  chatID,
+		"draft_id": draftID,
+		"text":     escapedText,
+	}
+	if parseMode != nil {
+		payload["parse_mode"] = parseMode
+	}
+
+	body, _ := json.Marshal(payload)
+	httpRequestAsync("POST", url, string(body), "{\"Content-Type\":\"application/json\"}", func(resp string) {
+		success := isTelegramResponseOK(resp)
+		if !success {
+			logMsg(fmt.Sprintf("ERROR: sendMessageDraft failed: %s", parseTelegramAPIError(resp)))
+		}
+		if cb != nil {
+			cb(success)
+		}
+	})
+}
+
+func queueTelegramItem(item telegramQueueItem) {
+	sendQueue = append(sendQueue, item)
 	drainSendQueue()
 }
 
-// drainSendQueue 如果当前没有在发送，取队首发送
 func drainSendQueue() {
 	if sending || len(sendQueue) == 0 {
 		return
@@ -90,38 +169,120 @@ func drainSendQueue() {
 	sending = true
 	item := sendQueue[0]
 	sendQueue = sendQueue[1:]
+	executeTelegramItem(item)
+}
 
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
-	escaped, ok := escapeMarkdownV2(item.text)
-
-	var body string
-	if ok {
-		textJSON, _ := json.Marshal(escaped)
-		body = fmt.Sprintf(`{"chat_id":%d,"text":%s,"parse_mode":"MarkdownV2"}`, item.chatID, string(textJSON))
-	} else {
-		// MarkdownV2 转义失败（未闭合的代码块等），降级为纯文本发送
-		textJSON, _ := json.Marshal(item.text)
-		body = fmt.Sprintf(`{"chat_id":%d,"text":%s}`, item.chatID, string(textJSON))
+func executeTelegramItem(item telegramQueueItem) {
+	var apiMethod string
+	switch item.kind {
+	case "send":
+		apiMethod = "sendMessage"
+	case "draft":
+		apiMethod = "sendMessageDraft"
+	case "edit":
+		apiMethod = "editMessageText"
+	default:
+		apiMethod = "sendMessage"
 	}
 
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", token, apiMethod)
+	body := buildTelegramTextBody(item)
+
 	httpRequestAsync("POST", url, body, "{\"Content-Type\":\"application/json\"}", func(resp string) {
-		if strings.Contains(resp, `"ok":false`) {
-			logMsg("ERROR: sendMessage failed: " + resp)
+		success := isTelegramResponseOK(resp)
+		if item.kind == "edit" && isTelegramMessageNotModified(resp) {
+			success = true
+		}
+		if !success {
+			logMsg(fmt.Sprintf("ERROR: %s failed: %s", apiMethod, parseTelegramAPIError(resp)))
+		}
+		if item.callback != nil {
+			item.callback(success, resp)
 		}
 		sending = false
 		drainSendQueue()
 	})
 }
-// escapeMarkdownV2 对文本做 Telegram MarkdownV2 转义。
-// 代码块（``` ... ```）和行内代码（` ... `）内部不转义。
-// escapeMarkdownV2 对文本做 Telegram MarkdownV2 转义。
-// 代码块（``` ... ```）和行内代码（` ... `）内部不转义。
-// Markdown 标题（# ## ###）转换为粗体（Telegram 不支持标题语法）。
-// escapeMarkdownV2 对文本做 Telegram MarkdownV2 转义。
-// 返回 (转义后文本, 是否成功)。代码块未闭合时返回 false，调用方应降级为纯文本。
-// escapeMarkdownV2 对文本做 Telegram MarkdownV2 转义。
-// 代码块内不转义，代码块外转义特殊字符。
-// 返回 (转义后文本, 是否成功)。代码块未闭合时返回 false，调用方应降级为纯文本。
+
+func buildTelegramTextBody(item telegramQueueItem) string {
+	payload := map[string]interface{}{
+		"chat_id": item.chatID,
+		"text":    item.text,
+	}
+
+	switch item.kind {
+	case "draft":
+		payload["draft_id"] = item.draftID
+	case "edit":
+		payload["message_id"] = item.messageID
+	}
+
+	if item.enableMarkdown {
+		if escaped, ok := escapeMarkdownV2(item.text); ok {
+			payload["text"] = escaped
+			payload["parse_mode"] = "MarkdownV2"
+		}
+	}
+
+	raw, _ := json.Marshal(payload)
+	return string(raw)
+}
+
+func isTelegramResponseOK(resp string) bool {
+	var envelope struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if json.Unmarshal([]byte(resp), &envelope) != nil {
+		return false
+	}
+	if envelope.Error != "" {
+		return false
+	}
+	return envelope.OK
+}
+
+func isTelegramMessageNotModified(resp string) bool {
+	errText := strings.ToLower(parseTelegramAPIError(resp))
+	return strings.Contains(errText, "message is not modified")
+}
+
+func parseTelegramMessageID(resp string) int {
+	var envelope struct {
+		Result struct {
+			MessageID int `json:"message_id"`
+		} `json:"result"`
+	}
+	if json.Unmarshal([]byte(resp), &envelope) != nil {
+		return 0
+	}
+	return envelope.Result.MessageID
+}
+
+func parseTelegramAPIError(resp string) string {
+	var envelope struct {
+		Description string `json:"description"`
+		Error       string `json:"error"`
+	}
+	if json.Unmarshal([]byte(resp), &envelope) == nil {
+		if envelope.Description != "" {
+			return envelope.Description
+		}
+		if envelope.Error != "" {
+			return envelope.Error
+		}
+	}
+	return truncateTelegramResp(resp)
+}
+
+func truncateTelegramResp(resp string) string {
+	resp = strings.TrimSpace(resp)
+	if len(resp) <= 400 {
+		return resp
+	}
+	return resp[:400] + "..."
+}
+
 func escapeMarkdownV2(text string) (string, bool) {
 	var result strings.Builder
 	lines := strings.SplitAfter(text, "\n")
@@ -153,7 +314,6 @@ func escapeMarkdownV2(text string) (string, bool) {
 	return result.String(), true
 }
 
-// escapeLine 对单行文本做 MarkdownV2 特殊字符转义，行内代码内不转义。
 func escapeLine(line string) string {
 	var b strings.Builder
 	inInlineCode := false
@@ -176,15 +336,14 @@ func escapeLine(line string) string {
 	return b.String()
 }
 
-// sendTypingAction 发送"正在输入"状态到指定 chat
 func sendTypingAction(chatID int) {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendChatAction", token)
 	body := fmt.Sprintf(`{"chat_id":%d,"action":"typing"}`, chatID)
 	httpRequestAsync("POST", url, body, "{\"Content-Type\":\"application/json\"}", func(resp string) {
-		// fire-and-forget，不需要处理结果
+		// fire-and-forget
 	})
 }
-// registerBotCommands 从 backend 获取命令列表，调用 Telegram setMyCommands 注册
+
 func registerBotCommands() {
 	resp := request("chat.commands", nil)
 	if resp == "" || resp[0] != '[' {
@@ -201,7 +360,6 @@ func registerBotCommands() {
 		return
 	}
 
-	// 构建 Telegram BotCommand 数组，加上 /start
 	type botCmd struct {
 		Command     string `json:"command"`
 		Description string `json:"description"`
@@ -222,7 +380,6 @@ func registerBotCommands() {
 		seen[root] = true
 		desc := c.Description
 		if isSub {
-			// 子命令截成根命令时，用 category 作描述，提示 /help 查看详情
 			desc = c.Category + "（/help 查看子命令）"
 		}
 		tgCmds = append(tgCmds, botCmd{Command: root, Description: desc})
@@ -238,5 +395,3 @@ func registerBotCommands() {
 		}
 	})
 }
-
-

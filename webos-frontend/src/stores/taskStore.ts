@@ -4,7 +4,7 @@ export interface BackgroundTask {
   id: string
   type: string
   title: string
-  status: 'running' | 'success' | 'failed'
+  status: 'running' | 'success' | 'failed' | 'cancelled'
   message: string
   createdAt: number
   doneAt?: number
@@ -14,17 +14,12 @@ export interface BackgroundTask {
   bytesCurrent?: number
   bytesTotal?: number
   cancellable?: boolean
-}
-
-export interface TaskLogEntry {
-  time: number
-  message: string
+  outputMode?: 'progress' | 'log'  // 输出模式
+  logs?: string[]                   // 日志行（仅 log 模式）
 }
 
 interface TaskState {
   tasks: BackgroundTask[]
-  /** Accumulated log entries per task (frontend-side collection from message changes) */
-  taskLogs: Record<string, TaskLogEntry[]>
   upsertTask: (task: BackgroundTask) => void
   setTasks: (tasks: BackgroundTask[]) => void
   clearCompleted: () => void
@@ -42,21 +37,10 @@ function sortTasks(tasks: BackgroundTask[]): BackgroundTask[] {
 
 export const useTaskStore = create<TaskState>((set) => ({
   tasks: [],
-  taskLogs: {},
 
   upsertTask: (task) =>
     set((state) => {
       const idx = state.tasks.findIndex((t) => t.id === task.id)
-      // Accumulate log: only mutate taskLogs when message actually changed
-      let taskLogs = state.taskLogs
-      if (task.message) {
-        const prev = idx >= 0 ? state.tasks[idx] : null
-        if (!prev || prev.message !== task.message) {
-          const entries = taskLogs[task.id] ? [...taskLogs[task.id]] : []
-          entries.push({ time: Date.now(), message: task.message })
-          taskLogs = { ...taskLogs, [task.id]: entries }
-        }
-      }
       let tasks: BackgroundTask[]
       if (idx >= 0) {
         tasks = [...state.tasks]
@@ -64,19 +48,13 @@ export const useTaskStore = create<TaskState>((set) => ({
       } else {
         tasks = [task, ...state.tasks]
       }
-      return { tasks: sortTasks(tasks), taskLogs }
+      return { tasks: sortTasks(tasks) }
     }),
 
   setTasks: (tasks) => set({ tasks: sortTasks(tasks) }),
 
   clearCompleted: () =>
-    set((state) => {
-      const running = state.tasks.filter((t) => t.status === 'running')
-      const runningIds = new Set(running.map(t => t.id))
-      const newLogs: Record<string, TaskLogEntry[]> = {}
-      for (const id of Object.keys(state.taskLogs)) {
-        if (runningIds.has(id)) newLogs[id] = state.taskLogs[id]
-      }
-      return { tasks: running, taskLogs: newLogs }
-    }),
+    set((state) => ({
+      tasks: state.tasks.filter((t) => t.status === 'running')
+    })),
 }))

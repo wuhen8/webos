@@ -6,9 +6,12 @@ import { useProcessStore } from "@/stores"
 import { useWindowStore } from "@/stores/windowStore"
 import { useSettingsStore } from "@/stores/settingsStore"
 import { useTaskStore } from "@/stores/taskStore"
+import { useProgressDialogStore } from "@/stores/progressDialogStore"
+import { registerMessageHandler } from "@/stores/webSocketStore"
 import ShareDialogContent from "../ShareDialogContent"
 import FileInfoContent from "../FileInfoContent"
 import OpenWithDialogContent from "./OpenWithDialog"
+import { ExtractPasswordDialog } from "./ExtractPasswordDialog"
 import type { FileActionsContext } from "./types"
 
 export function useFileActions(ctx: FileActionsContext) {
@@ -26,6 +29,8 @@ export function useFileActions(ctx: FileActionsContext) {
   const [inlineRenameValue, setInlineRenameValue] = useState("")
   const inlineRenameInputRef = useRef<HTMLInputElement>(null)
   const renameTimerRef = useRef<number | null>(null)
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
+  const [passwordDialogFile, setPasswordDialogFile] = useState<FileInfo | null>(null)
 
   const startRename = useCallback((file: FileInfo) => {
     setInlineRenamePath(file.path)
@@ -179,19 +184,98 @@ export function useFileActions(ctx: FileActionsContext) {
     }
   }
 
-  const handleDelete = (filesToDelete: FileInfo[]) => {
-    fsApi.delete(activeNodeId, filesToDelete.map(f => f.path))
-    setSelectedFiles(new Set())
-    toast({ title: "已移到回收站", description: `${filesToDelete.length} 个项目已移到回收站` })
+  const handleDelete = async (filesToDelete: FileInfo[]) => {
+    const progressDialog = useProgressDialogStore.getState()
+    const reqId = `delete-${Date.now()}`
+
+    const title = filesToDelete.length === 1
+      ? `移到回收站 ${filesToDelete[0].name}`
+      : `移到回收站 ${filesToDelete.length} 个项目`
+
+    progressDialog.show({
+      title,
+      cancellable: true,
+      onCancel: () => progressDialog.close(),
+    })
+
+    const unsubscribe = registerMessageHandler((msg) => {
+      if (msg.method === 'fs.delete.progress' && msg.params?.reqId === reqId) {
+        const progress = msg.params.progress
+        const message = msg.params.message
+        progressDialog.update({
+          progress: progress >= 0 ? progress : undefined,
+          message: message || '',
+        })
+        return true
+      }
+      return false
+    })
+
+    try {
+      await fsApi.delete(activeNodeId, filesToDelete.map(f => f.path), reqId)
+      progressDialog.close()
+      setSelectedFiles(new Set())
+      toast({ title: "已移到回收站", description: `${filesToDelete.length} 个项目已移到回收站` })
+      loadFiles()
+    } catch (e: any) {
+      progressDialog.close()
+      toast({ title: "删除失败", description: e?.message || "删除出错", variant: "destructive" })
+    } finally {
+      unsubscribe()
+    }
   }
 
-  const handleExtract = async (file: FileInfo) => {
+  const handleExtract = async (file: FileInfo, password?: string) => {
+    // 立即关闭密码对话框，避免重复弹出
+    setPasswordDialogOpen(false)
+    setPasswordDialogFile(null)
+
+    const progressDialog = useProgressDialogStore.getState()
+    const reqId = `extract-${Date.now()}`
+
+    // 显示进度对话框
+    progressDialog.show({
+      title: `解压 ${file.name}`,
+      cancellable: true,
+      onCancel: () => progressDialog.close(),
+    })
+
+    // 监听进度推送
+    const unsubscribe = registerMessageHandler((msg) => {
+      if (msg.method === 'fs.extract.progress' && msg.params?.reqId === reqId) {
+        const progress = msg.params.progress
+        const message = msg.params.message
+        progressDialog.update({
+          progress: progress >= 0 ? progress : undefined,
+          message: message || '',
+        })
+        return true
+      }
+      return false
+    })
+
     try {
-      await fsApi.extract(activeNodeId, file.path, currentPath)
+      await fsApi.extract(activeNodeId, file.path, currentPath, password, reqId)
+      progressDialog.close()
+      toast({ title: "解压成功", description: `${file.name} 已解压` })
       loadFiles()
-      toast({ title: "成功", description: `${file.name} 解压完成` })
     } catch (e: any) {
-      toast({ title: "解压失败", description: e?.message || "解压出错", variant: "destructive" })
+      progressDialog.close()
+      const errorMsg = e?.message || "解压出错"
+
+      // Check if password is required or incorrect
+      if (errorMsg.includes("password") || errorMsg.includes("密码") ||
+          errorMsg.includes("encrypted") || errorMsg.includes("加密")) {
+        if (errorMsg.includes("incorrect") || errorMsg.includes("错误") || errorMsg.includes("wrong")) {
+          toast({ title: "密码错误", description: "请重新输入正确的密码", variant: "destructive" })
+        }
+        setPasswordDialogFile(file)
+        setPasswordDialogOpen(true)
+      } else {
+        toast({ title: "解压失败", description: errorMsg, variant: "destructive" })
+      }
+    } finally {
+      unsubscribe()
     }
   }
 
@@ -209,14 +293,41 @@ export function useFileActions(ctx: FileActionsContext) {
         archiveName = `${base} (${counter}).zip`
       }
       const outputPath = currentPath === '/' ? '/' + archiveName : currentPath + '/' + archiveName
-      await fsApi.compress(activeNodeId, filesToCompress.map(f => f.path), outputPath)
+
+      const progressDialog = useProgressDialogStore.getState()
+      const reqId = `compress-${Date.now()}`
+      progressDialog.show({
+        title: `压缩 ${archiveName}`,
+        cancellable: true,
+        onCancel: () => progressDialog.close(),
+      })
+
+      const unsubscribe = registerMessageHandler((msg) => {
+        if (msg.method === 'fs.compress.progress' && msg.params?.reqId === reqId) {
+          const progress = msg.params.progress
+          const message = msg.params.message
+          progressDialog.update({
+            progress: progress >= 0 ? progress : undefined,
+            message: message || '',
+          })
+          return true
+        }
+        return false
+      })
+
+      await fsApi.compress(activeNodeId, filesToCompress.map(f => f.path), outputPath, reqId)
+
+      progressDialog.close()
       await loadFiles()
       setSelectedFiles(new Set([outputPath]))
       setInlineRenamePath(outputPath)
       setInlineRenameOldName(archiveName)
       setInlineRenameValue(archiveName)
       toast({ title: "成功", description: `已压缩为 ${archiveName}` })
+      unsubscribe()
     } catch (e: any) {
+      const progressDialog = useProgressDialogStore.getState()
+      progressDialog.close()
       toast({ title: "压缩失败", description: e?.message || "压缩出错", variant: "destructive" })
     }
   }
@@ -237,14 +348,54 @@ export function useFileActions(ctx: FileActionsContext) {
     toast({ title: "已剪切", description: `剪切 ${sel.length} 个文件` })
   }
 
-  const handlePaste = () => {
+  const handlePaste = async () => {
     if (!clipboard) return
     const { files: clipFiles, action, sourceNodeId } = clipboard
     const paths = clipFiles.map(f => f.path)
-    if (action === "copy") fsApi.copy(sourceNodeId, paths, currentPath, activeNodeId)
-    else fsApi.move(sourceNodeId, paths, currentPath, activeNodeId)
-    setClipboard(null)
-    setSelectedFiles(new Set())
+
+    const progressDialog = useProgressDialogStore.getState()
+    const reqId = `${action === 'copy' ? 'copy' : 'move'}-${Date.now()}`
+
+    const title = action === 'copy'
+      ? (clipFiles.length === 1 ? `复制 ${clipFiles[0].name}` : `复制 ${clipFiles.length} 个项目`)
+      : (clipFiles.length === 1 ? `移动 ${clipFiles[0].name}` : `移动 ${clipFiles.length} 个项目`)
+
+    progressDialog.show({
+      title,
+      cancellable: true,
+      onCancel: () => progressDialog.close(),
+    })
+
+    const unsubscribe = registerMessageHandler((msg) => {
+      const method = action === 'copy' ? 'fs.copy.progress' : 'fs.move.progress'
+      if (msg.method === method && msg.params?.reqId === reqId) {
+        const progress = msg.params.progress
+        const message = msg.params.message
+        progressDialog.update({
+          progress: progress >= 0 ? progress : undefined,
+          message: message || '',
+        })
+        return true
+      }
+      return false
+    })
+
+    try {
+      if (action === "copy") {
+        await fsApi.copy(sourceNodeId, paths, currentPath, activeNodeId, reqId)
+      } else {
+        await fsApi.move(sourceNodeId, paths, currentPath, activeNodeId, reqId)
+      }
+      progressDialog.close()
+      setClipboard(null)
+      setSelectedFiles(new Set())
+      loadFiles()
+    } catch (e: any) {
+      progressDialog.close()
+      toast({ title: "操作失败", description: e?.message || "操作出错", variant: "destructive" })
+    } finally {
+      unsubscribe()
+    }
   }
 
   const resolveDownloadUrl = async (file: FileInfo): Promise<string> => {
@@ -370,5 +521,7 @@ export function useFileActions(ctx: FileActionsContext) {
     handleCopy, handleCut, handlePaste, handleDelete, confirmDelete,
     handleExtract, handleCompress, handleDownload, handleShare,
     handleContextMenuAction,
+    // password dialog
+    passwordDialogOpen, setPasswordDialogOpen, passwordDialogFile,
   }
 }

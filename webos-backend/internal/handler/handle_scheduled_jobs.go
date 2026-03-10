@@ -91,6 +91,7 @@ func handleScheduledJobCreate(c *WSConn, raw json.RawMessage) {
 		Config:       p.JobConfig,
 		ScheduleType: scheduleType,
 		RunAt:        p.RunAt,
+		CreatedAt:    time.Now().UnixMilli(),
 	}
 	service.GetScheduler().AddJob(job)
 	c.Reply("scheduled_job.create", p.ReqID, map[string]string{"jobId": jobID})

@@ -1507,7 +1507,7 @@ Cron 表达式为 6 字段格式：秒 分 时 日 月 周
 			},
 			"run_at": map[string]interface{}{
 				"type":        "string",
-				"description": "一次性任务的执行时间。支持：'+30s'/'+5m'/'+2h'（相对）或 '2026-03-02 20:30'（绝对）",
+				"description": "一次性任务的执行时间。支持：'+30s'/'+5m'/'+2h'/'+1h28m'/'+1h28m2s'（相对）或 '2026-03-02 20:30'（绝对）",
 			},
 			"command": map[string]interface{}{
 				"type":        "string",

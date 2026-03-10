@@ -1,12 +1,10 @@
-import { useEffect, useRef, useMemo } from 'react'
+import { useEffect, useRef } from 'react'
 import { Loader2, CheckCircle2, XCircle, AlertCircle, X, RotateCcw } from 'lucide-react'
-import { useTaskStore, type TaskLogEntry } from '@/stores/taskStore'
+import { useTaskStore } from '@/stores/taskStore'
 import { useProcessStore } from '@/stores/processStore'
 import { useWindowStore } from '@/stores/windowStore'
 import { taskService } from '@/lib/services'
 import { useShallow } from 'zustand/shallow'
-
-const emptyLogs: TaskLogEntry[] = []
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
@@ -61,7 +59,7 @@ const statusConfig: Record<string, { icon: typeof Loader2; color: string; label:
   cancelled: { icon: AlertCircle, color: 'text-amber-500', label: '已取消' },
 }
 
-function LogPanel({ logs }: { logs: TaskLogEntry[] }) {
+function LogPanel({ logs }: { logs: string[] }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [logs.length])
 
@@ -73,12 +71,9 @@ function LogPanel({ logs }: { logs: TaskLogEntry[] }) {
         style={{ scrollbarWidth: 'thin' }}
       >
         {logs.length === 0 && <div className="text-black/30 text-center py-4">暂无日志</div>}
-        {logs.map((entry, i) => (
-          <div key={i} className="flex gap-2 py-0.5">
-            <span className="text-black/30 shrink-0 tabular-nums">
-              {new Date(entry.time).toLocaleTimeString('zh-CN', { hour12: false })}
-            </span>
-            <span className="text-black/70 break-all">{entry.message}</span>
+        {logs.map((line, i) => (
+          <div key={i} className="py-0.5 text-black/70 break-all whitespace-pre-wrap">
+            {line}
           </div>
         ))}
         <div ref={bottomRef} />
@@ -109,10 +104,9 @@ export default function TaskDetailWindow({ windowId }: { windowId: string }) {
       message: t.message, createdAt: t.createdAt, doneAt: t.doneAt,
       progress: t.progress, itemCurrent: t.itemCurrent, itemTotal: t.itemTotal,
       bytesCurrent: t.bytesCurrent, bytesTotal: t.bytesTotal, cancellable: t.cancellable,
+      outputMode: t.outputMode, logs: t.logs,
     }
   }))
-
-  const logs = useTaskStore((s) => s.taskLogs[taskId]) ?? emptyLogs
 
   const taskTitle = task?.title
   useEffect(() => {
@@ -129,6 +123,7 @@ export default function TaskDetailWindow({ windowId }: { windowId: string }) {
 
   const cfg = statusConfig[task.status] || statusConfig.running
   const StatusIcon = cfg.icon
+  const isLogMode = task.outputMode === 'log'
   const pct = task.progress != null ? Math.round(task.progress * 100) : null
   const hasBytes = (task.bytesTotal ?? 0) > 0
   const speed = hasBytes && task.status === 'running' ? getSpeed(task.id, task.bytesCurrent ?? 0) : 0
@@ -165,11 +160,11 @@ export default function TaskDetailWindow({ windowId }: { windowId: string }) {
         <InfoRow label="创建时间" value={formatTime(task.createdAt)} />
         <InfoRow label="耗时" value={formatDuration(task.createdAt, task.doneAt)} />
         {task.doneAt && <InfoRow label="完成时间" value={formatTime(task.doneAt)} />}
-        {task.message && <InfoRow label="信息" value={task.message} span />}
+        {!isLogMode && task.message && <InfoRow label="信息" value={task.message} span />}
       </div>
 
-      {/* Progress */}
-      {task.status === 'running' && (
+      {/* Progress (only for progress mode) */}
+      {!isLogMode && task.status === 'running' && (
         <div className="space-y-1">
           {pct != null ? (
             <>
@@ -198,7 +193,8 @@ export default function TaskDetailWindow({ windowId }: { windowId: string }) {
         </div>
       )}
 
-      <LogPanel logs={logs} />
+      {/* Logs (only for log mode) */}
+      {isLogMode && <LogPanel logs={task.logs || []} />}
     </div>
   )
 }

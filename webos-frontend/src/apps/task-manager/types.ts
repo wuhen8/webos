@@ -83,6 +83,8 @@ export interface UnifiedTask {
   bytesTotal?: number
   cancellable?: boolean
   silent?: boolean
+  outputMode?: 'progress' | 'log'
+  logs?: string[]
 }
 
 export type SortField = "pid" | "cpu" | "mem" | "rss" | "user" | "command" | "serviceName" | "activeState" | "subState" | "enabled" | "appId" | "name" | "state" | "memory" | "eventCount"

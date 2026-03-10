@@ -130,8 +130,16 @@ func handleDockerComposeCreate(c *WSConn, raw json.RawMessage) {
 		if p.AutoUp {
 			projectDir := p.ProjectDir
 			service.GetTaskManager().Submit("docker.compose_up", "启动 "+filepath.Base(projectDir), func(ctx context.Context, r *service.ProgressReporter) (string, error) {
-				return dockerSvc.ComposeAction(projectDir, "up")
-			})
+				r.AppendLog("启动 Docker Compose 项目: " + projectDir)
+				if err := dockerSvc.ComposeActionWithLog(ctx, projectDir, "up", func(line string) {
+					r.AppendLog(line)
+				}); err != nil {
+					r.AppendLog(fmt.Sprintf("启动失败: %v", err))
+					return "", err
+				}
+				r.AppendLog("启动完成")
+				return "启动成功", nil
+			}, service.WithOutputMode(service.TaskOutputLog))
 		}
 		c.Reply("docker.compose_create", p.ReqID, map[string]string{"composePath": composePath})
 	}()

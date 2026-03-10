@@ -123,18 +123,21 @@ func ActionCancelTask(taskID string) bool {
 func ActionSubmitBackgroundTask(title, command string) string {
 	sysExec := service.NewSystemService()
 	return service.GetTaskManager().Submit("ai_background", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
-		stdout, stderr, exitCode, err := sysExec.Exec(command)
+		r.AppendLog("$ " + command)
+		exitCode, err := sysExec.ExecWithLog(ctx, command, func(line string) {
+			r.AppendLog(line)
+		})
 		if err != nil {
+			r.AppendLog(fmt.Sprintf("执行失败: %v", err))
 			return "", err
 		}
 		if exitCode != 0 {
-			return "", fmt.Errorf("exit %d: %s", exitCode, stderr)
+			r.AppendLog(fmt.Sprintf("退出码: %d", exitCode))
+			return "", fmt.Errorf("命令执行失败，退出码: %d", exitCode)
 		}
-		if len(stdout) > 500 {
-			stdout = stdout[:500] + "..."
-		}
-		return stdout, nil
-	})
+		r.AppendLog("执行完成")
+		return "执行成功", nil
+	}, service.WithOutputMode(service.TaskOutputLog))
 }
 // ---------------------------------------------------------------------------
 // Context compression
@@ -380,44 +383,75 @@ func ActionDisableScheduledJob(jobID string) error {
 }
 
 // parseRunAt parses a run_at string into Unix milliseconds.
-// Supports relative formats: "+30s", "+5m", "+2h"
+// Supports relative formats: "+30s", "+5m", "+2h", "+1h28m", "+1h28m2s"
 // Supports absolute format: "2006-01-02 15:04"
 func parseRunAt(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, fmt.Errorf("空字符串")
 	}
-	// Relative time: +Ns, +Nm, +Nh
+	// Relative time: +Ns, +Nm, +Nh, or combinations like +1h28m2s
 	if strings.HasPrefix(s, "+") {
 		body := s[1:]
 		if len(body) < 2 {
 			return 0, fmt.Errorf("无效的相对时间: %s", s)
 		}
-		unit := body[len(body)-1]
-		numStr := body[:len(body)-1]
-		var n int
-		if _, err := fmt.Sscanf(numStr, "%d", &n); err != nil || n <= 0 {
-			return 0, fmt.Errorf("无效的数值: %s", numStr)
+
+		// Parse combined duration format (e.g., "1h28m2s", "5m30s", "2h")
+		var totalDuration time.Duration
+		remaining := body
+
+		for len(remaining) > 0 {
+			// Find the next unit marker (h, m, or s)
+			unitIdx := -1
+			var unit byte
+			for i := 0; i < len(remaining); i++ {
+				if remaining[i] == 'h' || remaining[i] == 'm' || remaining[i] == 's' {
+					unitIdx = i
+					unit = remaining[i]
+					break
+				}
+			}
+
+			if unitIdx == -1 {
+				return 0, fmt.Errorf("无效的相对时间格式: %s（缺少时间单位 h/m/s）", s)
+			}
+
+			// Extract the number before the unit
+			numStr := remaining[:unitIdx]
+			var n int
+			if _, err := fmt.Sscanf(numStr, "%d", &n); err != nil || n < 0 {
+				return 0, fmt.Errorf("无效的数值: %s", numStr)
+			}
+
+			// Add to total duration based on unit
+			switch unit {
+			case 's':
+				totalDuration += time.Duration(n) * time.Second
+			case 'm':
+				totalDuration += time.Duration(n) * time.Minute
+			case 'h':
+				totalDuration += time.Duration(n) * time.Hour
+			default:
+				return 0, fmt.Errorf("不支持的时间单位: %c（支持 s/m/h）", unit)
+			}
+
+			// Move to the next segment
+			remaining = remaining[unitIdx+1:]
 		}
-		var d time.Duration
-		switch unit {
-		case 's':
-			d = time.Duration(n) * time.Second
-		case 'm':
-			d = time.Duration(n) * time.Minute
-		case 'h':
-			d = time.Duration(n) * time.Hour
-		default:
-			return 0, fmt.Errorf("不支持的时间单位: %c（支持 s/m/h）", unit)
+
+		if totalDuration <= 0 {
+			return 0, fmt.Errorf("时间必须大于 0")
 		}
-		return time.Now().Add(d).UnixMilli(), nil
+
+		return time.Now().Add(totalDuration).UnixMilli(), nil
 	}
 	// Absolute time: try with seconds first, then without
 	t, err := time.ParseInLocation("2006-01-02 15:04:05", s, time.Local)
 	if err != nil {
 		t, err = time.ParseInLocation("2006-01-02 15:04", s, time.Local)
 		if err != nil {
-			return 0, fmt.Errorf("无法解析时间 '%s'，支持格式: +30s, +5m, +2h, 2006-01-02 15:04:05", s)
+			return 0, fmt.Errorf("无法解析时间 '%s'，支持格式: +30s, +5m, +2h, +1h28m2s, 2006-01-02 15:04:05", s)
 		}
 	}
 	return t.UnixMilli(), nil
