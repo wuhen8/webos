@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -379,6 +380,31 @@ func handleFsExtract(c *WSConn, raw json.RawMessage) {
 	}
 	nodeID, path, password := p.NodeID, p.Path, p.Password
 	fileName := filepath.Base(path)
+
+	// 同步前置检查：加密检测 + 密码校验
+	// 这些操作很快（读文件头 / test 命令），必须在提交任务前完成，否则前端收不到错误码
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".zip" || ext == ".rar" || ext == ".7z" {
+		encrypted, err := fileSvc.CheckArchivePassword(nodeID, path)
+		if err != nil {
+			c.ReplyErr("fs.extract", p.ReqID, err)
+			return
+		}
+		if encrypted {
+			if password == "" {
+				c.ReplyCodeErr("fs.extract", p.ReqID, ErrCodePasswordRequired, "archive is encrypted and requires a password", nil)
+				return
+			}
+			// 有密码，验证是否正确
+			if err := fileSvc.VerifyArchivePassword(nodeID, path, password); err != nil {
+				if errors.Is(err, service.ErrPasswordIncorrect) {
+					c.ReplyCodeErr("fs.extract", p.ReqID, ErrCodePasswordIncorrect, "incorrect password for encrypted archive", nil)
+					return
+				}
+				// 其他错误不阻塞，让 Extract 处理
+			}
+		}
+	}
 
 	service.GetTaskManager().Submit("fs_extract", "解压 "+fileName, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		err := fileSvc.Extract(nodeID, path, dest, password, func(progress float64, message string) {

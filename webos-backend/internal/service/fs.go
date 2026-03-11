@@ -56,6 +56,61 @@ func (s *FileService) CheckArchivePassword(nodeID, filePath string) (bool, error
 	}
 	return false, nil
 }
+// VerifyArchivePassword tests whether the given password can unlock an encrypted archive.
+// Returns nil if password is correct, ErrPasswordIncorrect if wrong, or other errors.
+// Uses lightweight test commands (list/test) that don't actually extract files.
+func (s *FileService) VerifyArchivePassword(nodeID, filePath, password string) error {
+	driver, err := storage.GetDriver(nodeID)
+	if err != nil {
+		return err
+	}
+	if _, ok := driver.(*storage.LocalDriver); !ok {
+		return fmt.Errorf("extract is only supported for local storage")
+	}
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+	var cmd *exec.Cmd
+	var toolName string
+
+	switch ext {
+	case ".zip":
+		toolName = "unzip"
+		// unzip -t -P <password> tests the archive without extracting
+		cmd = exec.Command("unzip", "-t", "-P", password, filePath)
+	case ".rar":
+		toolName = "unrar"
+		// unrar t -p<password> tests the archive
+		cmd = exec.Command("unrar", "t", "-p"+password, filePath)
+	case ".7z":
+		toolName = "7z"
+		// 7z t -p<password> tests the archive
+		cmd = exec.Command("7z", "t", "-p"+password, filePath)
+	default:
+		return nil // non-encrypted format, skip verification
+	}
+
+	if _, err := exec.LookPath(toolName); err != nil {
+		return nil // tool not found, skip verification and let Extract handle it
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		errMsg := strings.ToLower(string(output))
+		if strings.Contains(errMsg, "wrong password") || strings.Contains(errMsg, "incorrect password") ||
+			strings.Contains(errMsg, "data error") || strings.Contains(errMsg, "crc failed") {
+			return ErrPasswordIncorrect
+		}
+		// unzip exit code 1 = warnings, password is fine
+		if toolName == "unzip" {
+			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+				return nil
+			}
+		}
+		// Other errors — don't block, let Extract handle it
+		return nil
+	}
+	return nil
+}
 
 // List returns a sorted list of files in the given path
 func (s *FileService) List(nodeID, path string) ([]storage.FileInfo, error) {
