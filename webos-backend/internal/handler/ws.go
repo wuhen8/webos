@@ -213,32 +213,40 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 
 		case msg := <-msgCh:
 			if handler := LookupHandler(msg.Method); handler != nil {
-				// Extract params, inject reqId from JSON-RPC id
 				params := msg.Params
 				if len(params) == 0 || string(params) == "null" {
 					params = json.RawMessage(`{}`)
 				}
-				// Inject reqId into params so existing handlers can read it
+
+				// Extract the JSON-RPC protocol id for response matching.
+				// This is separate from any business "reqId" in params (used for progress notifications).
+				protoID := ""
 				if msg.ID != nil {
-					reqID := ""
 					switch v := msg.ID.(type) {
 					case string:
-						reqID = v
+						protoID = v
 					case float64:
-						reqID = fmt.Sprintf("%.0f", v)
-					}
-					if reqID != "" {
-						var paramsMap map[string]json.RawMessage
-						if json.Unmarshal(params, &paramsMap) == nil {
-							// Only inject if reqId doesn't already exist in params
-							if _, exists := paramsMap["reqId"]; !exists {
-								quotedID, _ := json.Marshal(reqID)
-								paramsMap["reqId"] = quotedID
-								params, _ = json.Marshal(paramsMap)
-							}
-						}
+						protoID = fmt.Sprintf("%.0f", v)
 					}
 				}
+
+				// Always inject the protocol id as reqId so handlers use it for Reply/ReplyErr.
+				// If the client also sent a business reqId in params, preserve it as "progressId"
+				// so handlers can use it for progress notifications.
+				if protoID != "" {
+					var paramsMap map[string]json.RawMessage
+					if json.Unmarshal(params, &paramsMap) == nil {
+						if bizReqID, exists := paramsMap["reqId"]; exists {
+							// Move business reqId to progressId
+							paramsMap["progressId"] = bizReqID
+						}
+						// Set reqId to protocol id (used by Reply/ReplyErr)
+						quotedID, _ := json.Marshal(protoID)
+						paramsMap["reqId"] = quotedID
+						params, _ = json.Marshal(paramsMap)
+					}
+				}
+
 				handler(wc, params)
 			} else if msg.ID != nil {
 				reqID := ""

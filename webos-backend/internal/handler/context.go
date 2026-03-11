@@ -13,6 +13,7 @@ import (
 	"webos-backend/internal/ai"
 	"webos-backend/internal/config"
 	"webos-backend/internal/database"
+	"webos-backend/internal/jsonrpc"
 	"webos-backend/internal/service"
 )
 
@@ -134,6 +135,19 @@ type jsonrpcNotification struct {
 	Params  interface{} `json:"params,omitempty"`
 }
 
+// ==================== Application error codes ====================
+// JSON-RPC 2.0 reserves -32000 to -32099 for server errors.
+// Application-specific codes use positive numbers to avoid conflicts.
+
+// Application error codes — re-exported from jsonrpc package for convenience.
+const (
+	ErrCodeServer            = jsonrpc.CodeAppError
+	ErrCodeUnauthorized      = jsonrpc.CodeUnauthorized
+	ErrCodePermDenied        = jsonrpc.CodePermDenied
+	ErrCodePasswordRequired  = jsonrpc.CodePasswordRequired
+	ErrCodePasswordIncorrect = jsonrpc.CodePasswordIncorrect
+)
+
 // ==================== Reply helpers ====================
 
 // Reply sends a success response (JSON-RPC 2.0).
@@ -145,18 +159,28 @@ func (c *WSConn) Reply(msgType, reqID string, data interface{}) {
 	})
 }
 
-// ReplyErr sends an error response (JSON-RPC 2.0).
+// replyError is the internal helper that sends a JSON-RPC 2.0 error response.
 // Uses a dedicated struct so that "result" is omitted entirely.
-func (c *WSConn) ReplyErr(msgType, reqID string, err error) {
+func (c *WSConn) replyError(reqID string, code int, message string, data interface{}) {
 	c.WriteJSON(struct {
 		JSONRPC string      `json:"jsonrpc"`
 		Error   *jsonrpcErr `json:"error"`
 		ID      interface{} `json:"id"`
 	}{
 		JSONRPC: "2.0",
-		Error:   &jsonrpcErr{Code: -32000, Message: err.Error()},
+		Error:   &jsonrpcErr{Code: code, Message: message, Data: data},
 		ID:      reqID,
 	})
+}
+
+// ReplyErr sends a generic server error response (code -32000).
+func (c *WSConn) ReplyErr(msgType, reqID string, err error) {
+	c.replyError(reqID, ErrCodeServer, err.Error(), nil)
+}
+
+// ReplyCodeErr sends an error response with a specific application error code.
+func (c *WSConn) ReplyCodeErr(msgType, reqID string, code int, message string, data interface{}) {
+	c.replyError(reqID, code, message, data)
 }
 
 // ReplyResult sends data on success or error message on failure.
@@ -186,10 +210,19 @@ type wsReq interface {
 
 // baseReq can be embedded in request structs to satisfy wsReq.
 type baseReq struct {
-	ReqID string `json:"reqId"`
+	ReqID      string `json:"reqId"`      // JSON-RPC protocol id (for Reply/ReplyErr)
+	ProgressID string `json:"progressId"` // Business id for progress notifications (optional)
 }
 
 func (b baseReq) GetReqID() string { return b.ReqID }
+
+// GetProgressID returns the business progress id if set, otherwise falls back to ReqID.
+func (b baseReq) GetProgressID() string {
+	if b.ProgressID != "" {
+		return b.ProgressID
+	}
+	return b.ReqID
+}
 
 // asyncHandler creates a Handler that unmarshals P, runs fn in a goroutine,
 // and sends the result back with the given msgType.

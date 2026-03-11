@@ -569,19 +569,34 @@ func (s *FileService) Extract(nodeID, filePath, destDir, password string, onProg
 	ext := strings.ToLower(filepath.Ext(absPath))
 	name := strings.ToLower(filepath.Base(absPath))
 
-	// Try standard library first (fast, no dependencies)
-	switch {
-	case ext == ".zip" && password == "":
-		err = extractZip(absPath, absDest, onProgress)
-	case name == ".tar" || ext == ".tar":
-		err = extractTar(absPath, absDest, "", onProgress)
-	case ext == ".gz" || ext == ".tgz":
-		err = extractTar(absPath, absDest, "gz", onProgress)
-	case ext == ".bz2":
-		err = extractTar(absPath, absDest, "bz2", onProgress)
-	default:
-		// Fallback to system commands for special formats
-		err = extractWithSystemCmd(absPath, absDest, password)
+	// Formats that support encryption — pre-check before running commands
+	if ext == ".zip" || ext == ".rar" || ext == ".7z" {
+		encrypted, checkErr := archiveIsEncrypted(absPath, ext)
+		if checkErr != nil {
+			return checkErr
+		}
+		if encrypted && password == "" {
+			return ErrPasswordRequired
+		}
+		// Non-encrypted zip can use Go stdlib (fast, no external deps)
+		if ext == ".zip" && !encrypted {
+			err = extractZip(absPath, absDest, onProgress)
+		} else {
+			err = extractWithSystemCmd(absPath, absDest, password)
+		}
+	} else {
+		// Formats without encryption support
+		switch {
+		case name == ".tar" || ext == ".tar":
+			err = extractTar(absPath, absDest, "", onProgress)
+		case ext == ".gz" || ext == ".tgz":
+			err = extractTar(absPath, absDest, "gz", onProgress)
+		case ext == ".bz2":
+			err = extractTar(absPath, absDest, "bz2", onProgress)
+		default:
+			// xz, zst, etc.
+			err = extractWithSystemCmd(absPath, absDest, password)
+		}
 	}
 
 	if err != nil {
@@ -736,11 +751,6 @@ func extractZip(src, dest string, onProgress ProgressCallback) error {
 	totalFiles := len(r.File)
 
 	for i, f := range r.File {
-		// Check if file is encrypted
-		if f.Flags&0x1 != 0 {
-			return ErrPasswordRequired
-		}
-
 		target := filepath.Join(dest, f.Name)
 		// Prevent zip slip
 		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)+string(os.PathSeparator)) && filepath.Clean(target) != filepath.Clean(dest) {
@@ -781,6 +791,69 @@ func extractZip(src, dest string, onProgress ProgressCallback) error {
 		}
 	}
 	return nil
+}
+// zipIsEncrypted checks if any file in the zip archive is encrypted.
+// archiveIsEncrypted checks if an archive file is encrypted.
+// Supports zip (Go stdlib), rar and 7z (via system commands).
+func archiveIsEncrypted(src, ext string) (bool, error) {
+	switch ext {
+	case ".zip":
+		r, err := zip.OpenReader(src)
+		if err != nil {
+			return false, fmt.Errorf("failed to open zip: %w", err)
+		}
+		defer r.Close()
+		for _, f := range r.File {
+			if f.Flags&0x1 != 0 {
+				return true, nil
+			}
+		}
+		return false, nil
+
+	case ".rar":
+		// unrar lt -p- lists files; encrypted archives print "*" prefix or error out
+		tool := "unrar"
+		if _, err := exec.LookPath(tool); err != nil {
+			return false, fmt.Errorf("tool '%s' not found, please install it first (e.g., apt-get install %s)", tool, getPackageName(tool))
+		}
+		cmd := exec.Command("unrar", "lt", "-p-", src)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			msg := strings.ToLower(string(output))
+			if strings.Contains(msg, "encrypted") || strings.Contains(msg, "password") {
+				return true, nil
+			}
+		}
+		// Also check output for encryption flags
+		if strings.Contains(string(output), "encrypted") {
+			return true, nil
+		}
+		return false, nil
+
+	case ".7z":
+		// 7z l -slt lists file properties; encrypted files have "Encrypted = +"
+		tool := "7z"
+		if _, err := exec.LookPath(tool); err != nil {
+			return false, fmt.Errorf("tool '%s' not found, please install it first (e.g., apt-get install %s)", tool, getPackageName(tool))
+		}
+		cmd := exec.Command("7z", "l", "-slt", src)
+		output, err := cmd.CombinedOutput()
+		outStr := string(output)
+		if err != nil {
+			msg := strings.ToLower(outStr)
+			// 7z errors out on header-encrypted archives
+			if strings.Contains(msg, "encrypted") || strings.Contains(msg, "password") || strings.Contains(msg, "wrong password") {
+				return true, nil
+			}
+		}
+		// Check for "Encrypted = +" in listing output (file-level encryption)
+		if strings.Contains(outStr, "Encrypted = +") {
+			return true, nil
+		}
+		return false, nil
+	}
+
+	return false, nil
 }
 
 func extractTar(src, dest, compression string, onProgress ProgressCallback) error {
@@ -859,39 +932,34 @@ func extractWithSystemCmd(src, dest, password string) error {
 
 	switch {
 	case ext == ".zip":
-		// unzip -P password file.zip -d dest
 		toolName = "unzip"
 		if password != "" {
-			cmd = exec.Command("unzip", "-P", password, src, "-d", dest)
+			cmd = exec.Command("unzip", "-o", "-P", password, src, "-d", dest)
 		} else {
-			cmd = exec.Command("unzip", src, "-d", dest)
+			cmd = exec.Command("unzip", "-o", src, "-d", dest)
 		}
 
 	case ext == ".rar":
-		// unrar x -ppassword file.rar dest/
 		toolName = "unrar"
 		if password != "" {
-			cmd = exec.Command("unrar", "x", "-p"+password, src, dest+"/")
+			cmd = exec.Command("unrar", "x", "-o+", "-p"+password, src, dest+"/")
 		} else {
-			cmd = exec.Command("unrar", "x", src, dest+"/")
+			cmd = exec.Command("unrar", "x", "-o+", src, dest+"/")
 		}
 
 	case ext == ".7z":
-		// 7z x -ppassword file.7z -odest
 		toolName = "7z"
+		args := []string{"x", src, "-o" + dest, "-aoa"}
 		if password != "" {
-			cmd = exec.Command("7z", "x", src, "-o"+dest, "-p"+password)
-		} else {
-			cmd = exec.Command("7z", "x", src, "-o"+dest)
+			args = append(args, "-p"+password)
 		}
+		cmd = exec.Command("7z", args...)
 
 	case ext == ".xz" || (ext == ".tar" && strings.HasSuffix(name, ".tar.xz")):
-		// tar -xJf file.tar.xz -C dest
 		toolName = "tar"
 		cmd = exec.Command("tar", "-xJf", src, "-C", dest)
 
 	case ext == ".zst" || (ext == ".tar" && strings.HasSuffix(name, ".tar.zst")):
-		// tar --zstd -xf file.tar.zst -C dest
 		toolName = "tar"
 		cmd = exec.Command("tar", "--zstd", "-xf", src, "-C", dest)
 
@@ -912,15 +980,25 @@ func extractWithSystemCmd(src, dest, password string) error {
 	// Run command
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		errMsg := string(output)
-		// Check for password errors
-		if strings.Contains(errMsg, "password") || strings.Contains(errMsg, "encrypted") || strings.Contains(errMsg, "wrong password") {
-			if password == "" {
-				return ErrPasswordRequired
-			}
+		exitCode := -1
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		}
+
+		errMsg := strings.ToLower(string(output))
+
+		// Wrong password — the pre-check confirmed encryption, so this means password is incorrect
+		if strings.Contains(errMsg, "wrong password") || strings.Contains(errMsg, "incorrect password") ||
+			strings.Contains(errMsg, "data error") || strings.Contains(errMsg, "crc failed") {
 			return ErrPasswordIncorrect
 		}
-		return fmt.Errorf("extraction failed: %s", errMsg)
+
+		// unzip exit code 1 = warnings only, files extracted fine
+		if toolName == "unzip" && exitCode == 1 {
+			return nil
+		}
+
+		return fmt.Errorf("extraction failed: %s", string(output))
 	}
 
 	return nil

@@ -8,6 +8,7 @@ import { useSettingsStore } from "@/stores/settingsStore"
 import { useTaskStore } from "@/stores/taskStore"
 import { useProgressDialogStore } from "@/stores/progressDialogStore"
 import { registerMessageHandler } from "@/stores/webSocketStore"
+import { ErrorCodes, JsonRpcClientError } from "@/lib/jsonrpc"
 import ShareDialogContent from "../ShareDialogContent"
 import FileInfoContent from "../FileInfoContent"
 import OpenWithDialogContent from "./OpenWithDialog"
@@ -31,6 +32,7 @@ export function useFileActions(ctx: FileActionsContext) {
   const renameTimerRef = useRef<number | null>(null)
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
   const [passwordDialogFile, setPasswordDialogFile] = useState<FileInfo | null>(null)
+  const [passwordError, setPasswordError] = useState(false)
 
   const startRename = useCallback((file: FileInfo) => {
     setInlineRenamePath(file.path)
@@ -226,9 +228,8 @@ export function useFileActions(ctx: FileActionsContext) {
   }
 
   const handleExtract = async (file: FileInfo, password?: string) => {
-    // 立即关闭密码对话框，避免重复弹出
-    setPasswordDialogOpen(false)
-    setPasswordDialogFile(null)
+    // Reset error state but keep dialog open if retrying with password
+    setPasswordError(false)
 
     const progressDialog = useProgressDialogStore.getState()
     const reqId = `extract-${Date.now()}`
@@ -257,22 +258,30 @@ export function useFileActions(ctx: FileActionsContext) {
     try {
       await fsApi.extract(activeNodeId, file.path, currentPath, password, reqId)
       progressDialog.close()
+      // Success — close password dialog if open
+      setPasswordDialogOpen(false)
+      setPasswordDialogFile(null)
       toast({ title: "解压成功", description: `${file.name} 已解压` })
       loadFiles()
     } catch (e: any) {
       progressDialog.close()
-      const errorMsg = e?.message || "解压出错"
 
-      // Check if password is required or incorrect
-      if (errorMsg.includes("password") || errorMsg.includes("密码") ||
-          errorMsg.includes("encrypted") || errorMsg.includes("加密")) {
-        if (errorMsg.includes("incorrect") || errorMsg.includes("错误") || errorMsg.includes("wrong")) {
-          toast({ title: "密码错误", description: "请重新输入正确的密码", variant: "destructive" })
-        }
+      const isRpcErr = e instanceof JsonRpcClientError
+      const code = isRpcErr ? e.code : undefined
+
+      if (code === ErrorCodes.PASSWORD_REQUIRED) {
+        // First time — needs password, open dialog
         setPasswordDialogFile(file)
         setPasswordDialogOpen(true)
+      } else if (code === ErrorCodes.PASSWORD_INCORRECT) {
+        // Wrong password — shake + clear, keep dialog open
+        setPasswordDialogFile(file)
+        setPasswordDialogOpen(true)
+        setPasswordError(true)
       } else {
-        toast({ title: "解压失败", description: errorMsg, variant: "destructive" })
+        setPasswordDialogOpen(false)
+        setPasswordDialogFile(null)
+        toast({ title: "解压失败", description: e?.message || "解压出错", variant: "destructive" })
       }
     } finally {
       unsubscribe()
@@ -522,6 +531,6 @@ export function useFileActions(ctx: FileActionsContext) {
     handleExtract, handleCompress, handleDownload, handleShare,
     handleContextMenuAction,
     // password dialog
-    passwordDialogOpen, setPasswordDialogOpen, passwordDialogFile,
+    passwordDialogOpen, setPasswordDialogOpen, passwordDialogFile, passwordError,
   }
 }

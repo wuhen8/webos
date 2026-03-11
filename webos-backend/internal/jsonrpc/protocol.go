@@ -53,10 +53,14 @@ const (
 	CodeMethodNotFound = -32601
 	CodeInvalidParams  = -32602
 	CodeInternalError  = -32603
-	// Application-defined errors: -32000 to -32099
-	CodeAppError       = -32000
-	CodeUnauthorized   = -32001
-	CodePermDenied     = -32002
+	// Server-defined errors: -32000 to -32099 (reserved by JSON-RPC 2.0 spec)
+	CodeAppError     = -32000
+	CodeUnauthorized = -32001
+	CodePermDenied   = -32002
+
+	// Application-specific errors (outside reserved range)
+	CodePasswordRequired  = 4010
+	CodePasswordIncorrect = 4011
 )
 
 // ==================== Error constructors ====================

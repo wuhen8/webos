@@ -448,6 +448,7 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
         open={actions.passwordDialogOpen}
         onOpenChange={actions.setPasswordDialogOpen}
         fileName={actions.passwordDialogFile?.name || ""}
+        hasError={actions.passwordError}
         onConfirm={(password) => {
           if (actions.passwordDialogFile) {
             actions.handleExtract(actions.passwordDialogFile, password)

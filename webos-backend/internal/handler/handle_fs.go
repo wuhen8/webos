@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -167,7 +168,7 @@ func handleFsDelete(c *WSConn, raw json.RawMessage) {
 			}
 			progress := float64(i+1) / float64(total)
 			c.Notify("fs.delete.progress", map[string]interface{}{
-				"reqId":    p.ReqID,
+				"reqId":    p.GetProgressID(),
 				"progress": progress,
 				"current":  i + 1,
 				"total":    total,
@@ -227,7 +228,7 @@ func handleFsCopy(c *WSConn, raw json.RawMessage) {
 		for i, pa := range paths {
 			// Send initial progress for this file
 			c.Notify("fs.copy.progress", map[string]interface{}{
-				"reqId":        p.ReqID,
+				"reqId":        p.GetProgressID(),
 				"progress":     float64(i) / float64(total),
 				"current":      i + 1,
 				"total":        total,
@@ -243,7 +244,7 @@ func handleFsCopy(c *WSConn, raw json.RawMessage) {
 				}
 				overall := (float64(i) + itemProgress) / float64(total)
 				c.Notify("fs.copy.progress", map[string]interface{}{
-					"reqId":        p.ReqID,
+					"reqId":        p.GetProgressID(),
 					"progress":     overall,
 					"current":      i + 1,
 					"total":        total,
@@ -299,7 +300,7 @@ func handleFsMove(c *WSConn, raw json.RawMessage) {
 		for i, pa := range paths {
 			// Send initial progress for this file
 			c.Notify("fs.move.progress", map[string]interface{}{
-				"reqId":        p.ReqID,
+				"reqId":        p.GetProgressID(),
 				"progress":     float64(i) / float64(total),
 				"current":      i + 1,
 				"total":        total,
@@ -315,7 +316,7 @@ func handleFsMove(c *WSConn, raw json.RawMessage) {
 				}
 				overall := (float64(i) + itemProgress) / float64(total)
 				c.Notify("fs.move.progress", map[string]interface{}{
-					"reqId":        p.ReqID,
+					"reqId":        p.GetProgressID(),
 					"progress":     overall,
 					"current":      i + 1,
 					"total":        total,
@@ -405,7 +406,7 @@ func handleFsExtract(c *WSConn, raw json.RawMessage) {
 		err := fileSvc.Extract(nodeID, path, dest, password, func(progress float64, message string) {
 			// 推送进度更新
 			c.Notify("fs.extract.progress", map[string]interface{}{
-				"reqId":    p.ReqID,
+				"reqId":    p.GetProgressID(),
 				"progress": progress,
 				"message":  message,
 			})
@@ -413,7 +414,14 @@ func handleFsExtract(c *WSConn, raw json.RawMessage) {
 
 		// 完成后返回结果
 		if err != nil {
-			c.ReplyErr("fs.extract", p.ReqID, err)
+			switch {
+			case errors.Is(err, service.ErrPasswordRequired):
+				c.ReplyCodeErr("fs.extract", p.ReqID, ErrCodePasswordRequired, "archive is encrypted and requires a password", nil)
+			case errors.Is(err, service.ErrPasswordIncorrect):
+				c.ReplyCodeErr("fs.extract", p.ReqID, ErrCodePasswordIncorrect, "incorrect password for encrypted archive", nil)
+			default:
+				c.ReplyErr("fs.extract", p.ReqID, err)
+			}
 		} else {
 			c.Reply("fs.extract", p.ReqID, map[string]string{"path": dest})
 		}
@@ -442,7 +450,7 @@ func handleFsCompress(c *WSConn, raw json.RawMessage) {
 	go func() {
 		err := fileSvc.Compress(nodeID, paths, output, func(progress float64, message string) {
 			c.Notify("fs.compress.progress", map[string]interface{}{
-				"reqId":    p.ReqID,
+				"reqId":    p.GetProgressID(),
 				"progress": progress,
 				"message":  message,
 			})

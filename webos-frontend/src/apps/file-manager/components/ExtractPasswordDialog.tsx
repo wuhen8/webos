@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Lock, Unlock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,15 +10,35 @@ interface ExtractPasswordDialogProps {
   onOpenChange: (open: boolean) => void
   fileName: string
   onConfirm: (password: string) => void
+  hasError?: boolean
 }
 
-export function ExtractPasswordDialog({ open, onOpenChange, fileName, onConfirm }: ExtractPasswordDialogProps) {
+export function ExtractPasswordDialog({ open, onOpenChange, fileName, onConfirm, hasError }: ExtractPasswordDialogProps) {
   const [password, setPassword] = useState("")
+  const [shaking, setShaking] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // When hasError flips to true, trigger shake + clear
+  useEffect(() => {
+    if (hasError && open) {
+      setShaking(true)
+      setPassword("")
+      const timer = setTimeout(() => setShaking(false), 500)
+      return () => clearTimeout(timer)
+    }
+  }, [hasError, open])
+
+  // Reset on open
+  useEffect(() => {
+    if (open) {
+      setPassword("")
+      setShaking(false)
+    }
+  }, [open])
 
   const handleConfirm = () => {
+    if (!password.trim()) return
     onConfirm(password)
-    setPassword("")
-    onOpenChange(false)
   }
 
   const handleCancel = () => {
@@ -29,6 +49,14 @@ export function ExtractPasswordDialog({ open, onOpenChange, fileName, onConfirm 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent draggable className="rounded-2xl border border-white/30 bg-white/15 backdrop-blur-2xl max-w-md">
+        <style>{`
+          @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+            20%, 40%, 60%, 80% { transform: translateX(4px); }
+          }
+          .shake { animation: shake 0.5s ease-in-out; }
+        `}</style>
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-slate-900">需要密码</DialogTitle>
           <DialogDescription className="text-sm text-slate-700">
@@ -41,15 +69,14 @@ export function ExtractPasswordDialog({ open, onOpenChange, fileName, onConfirm 
             <span className="truncate font-medium">{fileName}</span>
           </div>
           <input
+            ref={inputRef}
             type="password"
-            className="w-full h-10 rounded-xl bg-white/20 backdrop-blur-sm border border-white/30 px-3 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
+            className={`w-full h-10 rounded-xl bg-white/20 backdrop-blur-sm border border-white/30 px-3 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-400/50${shaking ? ' shake' : ''}`}
             placeholder="请输入解压密码"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && password.trim()) {
-                handleConfirm()
-              }
+              if (e.key === "Enter") handleConfirm()
             }}
             autoFocus
           />
