@@ -127,7 +127,8 @@ export const useWindowStore = create<WindowStore>((set, get) => {
 
       // backgroundable 应用：关闭 = 隐藏（最小化），保留组件状态
       // force = true 时强制销毁（如 dock 退出）
-      if (!force && process) {
+      // 子窗口（有 parentId）不继承 backgroundable，始终真正关闭
+      if (!force && process && !win.parentId) {
         const config = getAppConfig(process.appId)
         if (config.backgroundable) {
           // 子窗口也跟随最小化
