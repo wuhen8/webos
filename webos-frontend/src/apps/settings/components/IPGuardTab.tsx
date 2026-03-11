@@ -200,12 +200,14 @@ export default function IPGuardTab() {
           </div>
 
           {/* 待审批 */}
-          {pending.length > 0 && (
-            <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5 flex items-center justify-between">
-                <div className="flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-amber-500" /><span className="text-[0.75rem] font-medium text-gray-700">待审批 ({pending.length})</span></div>
-                <button onClick={loadRecords} className="p-1 hover:bg-black/[0.06] rounded-md transition-colors"><RefreshCw className="w-3.5 h-3.5 text-gray-400" /></button>
-              </div>
+          <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-amber-500" /><span className="text-[0.75rem] font-medium text-gray-700">待审批 ({pending.length})</span></div>
+              <button onClick={loadRecords} className="p-1 hover:bg-black/[0.06] rounded-md transition-colors"><RefreshCw className="w-3.5 h-3.5 text-gray-400" /></button>
+            </div>
+            {pending.length === 0 ? (
+              <div className="px-4 pb-4 text-center"><p className="text-[0.75rem] text-gray-400">暂无待审批的IP</p></div>
+            ) : (
               <div className="px-4 pb-3 space-y-1.5">
                 {pending.map(r => (
                   <div key={r.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-amber-100">
@@ -223,8 +225,8 @@ export default function IPGuardTab() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* 已放行 */}
           <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">

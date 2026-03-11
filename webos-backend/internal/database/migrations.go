@@ -5,7 +5,7 @@ import (
 )
 
 var migrations = []string{
-	// version 1: 完整 schema（合并所有历史迁移）
+	// version 1: 完整 schema
 	`CREATE TABLE IF NOT EXISTS preferences (
 		key   TEXT PRIMARY KEY,
 		value TEXT NOT NULL
@@ -161,10 +161,9 @@ var migrations = []string{
 		up_to_msg_id    INTEGER NOT NULL,
 		created_at      INTEGER NOT NULL
 	);
-	CREATE INDEX idx_ai_summary_conv ON ai_summaries(conversation_id);`,
+	CREATE INDEX idx_ai_summary_conv ON ai_summaries(conversation_id);
 
-	// version 2: IP guard table
-	`CREATE TABLE IF NOT EXISTS ip_guard (
+	CREATE TABLE IF NOT EXISTS ip_guard (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
 		ip         TEXT NOT NULL UNIQUE,
 		status     TEXT NOT NULL DEFAULT 'pending',
