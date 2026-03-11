@@ -18,9 +18,10 @@ export default function IPGuardTab() {
   const [records, setRecords] = useState<IPRecord[]>([])
   const [cidrs, setCidrs] = useState<CIDRRecord[]>([])
   const [showSettings, setShowSettings] = useState(false)
-  const [defaultTTL, setDefaultTTL] = useState(0)
+  const [defaultTTL, setDefaultTTL] = useState(604800)
   const [customTTLHours, setCustomTTLHours] = useState("24")
   const [showAddCIDR, setShowAddCIDR] = useState(false)
+  const [showCustomTTL, setShowCustomTTL] = useState(false)
   const [newCIDR, setNewCIDR] = useState("")
   const [newCIDRNote, setNewCIDRNote] = useState("")
 
@@ -50,9 +51,26 @@ export default function IPGuardTab() {
   const removeCIDR = async (id: number) => {
     try { await request("ip_guard.cidr_remove", { id }); loadCIDRs() } catch {}
   }
+  const updateDefaultTTL = (v: number) => {
+    setDefaultTTL(v)
+    request("ip_guard.config_set", { default_ttl: String(v) }).catch(() => {})
+  }
 
   useEffect(() => {
     loadRecords(); loadCIDRs()
+    // Load persisted default TTL
+    request("ip_guard.config_get", {}).then((cfg: any) => {
+      if (cfg?.default_ttl) {
+        const v = parseInt(cfg.default_ttl)
+        if (!isNaN(v)) {
+          setDefaultTTL(v)
+          if (v > 0 && ![0, 3600, 21600, 86400, 604800, 2592000].includes(v)) {
+            setShowCustomTTL(true)
+            setCustomTTLHours(String(Math.round(v / 3600)))
+          }
+        }
+      }
+    }).catch(() => {})
     const t = setInterval(() => { loadRecords(); loadCIDRs() }, 5000)
     return () => clearInterval(t)
   }, [loadRecords, loadCIDRs])
@@ -105,13 +123,20 @@ export default function IPGuardTab() {
               <label className="text-[0.75rem] text-gray-700 font-medium mb-2 block"><Clock className="w-3.5 h-3.5 inline mr-1.5 text-gray-400" />默认审批有效期</label>
               <div className="flex flex-wrap gap-1.5">
                 {ttlPresets.map(opt => (
-                  <button key={opt.value} onClick={() => opt.value === -1 ? setDefaultTTL(parseInt(customTTLHours) * 3600 || 86400) : setDefaultTTL(opt.value)}
-                    className={`px-2.5 py-1 text-[0.6875rem] rounded-md font-medium transition-colors ${(opt.value === -1 ? !presetValues.includes(defaultTTL) && defaultTTL > 0 : defaultTTL === opt.value) ? "bg-blue-500 text-white" : "bg-[#f5f5f7] text-gray-600 hover:bg-gray-200"}`}>{opt.label}</button>
+                  <button key={opt.value} onClick={() => {
+                    if (opt.value === -1) {
+                      setShowCustomTTL(true)
+                    } else {
+                      setShowCustomTTL(false)
+                      updateDefaultTTL(opt.value)
+                    }
+                  }}
+                    className={`px-2.5 py-1 text-[0.6875rem] rounded-md font-medium transition-colors ${(opt.value === -1 ? showCustomTTL || (!presetValues.includes(defaultTTL) && defaultTTL > 0) : !showCustomTTL && defaultTTL === opt.value) ? "bg-blue-500 text-white" : "bg-[#f5f5f7] text-gray-600 hover:bg-gray-200"}`}>{opt.label}</button>
                 ))}
               </div>
-              {!presetValues.includes(defaultTTL) && defaultTTL > 0 && (
+              {showCustomTTL && (
                 <div className="flex items-center gap-2 mt-2">
-                  <input type="number" value={customTTLHours} onChange={(e) => { setCustomTTLHours(e.target.value); const h = parseInt(e.target.value); if (h > 0) setDefaultTTL(h * 3600) }}
+                  <input type="number" value={customTTLHours} onChange={(e) => { setCustomTTLHours(e.target.value); const h = parseInt(e.target.value); if (h > 0) updateDefaultTTL(h * 3600) }}
                     className="w-20 h-7 px-2 text-[0.75rem] bg-[#f5f5f7] border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500" min="1" />
                   <span className="text-[0.6875rem] text-gray-500">小时</span>
                 </div>

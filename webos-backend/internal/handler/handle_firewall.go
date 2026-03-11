@@ -36,6 +36,8 @@ func init() {
 		"ip_guard.cidr_list":   handleIPGuardCIDRList,
 		"ip_guard.cidr_add":    handleIPGuardCIDRAdd,
 		"ip_guard.cidr_remove": handleIPGuardCIDRRemove,
+		"ip_guard.config_get":  handleIPGuardConfigGet,
+		"ip_guard.config_set":  handleIPGuardConfigSet,
 	})
 }
 
@@ -256,6 +258,26 @@ func handleIPGuardCIDRRemove(c *WSConn, raw json.RawMessage) {
 		}
 		c.Reply("ip_guard.cidr_remove", p.ReqID, map[string]string{"ok": "removed"})
 	}()
+}
+
+func handleIPGuardConfigGet(c *WSConn, raw json.RawMessage) {
+	var p struct{ baseReq }
+	json.Unmarshal(raw, &p)
+	svc := service.GetFirewallService()
+	c.Reply("ip_guard.config_get", p.ReqID, map[string]string{
+		"default_ttl": svc.GetConfig("guard_default_ttl"),
+	})
+}
+
+func handleIPGuardConfigSet(c *WSConn, raw json.RawMessage) {
+	var p struct {
+		baseReq
+		DefaultTTL string `json:"default_ttl"`
+	}
+	json.Unmarshal(raw, &p)
+	svc := service.GetFirewallService()
+	svc.SetConfig("guard_default_ttl", p.DefaultTTL)
+	c.Reply("ip_guard.config_set", p.ReqID, map[string]string{"ok": "saved"})
 }
 
 // notifyNewIP sends a notification about a new IP access attempt via the broadcast system.

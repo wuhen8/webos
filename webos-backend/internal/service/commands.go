@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -710,7 +711,13 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 		if err != nil {
 			return CommandResult{Text: fmt.Sprintf("查找失败: %v", err), IsError: true}
 		}
-		if err := guard.ApproveIP(rec.IP, 0); err != nil {
+		ttl := int64(604800) // default 7 days
+		if v := database.FWConfigGet("guard_default_ttl"); v != "" {
+			if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+				ttl = parsed
+			}
+		}
+		if err := guard.ApproveIP(rec.IP, ttl); err != nil {
 			return CommandResult{Text: fmt.Sprintf("放行失败: %v", err), IsError: true}
 		}
 		return CommandResult{Text: fmt.Sprintf("✅ 已放行 #%d %s", rec.ID, rec.IP)}
