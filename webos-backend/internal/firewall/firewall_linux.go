@@ -112,9 +112,6 @@ func (f *linuxFirewall) Init(port int) error {
 	f.run("-N", chainGuard)
 	f.run("-F", chainGuard)
 	f.run("-A", chainGuard, "-p", "tcp", "-s", "127.0.0.1", "--dport", portStr, "-j", "ACCEPT")
-	if _, err := f.run("-A", chainGuard, "-p", "tcp", "--dport", portStr, "-j", "DROP"); err != nil {
-		return fmt.Errorf("add default DROP in guard chain (v4): %w", err)
-	}
 
 	// ── Phase 3: WEBOS_FIREWALL chain (all base rules) ──
 	f.run("-N", chainMain)
@@ -144,7 +141,6 @@ func (f *linuxFirewall) Init(port int) error {
 		f.run6("-N", chainGuard)
 		f.run6("-F", chainGuard)
 		f.run6("-A", chainGuard, "-p", "tcp", "-s", "::1", "--dport", portStr, "-j", "ACCEPT")
-		f.run6("-A", chainGuard, "-p", "tcp", "--dport", portStr, "-j", "DROP")
 
 		f.run6("-N", chainMain)
 		f.run6("-F", chainMain)
