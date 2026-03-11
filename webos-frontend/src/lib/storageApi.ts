@@ -169,6 +169,10 @@ export const fsApi = {
     return fsService.compress(nodeId, paths, output, reqId)
   },
 
+  checkPassword(nodeId: string, path: string) {
+    return fsService.checkPassword(nodeId, path)
+  },
+
   offlineDownload(nodeId: string, path: string, urls: string[]) {
     return fsService.offlineDownload(nodeId, path, urls)
   },

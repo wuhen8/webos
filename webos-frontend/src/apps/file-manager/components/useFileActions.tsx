@@ -6,8 +6,6 @@ import { useProcessStore } from "@/stores"
 import { useWindowStore } from "@/stores/windowStore"
 import { useSettingsStore } from "@/stores/settingsStore"
 import { useTaskStore } from "@/stores/taskStore"
-import { useProgressDialogStore } from "@/stores/progressDialogStore"
-import { registerMessageHandler } from "@/stores/webSocketStore"
 import { ErrorCodes, JsonRpcClientError } from "@/lib/jsonrpc"
 import ShareDialogContent from "../ShareDialogContent"
 import FileInfoContent from "../FileInfoContent"
@@ -187,43 +185,12 @@ export function useFileActions(ctx: FileActionsContext) {
   }
 
   const handleDelete = async (filesToDelete: FileInfo[]) => {
-    const progressDialog = useProgressDialogStore.getState()
-    const reqId = `delete-${Date.now()}`
-
-    const title = filesToDelete.length === 1
-      ? `移到回收站 ${filesToDelete[0].name}`
-      : `移到回收站 ${filesToDelete.length} 个项目`
-
-    progressDialog.show({
-      title,
-      cancellable: true,
-      onCancel: () => progressDialog.close(),
-    })
-
-    const unsubscribe = registerMessageHandler((msg) => {
-      if (msg.method === 'fs.delete.progress' && msg.params?.reqId === reqId) {
-        const progress = msg.params.progress
-        const message = msg.params.message
-        progressDialog.update({
-          progress: progress >= 0 ? progress : undefined,
-          message: message || '',
-        })
-        return true
-      }
-      return false
-    })
-
     try {
-      await fsApi.delete(activeNodeId, filesToDelete.map(f => f.path), reqId)
-      progressDialog.close()
+      await fsApi.delete(activeNodeId, filesToDelete.map(f => f.path))
       setSelectedFiles(new Set())
-      toast({ title: "已移到回收站", description: `${filesToDelete.length} 个项目已移到回收站` })
-      loadFiles()
+      toast({ title: "删除任务已提交", description: `正在移动 ${filesToDelete.length} 个项目到回收站` })
     } catch (e: any) {
-      progressDialog.close()
       toast({ title: "删除失败", description: e?.message || "删除出错", variant: "destructive" })
-    } finally {
-      unsubscribe()
     }
   }
 
@@ -231,46 +198,33 @@ export function useFileActions(ctx: FileActionsContext) {
     // Reset error state but keep dialog open if retrying with password
     setPasswordError(false)
 
-    const progressDialog = useProgressDialogStore.getState()
-    const reqId = `extract-${Date.now()}`
-
-    // 显示进度对话框
-    progressDialog.show({
-      title: `解压 ${file.name}`,
-      cancellable: true,
-      onCancel: () => progressDialog.close(),
-    })
-
-    // 监听进度推送
-    const unsubscribe = registerMessageHandler((msg) => {
-      if (msg.method === 'fs.extract.progress' && msg.params?.reqId === reqId) {
-        const progress = msg.params.progress
-        const message = msg.params.message
-        progressDialog.update({
-          progress: progress >= 0 ? progress : undefined,
-          message: message || '',
-        })
-        return true
+    // 如果没有提供密码，先检测是否需要密码
+    if (!password) {
+      try {
+        const result = await fsApi.checkPassword(activeNodeId, file.path)
+        if (result.needsPassword) {
+          setPasswordDialogFile(file)
+          setPasswordDialogOpen(true)
+          return
+        }
+      } catch (e: any) {
+        // 检测失败，继续尝试解压
+        console.warn('Failed to check password:', e)
       }
-      return false
-    })
+    }
 
     try {
-      await fsApi.extract(activeNodeId, file.path, currentPath, password, reqId)
-      progressDialog.close()
+      await fsApi.extract(activeNodeId, file.path, currentPath, password)
       // Success — close password dialog if open
       setPasswordDialogOpen(false)
       setPasswordDialogFile(null)
-      toast({ title: "解压成功", description: `${file.name} 已解压` })
-      loadFiles()
+      toast({ title: "解压任务已提交", description: `${file.name} 正在后台解压` })
     } catch (e: any) {
-      progressDialog.close()
-
       const isRpcErr = e instanceof JsonRpcClientError
       const code = isRpcErr ? e.code : undefined
 
       if (code === ErrorCodes.PASSWORD_REQUIRED) {
-        // First time — needs password, open dialog
+        // Needs password, open dialog
         setPasswordDialogFile(file)
         setPasswordDialogOpen(true)
       } else if (code === ErrorCodes.PASSWORD_INCORRECT) {
@@ -283,8 +237,6 @@ export function useFileActions(ctx: FileActionsContext) {
         setPasswordDialogFile(null)
         toast({ title: "解压失败", description: e?.message || "解压出错", variant: "destructive" })
       }
-    } finally {
-      unsubscribe()
     }
   }
 
@@ -303,40 +255,9 @@ export function useFileActions(ctx: FileActionsContext) {
       }
       const outputPath = currentPath === '/' ? '/' + archiveName : currentPath + '/' + archiveName
 
-      const progressDialog = useProgressDialogStore.getState()
-      const reqId = `compress-${Date.now()}`
-      progressDialog.show({
-        title: `压缩 ${archiveName}`,
-        cancellable: true,
-        onCancel: () => progressDialog.close(),
-      })
-
-      const unsubscribe = registerMessageHandler((msg) => {
-        if (msg.method === 'fs.compress.progress' && msg.params?.reqId === reqId) {
-          const progress = msg.params.progress
-          const message = msg.params.message
-          progressDialog.update({
-            progress: progress >= 0 ? progress : undefined,
-            message: message || '',
-          })
-          return true
-        }
-        return false
-      })
-
-      await fsApi.compress(activeNodeId, filesToCompress.map(f => f.path), outputPath, reqId)
-
-      progressDialog.close()
-      await loadFiles()
-      setSelectedFiles(new Set([outputPath]))
-      setInlineRenamePath(outputPath)
-      setInlineRenameOldName(archiveName)
-      setInlineRenameValue(archiveName)
-      toast({ title: "成功", description: `已压缩为 ${archiveName}` })
-      unsubscribe()
+      await fsApi.compress(activeNodeId, filesToCompress.map(f => f.path), outputPath)
+      toast({ title: "压缩任务已提交", description: `正在后台压缩为 ${archiveName}` })
     } catch (e: any) {
-      const progressDialog = useProgressDialogStore.getState()
-      progressDialog.close()
       toast({ title: "压缩失败", description: e?.message || "压缩出错", variant: "destructive" })
     }
   }
@@ -362,48 +283,18 @@ export function useFileActions(ctx: FileActionsContext) {
     const { files: clipFiles, action, sourceNodeId } = clipboard
     const paths = clipFiles.map(f => f.path)
 
-    const progressDialog = useProgressDialogStore.getState()
-    const reqId = `${action === 'copy' ? 'copy' : 'move'}-${Date.now()}`
-
-    const title = action === 'copy'
-      ? (clipFiles.length === 1 ? `复制 ${clipFiles[0].name}` : `复制 ${clipFiles.length} 个项目`)
-      : (clipFiles.length === 1 ? `移动 ${clipFiles[0].name}` : `移动 ${clipFiles.length} 个项目`)
-
-    progressDialog.show({
-      title,
-      cancellable: true,
-      onCancel: () => progressDialog.close(),
-    })
-
-    const unsubscribe = registerMessageHandler((msg) => {
-      const method = action === 'copy' ? 'fs.copy.progress' : 'fs.move.progress'
-      if (msg.method === method && msg.params?.reqId === reqId) {
-        const progress = msg.params.progress
-        const message = msg.params.message
-        progressDialog.update({
-          progress: progress >= 0 ? progress : undefined,
-          message: message || '',
-        })
-        return true
-      }
-      return false
-    })
-
     try {
       if (action === "copy") {
-        await fsApi.copy(sourceNodeId, paths, currentPath, activeNodeId, reqId)
+        await fsApi.copy(sourceNodeId, paths, currentPath, activeNodeId)
+        toast({ title: "复制任务已提交", description: `正在后台复制 ${clipFiles.length} 个项目` })
       } else {
-        await fsApi.move(sourceNodeId, paths, currentPath, activeNodeId, reqId)
+        await fsApi.move(sourceNodeId, paths, currentPath, activeNodeId)
+        toast({ title: "移动任务已提交", description: `正在后台移动 ${clipFiles.length} 个项目` })
       }
-      progressDialog.close()
       setClipboard(null)
       setSelectedFiles(new Set())
-      loadFiles()
     } catch (e: any) {
-      progressDialog.close()
       toast({ title: "操作失败", description: e?.message || "操作出错", variant: "destructive" })
-    } finally {
-      unsubscribe()
     }
   }
 

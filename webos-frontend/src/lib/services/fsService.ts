@@ -84,6 +84,9 @@ export const fsService = {
     if (reqId) params.reqId = reqId
     return request('fs.compress', params)
   },
+  checkPassword(nodeId: string, path: string): Promise<{ needsPassword: boolean }> {
+    return request('fs.check_password', { nodeId, path })
+  },
   stat(nodeId: string, path: string): Promise<FileInfo> {
     return request('fs.stat', { nodeId, path })
   },

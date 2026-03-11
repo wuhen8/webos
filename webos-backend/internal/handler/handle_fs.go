@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -30,6 +29,7 @@ func init() {
 		"fs.download_sign":    handleFsDownloadSign,
 		"fs.extract":          handleFsExtract,
 		"fs.compress":         handleFsCompress,
+		"fs.check_password":   handleFsCheckPassword,
 		"fs.offline_download": handleFsOfflineDownload,
 		"fs.stat":             handleFsStat,
 		"fs.stat_cancel":      handleFsStatCancel,
@@ -159,25 +159,27 @@ func handleFsDelete(c *WSConn, raw json.RawMessage) {
 	}
 	nodeID := p.NodeID
 
-	go func() {
+	title := "删除文件"
+	if len(paths) == 1 {
+		title = "移到回收站 " + filepath.Base(paths[0])
+	} else {
+		title = fmt.Sprintf("移到回收站 %d 个项目", len(paths))
+	}
+
+	service.GetTaskManager().Submit("fs_delete", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		total := int64(len(paths))
 		for i, pa := range paths {
 			if err := fileSvc.Delete(nodeID, pa); err != nil {
-				c.ReplyErr("fs.delete", p.ReqID, fmt.Errorf("delete %s: %w", filepath.Base(pa), err))
-				return
+				return "", fmt.Errorf("delete %s: %w", filepath.Base(pa), err)
 			}
 			progress := float64(i+1) / float64(total)
-			c.Notify("fs.delete.progress", map[string]interface{}{
-				"reqId":    p.GetProgressID(),
-				"progress": progress,
-				"current":  i + 1,
-				"total":    total,
-				"message":  filepath.Base(pa),
-			})
+			r.Report(progress, int64(i+1), total, 0, 0, filepath.Base(pa))
 		}
 		c.Notify("fs.trash_changed", map[string]interface{}{"nodeId": nodeID})
-		c.Reply("fs.delete", p.ReqID, nil)
-	}()
+		return "", nil
+	})
+
+	c.Reply("fs.delete", p.ReqID, nil)
 }
 
 func handleFsRename(c *WSConn, raw json.RawMessage) {
@@ -223,50 +225,38 @@ func handleFsCopy(c *WSConn, raw json.RawMessage) {
 	to := p.To
 	crossStorage := srcNodeID != dstNodeID
 
-	go func() {
+	title := "复制文件"
+	if len(paths) == 1 {
+		title = "复制 " + filepath.Base(paths[0])
+	} else {
+		title = fmt.Sprintf("复制 %d 个项目", len(paths))
+	}
+
+	service.GetTaskManager().Submit("fs_copy", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		total := int64(len(paths))
 		for i, pa := range paths {
-			// Send initial progress for this file
-			c.Notify("fs.copy.progress", map[string]interface{}{
-				"reqId":        p.GetProgressID(),
-				"progress":     float64(i) / float64(total),
-				"current":      i + 1,
-				"total":        total,
-				"message":      filepath.Base(pa),
-				"bytesCurrent": int64(0),
-				"bytesTotal":   int64(0),
-			})
-
 			progress := func(written, size int64) {
 				itemProgress := float64(0)
 				if size > 0 {
 					itemProgress = float64(written) / float64(size)
 				}
 				overall := (float64(i) + itemProgress) / float64(total)
-				c.Notify("fs.copy.progress", map[string]interface{}{
-					"reqId":        p.GetProgressID(),
-					"progress":     overall,
-					"current":      i + 1,
-					"total":        total,
-					"message":      filepath.Base(pa),
-					"bytesCurrent": written,
-					"bytesTotal":   size,
-				})
+				r.Report(overall, int64(i+1), total, written, size, filepath.Base(pa))
 			}
 			if crossStorage {
 				if err := fileSvc.CopyAcross(srcNodeID, pa, dstNodeID, to, progress); err != nil {
-					c.ReplyErr("fs.copy", p.ReqID, fmt.Errorf("copy %s: %w", filepath.Base(pa), err))
-					return
+					return "", fmt.Errorf("copy %s: %w", filepath.Base(pa), err)
 				}
 			} else {
 				if _, err := fileSvc.Copy(srcNodeID, pa, to, progress); err != nil {
-					c.ReplyErr("fs.copy", p.ReqID, fmt.Errorf("copy %s: %w", filepath.Base(pa), err))
-					return
+					return "", fmt.Errorf("copy %s: %w", filepath.Base(pa), err)
 				}
 			}
 		}
-		c.Reply("fs.copy", p.ReqID, nil)
-	}()
+		return "", nil
+	})
+
+	c.Reply("fs.copy", p.ReqID, nil)
 }
 
 func handleFsMove(c *WSConn, raw json.RawMessage) {
@@ -295,50 +285,38 @@ func handleFsMove(c *WSConn, raw json.RawMessage) {
 	to := p.To
 	crossStorage := srcNodeID != dstNodeID
 
-	go func() {
+	title := "移动文件"
+	if len(paths) == 1 {
+		title = "移动 " + filepath.Base(paths[0])
+	} else {
+		title = fmt.Sprintf("移动 %d 个项目", len(paths))
+	}
+
+	service.GetTaskManager().Submit("fs_move", title, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		total := int64(len(paths))
 		for i, pa := range paths {
-			// Send initial progress for this file
-			c.Notify("fs.move.progress", map[string]interface{}{
-				"reqId":        p.GetProgressID(),
-				"progress":     float64(i) / float64(total),
-				"current":      i + 1,
-				"total":        total,
-				"message":      filepath.Base(pa),
-				"bytesCurrent": int64(0),
-				"bytesTotal":   int64(0),
-			})
-
 			progress := func(written, size int64) {
 				itemProgress := float64(0)
 				if size > 0 {
 					itemProgress = float64(written) / float64(size)
 				}
 				overall := (float64(i) + itemProgress) / float64(total)
-				c.Notify("fs.move.progress", map[string]interface{}{
-					"reqId":        p.GetProgressID(),
-					"progress":     overall,
-					"current":      i + 1,
-					"total":        total,
-					"message":      filepath.Base(pa),
-					"bytesCurrent": written,
-					"bytesTotal":   size,
-				})
+				r.Report(overall, int64(i+1), total, written, size, filepath.Base(pa))
 			}
 			if crossStorage {
 				if err := fileSvc.MoveAcross(srcNodeID, pa, dstNodeID, to, progress); err != nil {
-					c.ReplyErr("fs.move", p.ReqID, fmt.Errorf("move %s: %w", filepath.Base(pa), err))
-					return
+					return "", fmt.Errorf("move %s: %w", filepath.Base(pa), err)
 				}
 			} else {
 				if _, err := fileSvc.Move(srcNodeID, pa, to); err != nil {
-					c.ReplyErr("fs.move", p.ReqID, fmt.Errorf("move %s: %w", filepath.Base(pa), err))
-					return
+					return "", fmt.Errorf("move %s: %w", filepath.Base(pa), err)
 				}
 			}
 		}
-		c.Reply("fs.move", p.ReqID, nil)
-	}()
+		return "", nil
+	})
+
+	c.Reply("fs.move", p.ReqID, nil)
 }
 
 func handleFsPresign(c *WSConn, raw json.RawMessage) {
@@ -400,32 +378,23 @@ func handleFsExtract(c *WSConn, raw json.RawMessage) {
 		dest = filepath.Dir(p.Path)
 	}
 	nodeID, path, password := p.NodeID, p.Path, p.Password
+	fileName := filepath.Base(path)
 
-	// 同步执行，通过 WebSocket 推送进度
-	go func() {
+	service.GetTaskManager().Submit("fs_extract", "解压 "+fileName, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		err := fileSvc.Extract(nodeID, path, dest, password, func(progress float64, message string) {
-			// 推送进度更新
-			c.Notify("fs.extract.progress", map[string]interface{}{
-				"reqId":    p.GetProgressID(),
-				"progress": progress,
-				"message":  message,
-			})
-		})
-
-		// 完成后返回结果
-		if err != nil {
-			switch {
-			case errors.Is(err, service.ErrPasswordRequired):
-				c.ReplyCodeErr("fs.extract", p.ReqID, ErrCodePasswordRequired, "archive is encrypted and requires a password", nil)
-			case errors.Is(err, service.ErrPasswordIncorrect):
-				c.ReplyCodeErr("fs.extract", p.ReqID, ErrCodePasswordIncorrect, "incorrect password for encrypted archive", nil)
-			default:
-				c.ReplyErr("fs.extract", p.ReqID, err)
+			if progress >= 0 {
+				r.Report(progress, 0, 0, 0, 0, message)
+			} else {
+				r.Report(0, 0, 0, 0, 0, message)
 			}
-		} else {
-			c.Reply("fs.extract", p.ReqID, map[string]string{"path": dest})
+		})
+		if err != nil {
+			return "", err
 		}
-	}()
+		return dest, nil
+	})
+
+	c.Reply("fs.extract", p.ReqID, nil)
 }
 
 func handleFsCompress(c *WSConn, raw json.RawMessage) {
@@ -446,19 +415,33 @@ func handleFsCompress(c *WSConn, raw json.RawMessage) {
 		return
 	}
 	paths, output, nodeID := p.Paths, p.Output, p.NodeID
+	archiveName := filepath.Base(output)
 
-	go func() {
+	service.GetTaskManager().Submit("fs_compress", "压缩 "+archiveName, func(ctx context.Context, r *service.ProgressReporter) (string, error) {
 		err := fileSvc.Compress(nodeID, paths, output, func(progress float64, message string) {
-			c.Notify("fs.compress.progress", map[string]interface{}{
-				"reqId":    p.GetProgressID(),
-				"progress": progress,
-				"message":  message,
-			})
+			if progress >= 0 {
+				r.Report(progress, 0, 0, 0, 0, message)
+			} else {
+				r.Report(0, 0, 0, 0, 0, message)
+			}
 		})
 		if err != nil {
-			c.ReplyErr("fs.compress", p.ReqID, err)
+			return "", err
+		}
+		return output, nil
+	})
+
+	c.Reply("fs.compress", p.ReqID, nil)
+}
+func handleFsCheckPassword(c *WSConn, raw json.RawMessage) {
+	var p fsReq
+	json.Unmarshal(raw, &p)
+	go func() {
+		needsPassword, err := fileSvc.CheckArchivePassword(p.NodeID, p.Path)
+		if err != nil {
+			c.ReplyErr("fs.check_password", p.ReqID, err)
 		} else {
-			c.Reply("fs.compress", p.ReqID, map[string]string{"path": output})
+			c.Reply("fs.check_password", p.ReqID, map[string]bool{"needsPassword": needsPassword})
 		}
 	}()
 }

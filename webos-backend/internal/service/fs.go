@@ -40,6 +40,22 @@ type FileService struct{}
 func NewFileService() *FileService {
 	return &FileService{}
 }
+// CheckArchivePassword checks if an archive requires a password.
+// Supports zip, rar, and 7z formats via archiveIsEncrypted.
+func (s *FileService) CheckArchivePassword(nodeID, filePath string) (bool, error) {
+	driver, err := storage.GetDriver(nodeID)
+	if err != nil {
+		return false, err
+	}
+	if _, ok := driver.(*storage.LocalDriver); !ok {
+		return false, fmt.Errorf("extract is only supported for local storage")
+	}
+	ext := strings.ToLower(filepath.Ext(filePath))
+	if ext == ".zip" || ext == ".rar" || ext == ".7z" {
+		return archiveIsEncrypted(filePath, ext)
+	}
+	return false, nil
+}
 
 // List returns a sorted list of files in the given path
 func (s *FileService) List(nodeID, path string) ([]storage.FileInfo, error) {
