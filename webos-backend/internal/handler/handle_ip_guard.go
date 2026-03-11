@@ -9,6 +9,12 @@ import (
 )
 
 func init() {
+	// Wire up notification callback once at init, not per-enable
+	svc := service.GetIPGuardService()
+	svc.OnNewIP = func(id int64, ip, location string) {
+		notifyNewIP(id, ip, location)
+	}
+
 	RegisterHandlers(map[string]Handler{
 		"ip_guard.status": asyncHandler[struct{ baseReq }]("ip_guard.status", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			svc := service.GetIPGuardService()
@@ -40,11 +46,6 @@ func handleIPGuardEnable(c *WSConn, raw json.RawMessage) {
 		if svc.IsEnabled() {
 			c.Reply("ip_guard.enable", p.ReqID, map[string]string{"ok": "already enabled"})
 			return
-		}
-
-		// Wire up notification callback
-		svc.OnNewIP = func(id int64, ip, location string) {
-			notifyNewIP(id, ip, location)
 		}
 
 		if err := svc.Start(); err != nil {

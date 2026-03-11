@@ -73,6 +73,9 @@ func main() {
 	// Download IP geolocation database if not present (async, non-blocking)
 	go service.EnsureIPDB()
 
+	// Initialize IP guard service (auto-restores if previously enabled)
+	service.GetIPGuardService()
+
 	// Reconcile static apps (sync disk → DB)
 	service.ReconcileWebApps()
 
