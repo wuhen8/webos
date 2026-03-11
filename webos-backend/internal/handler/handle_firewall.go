@@ -264,8 +264,8 @@ func notifyNewIP(id int64, ip, location string) {
 	if location != "" {
 		loc = fmt.Sprintf(" (%s)", location)
 	}
-	msg := fmt.Sprintf("🔔 新IP尝试访问: %s%s\n复制下方命令发送即可审批", ip, loc)
+	msg := fmt.Sprintf("🔔 新IP尝试访问: %s%s", ip, loc)
 	log.Printf("[ip-guard] new IP attempt: #%d %s%s", id, ip, loc)
 	doBroadcastNotify("warning", "IP访问审批", msg, "ip-guard", "")
-	doBroadcastNotify("info", "✅ 放行", fmt.Sprintf("/guard approve %d", id), "ip-guard", "")
+	doBroadcastNotify("plain", "", fmt.Sprintf("/guard approve %d", id), "ip-guard", "")
 }

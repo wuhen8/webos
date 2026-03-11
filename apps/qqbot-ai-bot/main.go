@@ -712,8 +712,13 @@ func onSystemNotify(data json.RawMessage) {
 		icon = "⚠️"
 	case "error":
 		icon = "❌"
+	case "plain":
+		icon = ""
 	}
-	text := icon + " "
+	text := ""
+	if icon != "" {
+		text = icon + " "
+	}
 	if d.Title != "" {
 		text += d.Title + "\n"
 	}
