@@ -30,10 +30,6 @@ type IPGuardService struct {
 	port    int
 	enabled bool
 
-	// Dedup: avoid notifying the same IP repeatedly
-	mu       sync.Mutex
-	notified map[string]time.Time
-
 	// Callback for sending notifications (set by handler layer)
 	OnNewIP func(id int64, ip, location string)
 
@@ -49,9 +45,8 @@ var (
 func GetIPGuardService() *IPGuardService {
 	ipGuardOnce.Do(func() {
 		ipGuardInst = &IPGuardService{
-			notified: make(map[string]time.Time),
-			stopCh:   make(chan struct{}),
-			port:     config.Port(),
+			stopCh: make(chan struct{}),
+			port:   config.Port(),
 		}
 	})
 	return ipGuardInst
@@ -355,18 +350,9 @@ func (s *IPGuardService) handleNewIP(ip string) {
 		return
 	}
 
-	// Dedup: don't notify for the same IP within 5 minutes
-	s.mu.Lock()
-	if t, ok := s.notified[ip]; ok && time.Since(t) < 5*time.Minute {
-		s.mu.Unlock()
-		return
-	}
-	s.notified[ip] = time.Now()
-	s.mu.Unlock()
-
-	// Check if already in DB as approved
+	// Check if already in DB as approved or rejected
 	existing, _ := database.IPGuardGetByIP(ip)
-	if existing != nil && existing.Status == "approved" {
+	if existing != nil && (existing.Status == "approved" || existing.Status == "rejected") {
 		return
 	}
 
@@ -392,7 +378,7 @@ func (s *IPGuardService) handleNewIP(ip string) {
 		return
 	}
 
-	if isNew || (existing != nil && existing.Status == "rejected") {
+	if isNew {
 		log.Printf("[ip-guard] new access attempt: %s (%s)", ip, location)
 		if s.OnNewIP != nil {
 			s.OnNewIP(rec.ID, rec.IP, rec.Location)
@@ -418,15 +404,6 @@ func (s *IPGuardService) expiryLoop() {
 				s.fw.RemoveIP(r.IP, s.port)
 				database.IPGuardReject(r.IP)
 			}
-
-			// Clean old dedup entries
-			s.mu.Lock()
-			for ip, t := range s.notified {
-				if time.Since(t) > 10*time.Minute {
-					delete(s.notified, ip)
-				}
-			}
-			s.mu.Unlock()
 		}
 	}
 }

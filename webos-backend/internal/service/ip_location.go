@@ -15,9 +15,10 @@ import (
 // Format docs: https://github.com/lionsoul2014/ip2region
 
 var (
-	ipdbOnce   sync.Once
+	ipdbMu     sync.Mutex
 	ipdbV4Data []byte
 	ipdbV6Data []byte
+	ipdbLoaded bool
 )
 
 func loadIPDB() {
@@ -25,16 +26,28 @@ func loadIPDB() {
 	if data, err := os.ReadFile(v4Path); err == nil && len(data) >= 256 {
 		ipdbV4Data = data
 		log.Printf("[ip-guard] IPv4 database loaded (%d bytes)", len(data))
-	} else {
-		log.Printf("[ip-guard] IPv4 database not available: %v", err)
 	}
 
 	v6Path := ipDBPath(ipDBV6FileName)
 	if data, err := os.ReadFile(v6Path); err == nil && len(data) >= 256 {
 		ipdbV6Data = data
 		log.Printf("[ip-guard] IPv6 database loaded (%d bytes)", len(data))
-	} else {
-		log.Printf("[ip-guard] IPv6 database not available: %v", err)
+	}
+
+	// Mark as loaded only if at least one database is available
+	if ipdbV4Data != nil || ipdbV6Data != nil {
+		ipdbLoaded = true
+	}
+}
+
+func ensureIPDBLoaded() {
+	if ipdbLoaded {
+		return
+	}
+	ipdbMu.Lock()
+	defer ipdbMu.Unlock()
+	if !ipdbLoaded {
+		loadIPDB()
 	}
 }
 
