@@ -15,13 +15,17 @@ type Rule struct {
 
 // Firewall is the platform-agnostic interface for managing firewall rules.
 type Firewall interface {
-	// Init sets up the firewall chain/anchor for IP guard.
+	// Init sets up full INPUT chain protection:
+	//  - Sets INPUT default policy to DROP
+	//  - Allows loopback and ESTABLISHED/RELATED connections
+	//  - Creates WEBOS_GUARD chain for webos port white-list management
+	//  - Cleans up stale rules from previous port configurations
 	Init(port int) error
 
 	// AllowIP adds an ACCEPT rule for the given IP on the guarded port.
 	AllowIP(ip string, port int, comment string) error
 
-	// BlockIP explicitly adds a DROP rule (usually not needed if default is DROP).
+	// BlockIP explicitly adds a DROP rule for the given IP.
 	BlockIP(ip string, port int) error
 
 	// RemoveIP removes the ACCEPT rule for the given IP.
@@ -36,7 +40,8 @@ type Firewall interface {
 	// DisableLogNewConn removes the LOG rule.
 	DisableLogNewConn(port int) error
 
-	// Cleanup removes all IP guard rules (called on shutdown if desired).
+	// Cleanup restores INPUT policy to ACCEPT, removes the WEBOS_GUARD chain,
+	// and cleans up all base rules added by Init.
 	Cleanup(port int) error
 
 	// Exec runs a raw iptables command with the given arguments.

@@ -11,7 +11,13 @@ import (
 	"strings"
 )
 
-const chainName = "WEBOS_GUARD"
+const (
+	// chainMain is the top-level chain jumped to from INPUT.
+	// All webos-managed rules live here (loopback, ESTABLISHED, SSH, user rules…).
+	chainMain = "WEBOS_FIREWALL"
+	// chainGuard handles per-IP approval for the webos port.
+	chainGuard = "WEBOS_GUARD"
+)
 
 type linuxFirewall struct {
 	hasIP6tables bool
@@ -48,7 +54,6 @@ func (f *linuxFirewall) run6(args ...string) (string, error) {
 
 // isIPv6 checks if the given IP or CIDR string is an IPv6 address.
 func isIPv6(ip string) bool {
-	// Handle CIDR notation
 	if strings.Contains(ip, "/") {
 		host, _, err := net.ParseCIDR(ip)
 		if err != nil {
@@ -71,36 +76,86 @@ func (f *linuxFirewall) runForIP(ip string, args ...string) (string, error) {
 	return f.run(args...)
 }
 
-// Init creates the WEBOS_GUARD chain in both iptables and ip6tables.
+// purgeMainJumps removes all jumps from INPUT to WEBOS_FIREWALL.
+func (f *linuxFirewall) purgeMainJumps() {
+	for {
+		if _, err := f.run("-D", "INPUT", "-j", chainMain); err != nil {
+			break
+		}
+	}
+	if f.hasIP6tables {
+		for {
+			if _, err := f.run6("-D", "INPUT", "-j", chainMain); err != nil {
+				break
+			}
+		}
+	}
+}
+
+// Init sets up full INPUT chain protection. All rules live in custom chains:
+//
+//	INPUT (policy DROP)
+//	  └─ -j WEBOS_FIREWALL
+//	        ├─ loopback ACCEPT
+//	        ├─ ESTABLISHED,RELATED ACCEPT
+//	        ├─ (user/system rules added later via Exec)
+//	        └─ -j WEBOS_GUARD  (webos port IP whitelist)
+//	              ├─ approved IPs ACCEPT
+//	              └─ default DROP (webos port)
 func (f *linuxFirewall) Init(port int) error {
 	portStr := strconv.Itoa(port)
 
-	// IPv4
-	f.run("-N", chainName)
-	f.run("-F", chainName)
-	// Always allow loopback so CLI and internal services keep working
-	f.run("-A", chainName, "-p", "tcp", "-s", "127.0.0.1", "--dport", portStr, "-j", "ACCEPT")
-	if _, err := f.run("-A", chainName, "-p", "tcp", "--dport", portStr, "-j", "DROP"); err != nil {
-		return fmt.Errorf("add default DROP (v4): %w", err)
-	}
-	f.run("-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", chainName)
-	if _, err := f.run("-I", "INPUT", "1", "-p", "tcp", "--dport", portStr, "-j", chainName); err != nil {
-		return fmt.Errorf("insert chain jump (v4): %w", err)
+	// ── Phase 1: clean slate ──
+	f.purgeMainJumps()
+
+	// ── Phase 2: WEBOS_GUARD chain (webos port IP whitelist) ──
+	f.run("-N", chainGuard)
+	f.run("-F", chainGuard)
+	f.run("-A", chainGuard, "-p", "tcp", "-s", "127.0.0.1", "--dport", portStr, "-j", "ACCEPT")
+	if _, err := f.run("-A", chainGuard, "-p", "tcp", "--dport", portStr, "-j", "DROP"); err != nil {
+		return fmt.Errorf("add default DROP in guard chain (v4): %w", err)
 	}
 
-	// IPv6
+	// ── Phase 3: WEBOS_FIREWALL chain (all base rules) ──
+	f.run("-N", chainMain)
+	f.run("-F", chainMain)
+	// Loopback
+	f.run("-A", chainMain, "-i", "lo", "-j", "ACCEPT")
+	// ESTABLISHED,RELATED — keeps existing SSH sessions alive
+	if _, err := f.run("-A", chainMain, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err != nil {
+		// Fallback for older kernels
+		if _, err2 := f.run("-A", chainMain, "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err2 != nil {
+			return fmt.Errorf("allow established (v4): %w", err2)
+		}
+	}
+	// Jump to WEBOS_GUARD for webos port traffic (at end of main chain)
+	f.run("-A", chainMain, "-p", "tcp", "--dport", portStr, "-j", chainGuard)
+
+	// ── Phase 4: wire INPUT → WEBOS_FIREWALL, then set DROP policy ──
+	if _, err := f.run("-I", "INPUT", "1", "-j", chainMain); err != nil {
+		return fmt.Errorf("insert main chain jump (v4): %w", err)
+	}
+	if _, err := f.run("-P", "INPUT", "DROP"); err != nil {
+		return fmt.Errorf("set INPUT policy DROP (v4): %w", err)
+	}
+
+	// ── IPv6 ──
 	if f.hasIP6tables {
-		f.run6("-N", chainName)
-		f.run6("-F", chainName)
-		// Always allow loopback
-		f.run6("-A", chainName, "-p", "tcp", "-s", "::1", "--dport", portStr, "-j", "ACCEPT")
-		if _, err := f.run6("-A", chainName, "-p", "tcp", "--dport", portStr, "-j", "DROP"); err != nil {
-			return fmt.Errorf("add default DROP (v6): %w", err)
+		f.run6("-N", chainGuard)
+		f.run6("-F", chainGuard)
+		f.run6("-A", chainGuard, "-p", "tcp", "-s", "::1", "--dport", portStr, "-j", "ACCEPT")
+		f.run6("-A", chainGuard, "-p", "tcp", "--dport", portStr, "-j", "DROP")
+
+		f.run6("-N", chainMain)
+		f.run6("-F", chainMain)
+		f.run6("-A", chainMain, "-i", "lo", "-j", "ACCEPT")
+		if _, err := f.run6("-A", chainMain, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err != nil {
+			f.run6("-A", chainMain, "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT")
 		}
-		f.run6("-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", chainName)
-		if _, err := f.run6("-I", "INPUT", "1", "-p", "tcp", "--dport", portStr, "-j", chainName); err != nil {
-			return fmt.Errorf("insert chain jump (v6): %w", err)
-		}
+		f.run6("-A", chainMain, "-p", "tcp", "--dport", portStr, "-j", chainGuard)
+
+		f.run6("-I", "INPUT", "1", "-j", chainMain)
+		f.run6("-P", "INPUT", "DROP")
 	}
 
 	return nil
@@ -108,7 +163,7 @@ func (f *linuxFirewall) Init(port int) error {
 
 func (f *linuxFirewall) AllowIP(ip string, port int, comment string) error {
 	portStr := strconv.Itoa(port)
-	args := []string{"-I", chainName, "1", "-p", "tcp", "-s", ip, "--dport", portStr, "-j", "ACCEPT"}
+	args := []string{"-I", chainGuard, "1", "-p", "tcp", "-s", ip, "--dport", portStr, "-j", "ACCEPT"}
 	if comment != "" {
 		args = append(args, "-m", "comment", "--comment", comment)
 	}
@@ -120,7 +175,7 @@ func (f *linuxFirewall) AllowIP(ip string, port int, comment string) error {
 
 func (f *linuxFirewall) BlockIP(ip string, port int) error {
 	portStr := strconv.Itoa(port)
-	if _, err := f.runForIP(ip, "-I", chainName, "1", "-p", "tcp", "-s", ip, "--dport", portStr, "-j", "DROP"); err != nil {
+	if _, err := f.runForIP(ip, "-I", chainGuard, "1", "-p", "tcp", "-s", ip, "--dport", portStr, "-j", "DROP"); err != nil {
 		return fmt.Errorf("block IP %s: %w", ip, err)
 	}
 	return nil
@@ -129,7 +184,7 @@ func (f *linuxFirewall) BlockIP(ip string, port int) error {
 func (f *linuxFirewall) RemoveIP(ip string, port int) error {
 	portStr := strconv.Itoa(port)
 	for {
-		_, err := f.runForIP(ip, "-D", chainName, "-p", "tcp", "-s", ip, "--dport", portStr, "-j", "ACCEPT")
+		_, err := f.runForIP(ip, "-D", chainGuard, "-p", "tcp", "-s", ip, "--dport", portStr, "-j", "ACCEPT")
 		if err != nil {
 			break
 		}
@@ -141,18 +196,17 @@ func (f *linuxFirewall) ListAllowed(port int) ([]Rule, error) {
 	portStr := strconv.Itoa(port)
 	var rules []Rule
 
-	// Parse from both iptables and ip6tables
 	for _, v6 := range []bool{false, true} {
 		var out string
 		var err error
 		if v6 {
-			out, err = f.run6("-L", chainName, "-n", "--line-numbers")
+			out, err = f.run6("-L", chainGuard, "-n", "--line-numbers")
 		} else {
-			out, err = f.run("-L", chainName, "-n", "--line-numbers")
+			out, err = f.run("-L", chainGuard, "-n", "--line-numbers")
 		}
 		if err != nil {
 			if v6 {
-				continue // ip6tables might not be available
+				continue
 			}
 			return nil, fmt.Errorf("list rules: %w", err)
 		}
@@ -190,23 +244,21 @@ func (f *linuxFirewall) ListAllowed(port int) ([]Rule, error) {
 func (f *linuxFirewall) EnableLogNewConn(port int) error {
 	portStr := strconv.Itoa(port)
 
-	// IPv4
-	_, err := f.run("-I", chainName, "-p", "tcp", "--dport", portStr,
+	_, err := f.run("-I", chainGuard, "-p", "tcp", "--dport", portStr,
 		"-m", "conntrack", "--ctstate", "NEW",
 		"-j", "LOG", "--log-prefix", "WEBOS_GUARD: ", "--log-level", "4")
 	if err != nil {
-		_, err = f.run("-I", chainName, "-p", "tcp", "--dport", portStr,
+		_, err = f.run("-I", chainGuard, "-p", "tcp", "--dport", portStr,
 			"-m", "state", "--state", "NEW",
 			"-j", "LOG", "--log-prefix", "WEBOS_GUARD: ", "--log-level", "4")
 	}
 
-	// IPv6
 	if f.hasIP6tables {
-		_, err6 := f.run6("-I", chainName, "-p", "tcp", "--dport", portStr,
+		_, err6 := f.run6("-I", chainGuard, "-p", "tcp", "--dport", portStr,
 			"-m", "conntrack", "--ctstate", "NEW",
 			"-j", "LOG", "--log-prefix", "WEBOS_GUARD: ", "--log-level", "4")
 		if err6 != nil {
-			f.run6("-I", chainName, "-p", "tcp", "--dport", portStr,
+			f.run6("-I", chainGuard, "-p", "tcp", "--dport", portStr,
 				"-m", "state", "--state", "NEW",
 				"-j", "LOG", "--log-prefix", "WEBOS_GUARD: ", "--log-level", "4")
 		}
@@ -218,20 +270,18 @@ func (f *linuxFirewall) EnableLogNewConn(port int) error {
 func (f *linuxFirewall) DisableLogNewConn(port int) error {
 	portStr := strconv.Itoa(port)
 
-	// IPv4
-	f.run("-D", chainName, "-p", "tcp", "--dport", portStr,
+	f.run("-D", chainGuard, "-p", "tcp", "--dport", portStr,
 		"-m", "conntrack", "--ctstate", "NEW",
 		"-j", "LOG", "--log-prefix", "WEBOS_GUARD: ", "--log-level", "4")
-	f.run("-D", chainName, "-p", "tcp", "--dport", portStr,
+	f.run("-D", chainGuard, "-p", "tcp", "--dport", portStr,
 		"-m", "state", "--state", "NEW",
 		"-j", "LOG", "--log-prefix", "WEBOS_GUARD: ", "--log-level", "4")
 
-	// IPv6
 	if f.hasIP6tables {
-		f.run6("-D", chainName, "-p", "tcp", "--dport", portStr,
+		f.run6("-D", chainGuard, "-p", "tcp", "--dport", portStr,
 			"-m", "conntrack", "--ctstate", "NEW",
 			"-j", "LOG", "--log-prefix", "WEBOS_GUARD: ", "--log-level", "4")
-		f.run6("-D", chainName, "-p", "tcp", "--dport", portStr,
+		f.run6("-D", chainGuard, "-p", "tcp", "--dport", portStr,
 			"-m", "state", "--state", "NEW",
 			"-j", "LOG", "--log-prefix", "WEBOS_GUARD: ", "--log-level", "4")
 	}
@@ -239,25 +289,29 @@ func (f *linuxFirewall) DisableLogNewConn(port int) error {
 	return nil
 }
 
+// Cleanup restores INPUT policy to ACCEPT and removes both custom chains.
 func (f *linuxFirewall) Cleanup(port int) error {
-	portStr := strconv.Itoa(port)
+	f.run("-P", "INPUT", "ACCEPT")
+	f.purgeMainJumps()
 
-	// IPv4
-	f.run("-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", chainName)
-	f.run("-F", chainName)
-	f.run("-X", chainName)
+	// Flush and delete chains (guard first since main references it)
+	f.run("-F", chainMain)
+	f.run("-X", chainMain)
+	f.run("-F", chainGuard)
+	f.run("-X", chainGuard)
 
-	// IPv6
 	if f.hasIP6tables {
-		f.run6("-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", chainName)
-		f.run6("-F", chainName)
-		f.run6("-X", chainName)
+		f.run6("-P", "INPUT", "ACCEPT")
+		f.run6("-F", chainMain)
+		f.run6("-X", chainMain)
+		f.run6("-F", chainGuard)
+		f.run6("-X", chainGuard)
 	}
 
 	return nil
 }
+
 func (f *linuxFirewall) Exec(args ...string) error {
-	// Detect if this is an IPv6 rule by checking for -s or -d with IPv6 address
 	useV6 := false
 	for i, a := range args {
 		if (a == "-s" || a == "-d") && i+1 < len(args) {

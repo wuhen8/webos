@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -63,8 +65,8 @@ func (s *FirewallService) IsEnabled() bool {
 	return s.enabled
 }
 
-// Enable activates the firewall: initializes iptables, restores all persisted rules,
-// and starts IP guard (8080 access control).
+// Enable activates the firewall: sets INPUT policy to DROP, restores all
+// persisted rules, and starts IP guard for webos port access control.
 func (s *FirewallService) Enable() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -79,30 +81,34 @@ func (s *FirewallService) Enable() error {
 	}
 	s.fw = fw
 
+	// Start IP guard first — Init() sets up loopback + ESTABLISHED/RELATED rules
+	// and then sets DROP policy, so existing SSH sessions survive.
+	s.guard.SetFirewall(fw)
+	if err := s.guard.Start(); err != nil {
+		// If guard fails, revert — don't leave the system in DROP state
+		fw.Cleanup(s.port)
+		s.fw = nil
+		return fmt.Errorf("ip-guard start failed: %w", err)
+	}
+
+	// Seed default rules on first enable (SSH, LAN access).
+	// These are critical — SSH rule keeps new SSH connections working under DROP policy.
+	s.seedDefaultRules()
+
 	// Restore user rules from DB
 	if err := s.restoreRules(); err != nil {
 		log.Printf("[firewall] warning: failed to restore rules: %v", err)
 	}
 
-	// Seed default rules on first enable (SSH + 8080 LAN)
-	s.seedDefaultRules()
-
 	s.enabled = true
 	database.FWConfigSet("enabled", "true")
-	log.Printf("[firewall] enabled on port %d", s.port)
-
-	// Always start IP guard — it's part of the firewall, not a separate feature
-	s.guard.SetFirewall(fw)
-	go func() {
-		if err := s.guard.Start(); err != nil {
-			log.Printf("[firewall] ip-guard start failed: %v", err)
-		}
-	}()
+	log.Printf("[firewall] enabled — INPUT policy DROP, port %d guarded", s.port)
 
 	return nil
 }
 
-// Disable turns off the firewall: stops IP guard, cleans up all WebOS-managed rules.
+// Disable turns off the firewall: restores INPUT policy to ACCEPT,
+// stops IP guard, and cleans up all WebOS-managed rules.
 func (s *FirewallService) Disable() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -111,19 +117,19 @@ func (s *FirewallService) Disable() error {
 		return nil
 	}
 
-	// Stop IP guard and clean up its chain
+	// Remove user rules from iptables first (best-effort)
+	s.cleanupUserRules()
+
+	// Stop IP guard and clean up chain + restore INPUT ACCEPT
 	s.guard.Stop()
 	if s.fw != nil {
 		s.fw.Cleanup(s.port)
 	}
 
-	// Remove user rules from iptables (best-effort)
-	s.cleanupUserRules()
-
 	s.enabled = false
 	s.fw = nil
 	database.FWConfigSet("enabled", "false")
-	log.Println("[firewall] disabled")
+	log.Println("[firewall] disabled — INPUT policy restored to ACCEPT")
 	return nil
 }
 
@@ -289,28 +295,74 @@ func (s *FirewallService) restoreRules() error {
 	return nil
 }
 
+// mapChain translates logical chain names to actual iptables chains.
+// When the firewall is active, filter/INPUT rules go into WEBOS_FIREWALL
+// so that all webos-managed rules live in our custom chains.
+func (s *FirewallService) mapChain(tableName, chain string) string {
+	if tableName == "filter" && chain == "INPUT" {
+		return "WEBOS_FIREWALL"
+	}
+	return chain
+}
+
 // applyRule executes an iptables command to add a rule.
+// For filter/INPUT rules, the rule is placed in WEBOS_FIREWALL chain instead,
+// inserted before the final WEBOS_GUARD jump to maintain correct ordering.
 func (s *FirewallService) applyRule(tableName, chain, ruleSpec string, insertFirst bool) error {
+	actual := s.mapChain(tableName, chain)
 	args := []string{}
 	if tableName != "filter" {
 		args = append(args, "-t", tableName)
 	}
 	if insertFirst {
-		args = append(args, "-I", chain, "1")
+		args = append(args, "-I", actual, "1")
+	} else if actual == "WEBOS_FIREWALL" {
+		// Insert before the last rule (WEBOS_GUARD jump) to keep it at the end.
+		// Find the rule count first.
+		pos := s.getChainInsertPos(actual)
+		if pos > 0 {
+			args = append(args, "-I", actual, strconv.Itoa(pos))
+		} else {
+			args = append(args, "-A", actual)
+		}
 	} else {
-		args = append(args, "-A", chain)
+		args = append(args, "-A", actual)
 	}
 	args = append(args, strings.Fields(ruleSpec)...)
 	return s.fw.Exec(args...)
 }
 
+// getChainInsertPos returns the position to insert before the last rule in a chain.
+// Returns 0 if the chain is empty or cannot be read (caller should use -A).
+func (s *FirewallService) getChainInsertPos(chain string) int {
+	// Use iptables -L <chain> --line-numbers -n to count rules
+	cmd := exec.Command("iptables", "-L", chain, "--line-numbers", "-n")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return 0
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	// First two lines are header, each subsequent line is a rule
+	count := 0
+	for _, line := range lines {
+		if len(line) > 0 && line[0] >= '0' && line[0] <= '9' {
+			count++
+		}
+	}
+	if count < 1 {
+		return 0
+	}
+	return count // insert at position of last rule (pushes it down)
+}
+
 // removeRule executes an iptables command to delete a rule.
 func (s *FirewallService) removeRule(tableName, chain, ruleSpec string) {
+	actual := s.mapChain(tableName, chain)
 	args := []string{}
 	if tableName != "filter" {
 		args = append(args, "-t", tableName)
 	}
-	args = append(args, "-D", chain)
+	args = append(args, "-D", actual)
 	args = append(args, strings.Fields(ruleSpec)...)
 	s.fw.Exec(args...)
 }
