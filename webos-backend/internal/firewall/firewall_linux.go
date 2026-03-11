@@ -46,8 +46,16 @@ func (f *linuxFirewall) run6(args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
-// isIPv6 checks if the given IP string is an IPv6 address.
+// isIPv6 checks if the given IP or CIDR string is an IPv6 address.
 func isIPv6(ip string) bool {
+	// Handle CIDR notation
+	if strings.Contains(ip, "/") {
+		host, _, err := net.ParseCIDR(ip)
+		if err != nil {
+			return false
+		}
+		return host.To4() == nil
+	}
 	parsed := net.ParseIP(ip)
 	if parsed == nil {
 		return false
@@ -70,6 +78,8 @@ func (f *linuxFirewall) Init(port int) error {
 	// IPv4
 	f.run("-N", chainName)
 	f.run("-F", chainName)
+	// Always allow loopback so CLI and internal services keep working
+	f.run("-A", chainName, "-p", "tcp", "-s", "127.0.0.1", "--dport", portStr, "-j", "ACCEPT")
 	if _, err := f.run("-A", chainName, "-p", "tcp", "--dport", portStr, "-j", "DROP"); err != nil {
 		return fmt.Errorf("add default DROP (v4): %w", err)
 	}
@@ -82,6 +92,8 @@ func (f *linuxFirewall) Init(port int) error {
 	if f.hasIP6tables {
 		f.run6("-N", chainName)
 		f.run6("-F", chainName)
+		// Always allow loopback
+		f.run6("-A", chainName, "-p", "tcp", "-s", "::1", "--dport", portStr, "-j", "ACCEPT")
 		if _, err := f.run6("-A", chainName, "-p", "tcp", "--dport", portStr, "-j", "DROP"); err != nil {
 			return fmt.Errorf("add default DROP (v6): %w", err)
 		}

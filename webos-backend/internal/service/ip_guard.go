@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -238,8 +239,20 @@ func (s *IPGuardService) seedLANCIDR() {
 	}
 
 	for _, iface := range ifaces {
-		// Skip loopback, down, and virtual interfaces
+		// Skip loopback, down interfaces
 		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+
+		// Skip virtual interfaces (docker, veth, bridge, wg, tun, tap)
+		name := iface.Name
+		if strings.HasPrefix(name, "veth") ||
+			strings.HasPrefix(name, "docker") ||
+			strings.HasPrefix(name, "br-") ||
+			strings.HasPrefix(name, "wg") ||
+			strings.HasPrefix(name, "tun") ||
+			strings.HasPrefix(name, "tap") ||
+			strings.HasPrefix(name, "virbr") {
 			continue
 		}
 
@@ -269,7 +282,7 @@ func (s *IPGuardService) seedLANCIDR() {
 					}
 					log.Printf("[ip-guard] auto-added LAN CIDR: %s (%s)", cidr, iface.Name)
 				}
-				return // only first interface
+				return // only first physical interface
 			}
 		}
 	}
