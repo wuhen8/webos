@@ -4,6 +4,7 @@ import (
 	crypto_rand "crypto/rand"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 	"unicode"
 
@@ -13,16 +14,24 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var jwtSecret []byte
+var (
+	jwtSecret []byte
+	jwtOnce   sync.Once
+)
 
-func init() {
-	if s := os.Getenv("WEBOS_JWT_SECRET"); s != "" {
-		jwtSecret = []byte(s)
-	} else {
-		jwtSecret = make([]byte, 32)
-		crypto_rand.Read(jwtSecret)
-		fmt.Println("JWT secret not configured (WEBOS_JWT_SECRET), using random secret. Tokens will be invalidated on restart.")
-	}
+// getJWTSecret lazily initialises the JWT signing key on first use,
+// so that CLI commands that never touch auth don't trigger the warning.
+func getJWTSecret() []byte {
+	jwtOnce.Do(func() {
+		if s := os.Getenv("WEBOS_JWT_SECRET"); s != "" {
+			jwtSecret = []byte(s)
+		} else {
+			jwtSecret = make([]byte, 32)
+			crypto_rand.Read(jwtSecret)
+			fmt.Println("JWT secret not configured (WEBOS_JWT_SECRET), using random secret. Tokens will be invalidated on restart.")
+		}
+	})
+	return jwtSecret
 }
 
 // Claims JWT Claims
@@ -42,13 +51,13 @@ func GenerateToken(username string) (string, error) {
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtSecret)
+	return token.SignedString(getJWTSecret())
 }
 
 // ValidateToken validates a JWT token.
 func ValidateToken(tokenString string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		return jwtSecret, nil
+		return getJWTSecret(), nil
 	})
 	if err != nil {
 		return nil, err
