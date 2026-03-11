@@ -38,6 +38,10 @@ type Firewall interface {
 
 	// Cleanup removes all IP guard rules (called on shutdown if desired).
 	Cleanup(port int) error
+
+	// Exec runs a raw iptables command with the given arguments.
+	// Used by FirewallService for user-defined rules.
+	Exec(args ...string) error
 }
 
 // New returns a Firewall implementation for the current platform.

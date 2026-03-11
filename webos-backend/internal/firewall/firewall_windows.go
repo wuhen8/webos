@@ -41,3 +41,6 @@ func (f *windowsFirewall) DisableLogNewConn(port int) error {
 func (f *windowsFirewall) Cleanup(port int) error {
 	return fmt.Errorf("Windows firewall (netsh) not yet implemented")
 }
+func (f *windowsFirewall) Exec(args ...string) error {
+	return fmt.Errorf("Windows firewall (netsh) not yet implemented")
+}

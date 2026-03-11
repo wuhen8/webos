@@ -256,3 +256,21 @@ func (f *linuxFirewall) Cleanup(port int) error {
 
 	return nil
 }
+func (f *linuxFirewall) Exec(args ...string) error {
+	// Detect if this is an IPv6 rule by checking for -s or -d with IPv6 address
+	useV6 := false
+	for i, a := range args {
+		if (a == "-s" || a == "-d") && i+1 < len(args) {
+			if isIPv6(args[i+1]) {
+				useV6 = true
+				break
+			}
+		}
+	}
+	if useV6 {
+		_, err := f.run6(args...)
+		return err
+	}
+	_, err := f.run(args...)
+	return err
+}

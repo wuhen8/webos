@@ -73,8 +73,8 @@ func main() {
 	// Download IP geolocation database if not present (async, non-blocking)
 	go service.EnsureIPDB()
 
-	// Initialize IP guard service (auto-restores if previously enabled)
-	service.GetIPGuardService()
+	// Initialize unified firewall service: wire notifications and auto-restore from DB
+	handler.InitFirewall()
 
 	// Reconcile static apps (sync disk → DB)
 	service.ReconcileWebApps()
@@ -228,7 +228,7 @@ func main() {
 	log.Printf("Received signal %v, shutting down...", sig)
 
 	// Graceful shutdown sequence
-	service.GetIPGuardService().Stop()
+	service.GetFirewallService().Guard().Stop()
 	log.Println("IP guard stopped")
 
 	scheduler.Stop()

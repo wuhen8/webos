@@ -632,15 +632,16 @@ func (ce *CommandExecutor) cmdJobs() CommandResult {
 }
 
 func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
-	svc := GetIPGuardService()
+	fwSvc := GetFirewallService()
+	guard := fwSvc.Guard()
 	args = strings.TrimSpace(args)
 
 	if args == "" || args == "status" {
 		status := "❌ 未启用"
-		if svc.IsEnabled() {
+		if fwSvc.IsEnabled() {
 			status = "✅ 已启用"
 		}
-		return CommandResult{Text: fmt.Sprintf("IP 审批状态: %s", status)}
+		return CommandResult{Text: fmt.Sprintf("防火墙状态: %s", status)}
 	}
 
 	parts := strings.SplitN(args, " ", 2)
@@ -652,22 +653,22 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 
 	switch sub {
 	case "on":
-		if svc.IsEnabled() {
-			return CommandResult{Text: "IP 审批已经是启用状态。"}
+		if fwSvc.IsEnabled() {
+			return CommandResult{Text: "防火墙已经是启用状态。"}
 		}
-		if err := svc.Start(); err != nil {
+		if err := fwSvc.Enable(); err != nil {
 			return CommandResult{Text: fmt.Sprintf("启用失败: %v", err), IsError: true}
 		}
-		return CommandResult{Text: "✅ IP 审批已启用"}
+		return CommandResult{Text: "✅ 防火墙已启用（含 IP 审批）"}
 
 	case "off":
-		if err := svc.Disable(); err != nil {
+		if err := fwSvc.Disable(); err != nil {
 			return CommandResult{Text: fmt.Sprintf("停用失败: %v", err), IsError: true}
 		}
-		return CommandResult{Text: "✅ IP 审批已停用"}
+		return CommandResult{Text: "✅ 防火墙已停用"}
 
 	case "list":
-		records, err := svc.ListIPs()
+		records, err := guard.ListIPs()
 		if err != nil {
 			return CommandResult{Text: fmt.Sprintf("查询失败: %v", err), IsError: true}
 		}
@@ -709,7 +710,7 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 		if err != nil {
 			return CommandResult{Text: fmt.Sprintf("查找失败: %v", err), IsError: true}
 		}
-		if err := svc.ApproveIP(rec.IP, 0); err != nil {
+		if err := guard.ApproveIP(rec.IP, 0); err != nil {
 			return CommandResult{Text: fmt.Sprintf("放行失败: %v", err), IsError: true}
 		}
 		return CommandResult{Text: fmt.Sprintf("✅ 已放行 #%d %s", rec.ID, rec.IP)}
@@ -722,7 +723,7 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 		if err != nil {
 			return CommandResult{Text: fmt.Sprintf("查找失败: %v", err), IsError: true}
 		}
-		if err := svc.RejectIP(rec.IP); err != nil {
+		if err := guard.RejectIP(rec.IP); err != nil {
 			return CommandResult{Text: fmt.Sprintf("拒绝失败: %v", err), IsError: true}
 		}
 		return CommandResult{Text: fmt.Sprintf("✅ 已拒绝 #%d %s", rec.ID, rec.IP)}
@@ -735,7 +736,7 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 		if err != nil {
 			return CommandResult{Text: fmt.Sprintf("查找失败: %v", err), IsError: true}
 		}
-		if err := svc.RemoveIP(rec.IP); err != nil {
+		if err := guard.RemoveIP(rec.IP); err != nil {
 			return CommandResult{Text: fmt.Sprintf("删除失败: %v", err), IsError: true}
 		}
 		return CommandResult{Text: fmt.Sprintf("✅ 已删除 #%d %s", rec.ID, rec.IP)}
@@ -761,7 +762,7 @@ func resolveIPArg(arg string) (*database.IPRecord, error) {
 }
 
 func (ce *CommandExecutor) cmdGuardCIDR(args string) CommandResult {
-	svc := GetIPGuardService()
+	guard := GetFirewallService().Guard()
 	parts := strings.SplitN(args, " ", 2)
 	sub := strings.TrimSpace(parts[0])
 	subArgs := ""
@@ -771,7 +772,7 @@ func (ce *CommandExecutor) cmdGuardCIDR(args string) CommandResult {
 
 	switch sub {
 	case "list", "":
-		cidrs, err := svc.ListCIDRs()
+		cidrs, err := guard.ListCIDRs()
 		if err != nil {
 			return CommandResult{Text: fmt.Sprintf("查询失败: %v", err), IsError: true}
 		}
@@ -806,7 +807,7 @@ func (ce *CommandExecutor) cmdGuardCIDR(args string) CommandResult {
 		if len(addParts) > 1 {
 			note = strings.TrimSpace(addParts[1])
 		}
-		if err := svc.AddCIDR(cidr, note); err != nil {
+		if err := guard.AddCIDR(cidr, note); err != nil {
 			return CommandResult{Text: fmt.Sprintf("添加失败: %v", err), IsError: true}
 		}
 		return CommandResult{Text: fmt.Sprintf("✅ 已添加白名单网段: %s", cidr)}
@@ -819,7 +820,7 @@ func (ce *CommandExecutor) cmdGuardCIDR(args string) CommandResult {
 		if _, err := fmt.Sscanf(subArgs, "%d", &id); err != nil || id <= 0 {
 			return CommandResult{Text: "ID 必须是正整数", IsError: true}
 		}
-		if err := svc.RemoveCIDR(id); err != nil {
+		if err := guard.RemoveCIDR(id); err != nil {
 			return CommandResult{Text: fmt.Sprintf("删除失败: %v", err), IsError: true}
 		}
 		return CommandResult{Text: fmt.Sprintf("✅ 已删除白名单网段 ID: %d", id)}

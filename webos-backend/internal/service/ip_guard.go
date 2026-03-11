@@ -46,45 +46,34 @@ var (
 )
 
 // GetIPGuardService returns the singleton IPGuardService.
-// On first call, reads persisted state from DB and auto-starts if previously enabled.
 func GetIPGuardService() *IPGuardService {
 	ipGuardOnce.Do(func() {
-		svc := &IPGuardService{
+		ipGuardInst = &IPGuardService{
 			notified: make(map[string]time.Time),
 			stopCh:   make(chan struct{}),
 			port:     config.Port(),
-		}
-		ipGuardInst = svc
-
-		// Auto-restore: if previously enabled, start in background
-		val, _ := database.GetPreference("ip_guard_enabled")
-		if strings.Trim(val, "\"") == "true" {
-			go func() {
-				if err := svc.Start(); err != nil {
-					log.Printf("[ip-guard] auto-restore failed: %v", err)
-				} else {
-					log.Println("[ip-guard] auto-restored from previous session")
-				}
-			}()
 		}
 	})
 	return ipGuardInst
 }
 
-// Start initializes the firewall, restores approved IPs, and begins watching.
+// SetFirewall sets the firewall implementation (called by FirewallService).
+func (s *IPGuardService) SetFirewall(fw firewall.Firewall) {
+	s.fw = fw
+}
+
+// Start initializes the IP guard chain, restores approved IPs, and begins watching.
+// The firewall must be set via SetFirewall before calling Start.
 func (s *IPGuardService) Start() error {
 	if s.enabled {
 		return nil
 	}
+	if s.fw == nil {
+		return fmt.Errorf("firewall not initialized")
+	}
 
 	// Reset stop channel for this session
 	s.stopCh = make(chan struct{})
-
-	fw, err := firewall.New()
-	if err != nil {
-		return fmt.Errorf("init firewall: %w", err)
-	}
-	s.fw = fw
 
 	// Init firewall chain (default DROP on our port)
 	if err := s.fw.Init(s.port); err != nil {
@@ -138,7 +127,6 @@ func (s *IPGuardService) Start() error {
 	go s.expiryLoop()
 
 	s.enabled = true
-	database.SetPreference("ip_guard_enabled", "true")
 	log.Printf("[ip-guard] started on port %d", s.port)
 	return nil
 }
@@ -195,12 +183,10 @@ func (s *IPGuardService) ListIPs() ([]database.IPRecord, error) {
 // Disable turns off IP guard and cleans up firewall rules.
 func (s *IPGuardService) Disable() error {
 	s.Stop()
-	database.SetPreference("ip_guard_enabled", "false")
 	if s.fw != nil {
 		if err := s.fw.Cleanup(s.port); err != nil {
 			return err
 		}
-		s.fw = nil
 	}
 	return nil
 }

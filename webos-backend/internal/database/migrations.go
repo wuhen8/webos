@@ -182,7 +182,24 @@ var migrations = []string{
 		note       TEXT NOT NULL DEFAULT '',
 		auto_added INTEGER NOT NULL DEFAULT 0,
 		created_at INTEGER NOT NULL
-	);`,
+	);
+
+	CREATE TABLE IF NOT EXISTS firewall_config (
+		key   TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS firewall_rules (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		table_name TEXT NOT NULL DEFAULT 'filter',
+		chain      TEXT NOT NULL,
+		rule_spec  TEXT NOT NULL,
+		sort_order INTEGER NOT NULL DEFAULT 0,
+		comment    TEXT NOT NULL DEFAULT '',
+		source     TEXT NOT NULL DEFAULT 'user',
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX idx_fw_rules_table_chain ON firewall_rules(table_name, chain, sort_order);`,
 }
 
 func migrate() error {

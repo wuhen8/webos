@@ -41,3 +41,6 @@ func (f *darwinFirewall) DisableLogNewConn(port int) error {
 func (f *darwinFirewall) Cleanup(port int) error {
 	return fmt.Errorf("macOS firewall (pf) not yet implemented")
 }
+func (f *darwinFirewall) Exec(args ...string) error {
+	return fmt.Errorf("macOS firewall (pf) not yet implemented")
+}

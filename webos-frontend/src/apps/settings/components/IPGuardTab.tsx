@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import {
-  ShieldCheck, ShieldAlert, ShieldX, ShieldQuestion,
+  ShieldCheck, ShieldAlert, ShieldX,
   Check, X, Trash2, RefreshCw, Clock, MapPin, Settings2,
   Plus, Network,
 } from "lucide-react"
@@ -15,8 +15,6 @@ interface CIDRRecord {
 }
 
 export default function IPGuardTab() {
-  const [enabled, setEnabled] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [records, setRecords] = useState<IPRecord[]>([])
   const [cidrs, setCidrs] = useState<CIDRRecord[]>([])
   const [showSettings, setShowSettings] = useState(false)
@@ -26,10 +24,6 @@ export default function IPGuardTab() {
   const [newCIDR, setNewCIDR] = useState("")
   const [newCIDRNote, setNewCIDRNote] = useState("")
 
-  const loadStatus = useCallback(async () => {
-    try { const r = await request("ip_guard.status", {}); setEnabled(r?.enabled ?? false) } catch {}
-    setLoading(false)
-  }, [])
   const loadRecords = useCallback(async () => {
     try { setRecords(await request("ip_guard.list", {}) || []) } catch {}
   }, [])
@@ -37,13 +31,6 @@ export default function IPGuardTab() {
     try { setCidrs(await request("ip_guard.cidr_list", {}) || []) } catch {}
   }, [])
 
-  const toggleGuard = async () => {
-    try {
-      if (enabled) { await request("ip_guard.disable", {}); setEnabled(false) }
-      else { await request("ip_guard.enable", {}); setEnabled(true) }
-      loadRecords(); loadCIDRs()
-    } catch {}
-  }
   const approveIP = async (ip: string) => {
     try { await request("ip_guard.approve", { ip, ttl: defaultTTL > 0 ? defaultTTL : 0 }); loadRecords() } catch {}
   }
@@ -65,10 +52,10 @@ export default function IPGuardTab() {
   }
 
   useEffect(() => {
-    loadStatus(); loadRecords(); loadCIDRs()
+    loadRecords(); loadCIDRs()
     const t = setInterval(() => { loadRecords(); loadCIDRs() }, 5000)
     return () => clearInterval(t)
-  }, [loadStatus, loadRecords, loadCIDRs])
+  }, [loadRecords, loadCIDRs])
 
   const pending = records.filter(r => r.status === "pending")
   const approved = records.filter(r => r.status === "approved")
@@ -93,29 +80,26 @@ export default function IPGuardTab() {
 
   return (
     <div className="space-y-4">
-      {/* 开关 */}
+      {/* 标题 + 设置按钮 */}
       <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {enabled ? <ShieldCheck className="w-5 h-5 text-green-500" /> : <ShieldX className="w-5 h-5 text-gray-400" />}
+            <ShieldCheck className="w-5 h-5 text-green-500" />
             <div>
               <span className="text-[0.8125rem] text-gray-900 font-medium">IP 访问审批</span>
-              <p className="text-[0.6875rem] text-gray-500 mt-0.5">{enabled ? "已启用 — 新IP访问需审批后放行" : "未启用 — 所有IP均可访问"}</p>
+              <p className="text-[0.6875rem] text-gray-500 mt-0.5">新IP访问面板端口需审批后放行，内网网段自动白名单</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {enabled && <button onClick={() => setShowSettings(!showSettings)} className="p-1.5 hover:bg-black/[0.06] rounded-md transition-colors" title="设置"><Settings2 className="w-4 h-4 text-gray-400" /></button>}
-            <button onClick={toggleGuard} disabled={loading} className={`relative w-10 h-6 rounded-full transition-colors ${enabled ? "bg-green-500" : "bg-gray-300"}`}>
-              <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? "translate-x-[1.125rem]" : "translate-x-0.5"}`} />
-            </button>
-          </div>
+          <button onClick={() => setShowSettings(!showSettings)} className="p-1.5 hover:bg-black/[0.06] rounded-md transition-colors" title="设置">
+            <Settings2 className="w-4 h-4 text-gray-400" />
+          </button>
         </div>
       </div>
 
       {/* TTL 设置 */}
-      {showSettings && enabled && (
+      {showSettings && (
         <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
-          <div className="px-4 py-2.5"><span className="text-[0.75rem] font-medium text-gray-500 uppercase tracking-wide">全局设置</span></div>
+          <div className="px-4 py-2.5"><span className="text-[0.75rem] font-medium text-gray-500 uppercase tracking-wide">审批设置</span></div>
           <div className="px-4 pb-3">
             <div className="bg-white rounded-lg p-3">
               <label className="text-[0.75rem] text-gray-700 font-medium mb-2 block"><Clock className="w-3.5 h-3.5 inline mr-1.5 text-gray-400" />默认审批有效期</label>
@@ -138,145 +122,135 @@ export default function IPGuardTab() {
         </div>
       )}
 
-      {!enabled && (
-        <div className="bg-[#f5f5f7] rounded-xl p-6 text-center">
-          <ShieldQuestion className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-          <p className="text-[0.8125rem] text-gray-500">启用后，所有新IP访问面板端口将被拦截，需审批后才能访问</p>
-          <p className="text-[0.6875rem] text-gray-400 mt-1">基于 iptables/ip6tables 内核级防护，支持 IPv4 和 IPv6</p>
+      {/* 白名单网段 */}
+      <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
+        <div className="px-4 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Network className="w-4 h-4 text-blue-500" />
+            <span className="text-[0.75rem] font-medium text-gray-700">白名单网段 ({cidrs.length})</span>
+          </div>
+          <button onClick={() => setShowAddCIDR(!showAddCIDR)} className="flex items-center gap-1 px-2.5 py-1 text-[0.75rem] text-blue-500 hover:bg-blue-50 rounded-md transition-colors font-medium">
+            <Plus className="w-3.5 h-3.5" />添加
+          </button>
         </div>
-      )}
-
-      {enabled && (
-        <>
-          {/* 白名单网段 */}
-          <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Network className="w-4 h-4 text-blue-500" />
-                <span className="text-[0.75rem] font-medium text-gray-700">白名单网段 ({cidrs.length})</span>
+        {showAddCIDR && (
+          <div className="mx-4 mb-3 p-3 bg-white rounded-lg border border-blue-200">
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div>
+                <label className="text-[0.6875rem] text-gray-500 mb-0.5 block">CIDR 网段</label>
+                <input type="text" value={newCIDR} onChange={(e) => setNewCIDR(e.target.value)} placeholder="如 192.168.1.0/24"
+                  className="w-full h-7 px-2 text-[0.75rem] bg-[#f5f5f7] border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500" />
               </div>
-              <button onClick={() => setShowAddCIDR(!showAddCIDR)} className="flex items-center gap-1 px-2.5 py-1 text-[0.75rem] text-blue-500 hover:bg-blue-50 rounded-md transition-colors font-medium">
-                <Plus className="w-3.5 h-3.5" />添加
-              </button>
+              <div>
+                <label className="text-[0.6875rem] text-gray-500 mb-0.5 block">备注</label>
+                <input type="text" value={newCIDRNote} onChange={(e) => setNewCIDRNote(e.target.value)} placeholder="可选，如：办公室网络"
+                  className="w-full h-7 px-2 text-[0.75rem] bg-[#f5f5f7] border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              </div>
             </div>
-            {showAddCIDR && (
-              <div className="mx-4 mb-3 p-3 bg-white rounded-lg border border-blue-200">
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <div>
-                    <label className="text-[0.6875rem] text-gray-500 mb-0.5 block">CIDR 网段</label>
-                    <input type="text" value={newCIDR} onChange={(e) => setNewCIDR(e.target.value)} placeholder="如 192.168.1.0/24"
-                      className="w-full h-7 px-2 text-[0.75rem] bg-[#f5f5f7] border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                  </div>
-                  <div>
-                    <label className="text-[0.6875rem] text-gray-500 mb-0.5 block">备注</label>
-                    <input type="text" value={newCIDRNote} onChange={(e) => setNewCIDRNote(e.target.value)} placeholder="可选，如：办公室网络"
-                      className="w-full h-7 px-2 text-[0.75rem] bg-[#f5f5f7] border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                  </div>
+            <div className="flex gap-2">
+              <button onClick={addCIDR} className="flex-1 py-1.5 text-[0.75rem] bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors font-medium">添加</button>
+              <button onClick={() => setShowAddCIDR(false)} className="px-4 py-1.5 text-[0.75rem] bg-white hover:bg-gray-100 text-gray-600 rounded-md border border-gray-200 transition-colors">取消</button>
+            </div>
+          </div>
+        )}
+        {cidrs.length === 0 ? (
+          <div className="px-4 pb-4 text-center"><p className="text-[0.75rem] text-gray-400">暂无白名单网段</p></div>
+        ) : (
+          <div className="px-4 pb-3 space-y-1">
+            {cidrs.map(c => (
+              <div key={c.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <span className="text-[0.75rem] font-mono text-gray-900">{c.cidr}</span>
+                  {c.note && <span className="text-[0.6875rem] text-gray-500">{c.note}</span>}
+                  {c.autoAdded && <span className="text-[0.6rem] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">自动</span>}
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={addCIDR} className="flex-1 py-1.5 text-[0.75rem] bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors font-medium">添加</button>
-                  <button onClick={() => setShowAddCIDR(false)} className="px-4 py-1.5 text-[0.75rem] bg-white hover:bg-gray-100 text-gray-600 rounded-md border border-gray-200 transition-colors">取消</button>
+                <button onClick={() => removeCIDR(c.id)} className="p-1 hover:bg-red-50 rounded transition-colors" title="移除">
+                  <Trash2 className="w-3.5 h-3.5 text-red-400 hover:text-red-600" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 待审批 */}
+      <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
+        <div className="px-4 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-amber-500" /><span className="text-[0.75rem] font-medium text-gray-700">待审批 ({pending.length})</span></div>
+          <button onClick={loadRecords} className="p-1 hover:bg-black/[0.06] rounded-md transition-colors"><RefreshCw className="w-3.5 h-3.5 text-gray-400" /></button>
+        </div>
+        {pending.length === 0 ? (
+          <div className="px-4 pb-4 text-center"><p className="text-[0.75rem] text-gray-400">暂无待审批的IP</p></div>
+        ) : (
+          <div className="px-4 pb-3 space-y-1.5">
+            {pending.map(r => (
+              <div key={r.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-amber-100">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[0.8125rem] font-mono text-gray-900">{r.ip}</span>
+                    {r.location && <span className="flex items-center gap-0.5 text-[0.6875rem] text-gray-500"><MapPin className="w-3 h-3" />{r.location}</span>}
+                  </div>
+                  <span className="text-[0.6875rem] text-gray-400">{formatTime(r.createdAt)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 ml-3">
+                  <button onClick={() => approveIP(r.ip)} className="flex items-center gap-1 px-2.5 py-1 text-[0.6875rem] font-medium bg-green-500 hover:bg-green-600 text-white rounded-md transition-colors"><Check className="w-3 h-3" />放行</button>
+                  <button onClick={() => rejectIP(r.ip)} className="flex items-center gap-1 px-2.5 py-1 text-[0.6875rem] font-medium bg-red-500 hover:bg-red-600 text-white rounded-md transition-colors"><X className="w-3 h-3" />拒绝</button>
                 </div>
               </div>
-            )}
-            {cidrs.length === 0 ? (
-              <div className="px-4 pb-4 text-center"><p className="text-[0.75rem] text-gray-400">暂无白名单网段</p></div>
-            ) : (
-              <div className="px-4 pb-3 space-y-1">
-                {cidrs.map(c => (
-                  <div key={c.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
-                    <div className="flex-1 min-w-0 flex items-center gap-2">
-                      <span className="text-[0.75rem] font-mono text-gray-900">{c.cidr}</span>
-                      {c.note && <span className="text-[0.6875rem] text-gray-500">{c.note}</span>}
-                      {c.autoAdded && <span className="text-[0.6rem] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">自动</span>}
-                    </div>
-                    <button onClick={() => removeCIDR(c.id)} className="p-1 hover:bg-red-50 rounded transition-colors" title="移除">
-                      <Trash2 className="w-3.5 h-3.5 text-red-400 hover:text-red-600" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            ))}
           </div>
+        )}
+      </div>
 
-          {/* 待审批 */}
-          <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-amber-500" /><span className="text-[0.75rem] font-medium text-gray-700">待审批 ({pending.length})</span></div>
-              <button onClick={loadRecords} className="p-1 hover:bg-black/[0.06] rounded-md transition-colors"><RefreshCw className="w-3.5 h-3.5 text-gray-400" /></button>
-            </div>
-            {pending.length === 0 ? (
-              <div className="px-4 pb-4 text-center"><p className="text-[0.75rem] text-gray-400">暂无待审批的IP</p></div>
-            ) : (
-              <div className="px-4 pb-3 space-y-1.5">
-                {pending.map(r => (
-                  <div key={r.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-amber-100">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[0.8125rem] font-mono text-gray-900">{r.ip}</span>
-                        {r.location && <span className="flex items-center gap-0.5 text-[0.6875rem] text-gray-500"><MapPin className="w-3 h-3" />{r.location}</span>}
-                      </div>
-                      <span className="text-[0.6875rem] text-gray-400">{formatTime(r.createdAt)}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 ml-3">
-                      <button onClick={() => approveIP(r.ip)} className="flex items-center gap-1 px-2.5 py-1 text-[0.6875rem] font-medium bg-green-500 hover:bg-green-600 text-white rounded-md transition-colors"><Check className="w-3 h-3" />放行</button>
-                      <button onClick={() => rejectIP(r.ip)} className="flex items-center gap-1 px-2.5 py-1 text-[0.6875rem] font-medium bg-red-500 hover:bg-red-600 text-white rounded-md transition-colors"><X className="w-3 h-3" />拒绝</button>
-                    </div>
-                  </div>
-                ))}
+      {/* 已放行 */}
+      <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
+        <div className="px-4 py-2.5"><div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-green-500" /><span className="text-[0.75rem] font-medium text-gray-700">已放行 ({approved.length})</span></div></div>
+        {approved.length === 0 ? (
+          <div className="px-4 pb-4 text-center"><p className="text-[0.75rem] text-gray-400">暂无已放行的IP</p></div>
+        ) : (
+          <div className="px-4 pb-3 space-y-1">
+            {approved.map(r => (
+              <div key={r.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <span className="text-[0.75rem] font-mono text-gray-900">{r.ip}</span>
+                  {r.location && <span className="text-[0.6875rem] text-gray-500">{r.location}</span>}
+                </div>
+                <div className="flex items-center gap-2 ml-3">
+                  <span className="text-[0.6875rem] text-gray-400"><Clock className="w-3 h-3 inline mr-0.5" />{formatExpiry(r.expiresAt)}</span>
+                  <button onClick={() => removeIP(r.ip)} className="p-1 hover:bg-red-50 rounded transition-colors" title="移除"><Trash2 className="w-3.5 h-3.5 text-red-400 hover:text-red-600" /></button>
+                </div>
               </div>
-            )}
+            ))}
           </div>
+        )}
+      </div>
 
-          {/* 已放行 */}
-          <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5"><div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-green-500" /><span className="text-[0.75rem] font-medium text-gray-700">已放行 ({approved.length})</span></div></div>
-            {approved.length === 0 ? (
-              <div className="px-4 pb-4 text-center"><p className="text-[0.75rem] text-gray-400">暂无已放行的IP</p></div>
-            ) : (
-              <div className="px-4 pb-3 space-y-1">
-                {approved.map(r => (
-                  <div key={r.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
-                    <div className="flex-1 min-w-0 flex items-center gap-2">
-                      <span className="text-[0.75rem] font-mono text-gray-900">{r.ip}</span>
-                      {r.location && <span className="text-[0.6875rem] text-gray-500">{r.location}</span>}
-                    </div>
-                    <div className="flex items-center gap-2 ml-3">
-                      <span className="text-[0.6875rem] text-gray-400"><Clock className="w-3 h-3 inline mr-0.5" />{formatExpiry(r.expiresAt)}</span>
-                      <button onClick={() => removeIP(r.ip)} className="p-1 hover:bg-red-50 rounded transition-colors" title="移除"><Trash2 className="w-3.5 h-3.5 text-red-400 hover:text-red-600" /></button>
-                    </div>
-                  </div>
-                ))}
+      {/* 已拒绝 */}
+      <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
+        <div className="px-4 py-2.5"><div className="flex items-center gap-2"><ShieldX className="w-4 h-4 text-red-400" /><span className="text-[0.75rem] font-medium text-gray-700">已拒绝 ({rejected.length})</span></div></div>
+        {rejected.length === 0 ? (
+          <div className="px-4 pb-4 text-center"><p className="text-[0.75rem] text-gray-400">暂无已拒绝的IP</p></div>
+        ) : (
+          <div className="px-4 pb-3 space-y-1">
+            {rejected.map(r => (
+              <div key={r.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <span className="text-[0.75rem] font-mono text-gray-500">{r.ip}</span>
+                  {r.location && <span className="text-[0.6875rem] text-gray-400">{r.location}</span>}
+                </div>
+                <div className="flex items-center gap-1.5 ml-3">
+                  <button onClick={() => approveIP(r.ip)} className="px-2 py-0.5 text-[0.6875rem] text-green-600 hover:bg-green-50 rounded transition-colors">放行</button>
+                  <button onClick={() => removeIP(r.ip)} className="p-1 hover:bg-red-50 rounded transition-colors" title="删除记录"><Trash2 className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" /></button>
+                </div>
               </div>
-            )}
+            ))}
           </div>
+        )}
+      </div>
 
-          {/* 已拒绝 */}
-          {rejected.length > 0 && (
-            <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5"><div className="flex items-center gap-2"><ShieldX className="w-4 h-4 text-red-400" /><span className="text-[0.75rem] font-medium text-gray-700">已拒绝 ({rejected.length})</span></div></div>
-              <div className="px-4 pb-3 space-y-1">
-                {rejected.map(r => (
-                  <div key={r.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
-                    <div className="flex-1 min-w-0 flex items-center gap-2">
-                      <span className="text-[0.75rem] font-mono text-gray-500">{r.ip}</span>
-                      {r.location && <span className="text-[0.6875rem] text-gray-400">{r.location}</span>}
-                    </div>
-                    <div className="flex items-center gap-1.5 ml-3">
-                      <button onClick={() => approveIP(r.ip)} className="px-2 py-0.5 text-[0.6875rem] text-green-600 hover:bg-green-50 rounded transition-colors">放行</button>
-                      <button onClick={() => removeIP(r.ip)} className="p-1 hover:bg-red-50 rounded transition-colors" title="删除记录"><Trash2 className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="px-3 py-2 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-[0.75rem] text-blue-700">白名单网段内的IP无需审批即可访问。首次启用时会自动添加本机内网网段。</p>
-          </div>
-        </>
-      )}
+      <div className="px-3 py-2 bg-blue-50 rounded-lg border border-blue-200">
+        <p className="text-[0.75rem] text-blue-700">白名单网段内的IP无需审批即可访问。首次启用时会自动添加本机内网网段。</p>
+      </div>
     </div>
   )
 }
