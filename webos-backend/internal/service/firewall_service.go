@@ -91,13 +91,15 @@ func (s *FirewallService) Enable() error {
 		return fmt.Errorf("ip-guard start failed: %w", err)
 	}
 
-	// Seed default rules on first enable (SSH, LAN access).
-	// These are critical — SSH rule keeps new SSH connections working under DROP policy.
-	s.seedDefaultRules()
-
-	// Restore user rules from DB
-	if err := s.restoreRules(); err != nil {
-		log.Printf("[firewall] warning: failed to restore rules: %v", err)
+	// Restore user rules from DB (includes previously seeded rules).
+	// If DB is empty (first enable), seed essential rules (SSH, LAN access).
+	existing, _ := database.FWRuleListAll("filter")
+	if len(existing) == 0 {
+		s.seedDefaultRules()
+	} else {
+		if err := s.restoreRules(); err != nil {
+			log.Printf("[firewall] warning: failed to restore rules: %v", err)
+		}
 	}
 
 	s.enabled = true
