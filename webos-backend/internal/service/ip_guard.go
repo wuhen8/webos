@@ -358,10 +358,23 @@ func (s *IPGuardService) handleNewIP(ip string) {
 	s.notified[ip] = time.Now()
 	s.mu.Unlock()
 
-	// Check if already in DB
+	// Check if already in DB as approved
 	existing, _ := database.IPGuardGetByIP(ip)
 	if existing != nil && existing.Status == "approved" {
-		return // already approved, shouldn't happen but just in case
+		return
+	}
+
+	// Check if IP falls within a whitelisted CIDR — LOG fires before ACCEPT,
+	// so whitelisted IPs still trigger the log watcher.
+	parsedIP := net.ParseIP(ip)
+	if parsedIP != nil {
+		cidrs, _ := database.IPGuardListCIDRs()
+		for _, c := range cidrs {
+			_, cidrNet, err := net.ParseCIDR(c.CIDR)
+			if err == nil && cidrNet.Contains(parsedIP) {
+				return // whitelisted, ignore
+			}
+		}
 	}
 
 	// Lookup location
