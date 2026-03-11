@@ -349,6 +349,12 @@ func (s *IPGuardService) watchLoop(ch <-chan firewall.LogEvent) {
 }
 
 func (s *IPGuardService) handleNewIP(ip string) {
+	// Skip loopback — always allowed at iptables level, LOG just fires first
+	parsedIP := net.ParseIP(ip)
+	if parsedIP != nil && parsedIP.IsLoopback() {
+		return
+	}
+
 	// Dedup: don't notify for the same IP within 5 minutes
 	s.mu.Lock()
 	if t, ok := s.notified[ip]; ok && time.Since(t) < 5*time.Minute {
@@ -366,7 +372,6 @@ func (s *IPGuardService) handleNewIP(ip string) {
 
 	// Check if IP falls within a whitelisted CIDR — LOG fires before ACCEPT,
 	// so whitelisted IPs still trigger the log watcher.
-	parsedIP := net.ParseIP(ip)
 	if parsedIP != nil {
 		cidrs, _ := database.IPGuardListCIDRs()
 		for _, c := range cidrs {

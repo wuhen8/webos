@@ -65,7 +65,7 @@ func (w *linuxLogWatcher) Stop() {
 	})
 }
 
-// tailJournal streams kernel logs via journalctl -k -f --grep=WEBOS_GUARD
+// tailJournal streams kernel logs via journalctl -k -f, filtering in Go for zero latency.
 func (w *linuxLogWatcher) tailJournal() {
 	defer close(w.ch)
 
@@ -76,7 +76,9 @@ func (w *linuxLogWatcher) tailJournal() {
 		default:
 		}
 
-		w.cmd = exec.Command("journalctl", "-k", "-f", "-n", "0", "--grep=WEBOS_GUARD", "--no-pager")
+		// Don't use --grep: it causes journalctl to buffer output.
+		// Filter in Go instead for instant line-by-line processing.
+		w.cmd = exec.Command("journalctl", "-k", "-f", "-n", "0", "--no-pager", "-o", "short")
 		stdout, err := w.cmd.StdoutPipe()
 		if err != nil {
 			time.Sleep(5 * time.Second)
@@ -93,8 +95,7 @@ func (w *linuxLogWatcher) tailJournal() {
 		go func() {
 			defer close(done)
 			for scanner.Scan() {
-				line := scanner.Text()
-				w.parseLine(line)
+				w.parseLine(scanner.Text())
 			}
 		}()
 
