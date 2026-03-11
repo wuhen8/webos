@@ -775,6 +775,8 @@ func InstallApp(ctx context.Context, appID string, userConfig map[string]interfa
 				UpdateAppStatus(appID, "error")
 				return fmt.Errorf("启动 wasm 进程失败: %w", err)
 			}
+			// Enable autostart so the wasm process restarts on reboot
+			SetAppAutostart(appID, true)
 		}
 		return nil
 	default:
@@ -1297,8 +1299,19 @@ func RegisterWebAppInDB(m *WebAppManifest) {
 	if count > 0 {
 		log.Printf("[WebApp] RegisterWebAppInDB UPDATE (existing): %s", m.ID)
 		UpdateAppManifest(m.ID, manifest)
-		database.DB().Exec("UPDATE installed_apps SET status = 'running', install_dir = ?, updated_at = ? WHERE id = ?",
-			installDir, time.Now().UnixMilli(), m.ID)
+		// For wasm apps, respect the autostart flag instead of blindly marking as running.
+		// The actual wasm process is started later by StartBackgroundApps, so only set
+		// "running" here if the app has no wasm module (pure static app, always available)
+		// or if autostart is enabled (wasm will be started shortly after).
+		status := "running"
+		if m.WasmModule != "" {
+			app, err := GetAppStatus(m.ID)
+			if err == nil && !app.Autostart {
+				status = "stopped"
+			}
+		}
+		database.DB().Exec("UPDATE installed_apps SET status = ?, install_dir = ?, updated_at = ? WHERE id = ?",
+			status, installDir, time.Now().UnixMilli(), m.ID)
 	} else {
 		log.Printf("[WebApp] RegisterWebAppInDB INSERT (new): %s", m.ID)
 		app := &InstalledApp{
