@@ -52,7 +52,7 @@ func ensureIPDBLoaded() {
 }
 
 func lookupIPLocation(ip string) string {
-	ipdbOnce.Do(loadIPDB)
+	ensureIPDBLoaded()
 
 	parsed := net.ParseIP(ip)
 	if parsed == nil {
