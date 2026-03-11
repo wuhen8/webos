@@ -5,6 +5,7 @@ import {
 } from "lucide-react"
 import { exec } from "@/lib/services"
 import { SettingsIcon } from "./SettingsIcon"
+import IPGuardTab from "./IPGuardTab"
 
 export default function FirewallTab() {
   const [fwAvailable, setFwAvailable] = useState<boolean | null>(null)
@@ -17,7 +18,7 @@ export default function FirewallTab() {
   const [fwNewRule, setFwNewRule] = useState({
     chain: "INPUT", action: "ACCEPT", protocol: "tcp", source: "", port: "", position: "append", comment: "",
   })
-  const [fwTab, setFwTab] = useState<"filter" | "nat">("filter")
+  const [fwTab, setFwTab] = useState<"filter" | "nat" | "guard">("filter")
   const [natRules, setNatRules] = useState<Record<string, any[]>>({})
   const [natPolicies, setNatPolicies] = useState<Record<string, string>>({})
   const [natActiveChain, setNatActiveChain] = useState("PREROUTING")
@@ -223,13 +224,14 @@ export default function FirewallTab() {
             </div>
           </div>
 
-          {/* Filter / NAT 切换 */}
+          {/* Filter / NAT / IP审批 切换 */}
           <div className="flex bg-[#f5f5f7] rounded-xl overflow-hidden mt-4 p-1">
-            <button onClick={() => setFwTab("filter")} className={`flex-1 py-2 text-[0.8125rem] font-medium rounded-lg transition-all ${fwTab === "filter" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>过滤规则 (Filter)</button>
+            <button onClick={() => setFwTab("filter")} className={`flex-1 py-2 text-[0.8125rem] font-medium rounded-lg transition-all ${fwTab === "filter" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>过滤规则</button>
             <button onClick={() => setFwTab("nat")} className={`flex-1 py-2 text-[0.8125rem] font-medium rounded-lg transition-all ${fwTab === "nat" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>NAT 转发</button>
+            <button onClick={() => setFwTab("guard")} className={`flex-1 py-2 text-[0.8125rem] font-medium rounded-lg transition-all ${fwTab === "guard" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>IP 审批</button>
           </div>
 
-          {fwTab === "filter" ? (
+          {fwTab === "filter" && (
             <>
               {/* 默认策略 */}
               <div className="bg-[#f5f5f7] rounded-xl overflow-hidden mt-4">
@@ -351,7 +353,9 @@ export default function FirewallTab() {
                 <p className="text-[0.75rem] text-amber-700">防火墙规则修改即时生效，请谨慎操作。修改 DROP 策略可能导致远程连接断开。</p>
               </div>
             </>
-          ) : (
+          )}
+
+          {fwTab === "nat" && (
             <>
               {/* === NAT 转发 === */}
               {/* IP 转发开关 */}
@@ -484,6 +488,8 @@ export default function FirewallTab() {
               </div>
             </>
           )}
+
+          {fwTab === "guard" && <IPGuardTab />}
         </>
       )}
     </div>

@@ -64,6 +64,7 @@ func init() {
 		{Name: "job disable", Description: "禁用指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
 		{Name: "job delete", Description: "删除指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
 		{Name: "ai", Description: "AI 自驱动入口：给 AI 发消息触发思考和工具调用，可用于定时任务实现自动巡检、主动提醒等", Category: "chat", CategoryLabel: "💬 对话", CategoryOrder: 10, Args: "<消息内容>"},
+		{Name: "guard", Description: "IP 访问审批：管理 IP 白名单", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "[status|on|off|list|approve <IP或ID>|reject <IP或ID>|remove <IP或ID>|cidr ...]"},
 	}
 }
 
@@ -201,6 +202,8 @@ func (ce *CommandExecutor) ExecuteCommand(convID, cmdName, cmdArgs string) Comma
 		return ce.cmdJobs()
 	case "job":
 		return ce.cmdJob(cmdArgs)
+	case "guard":
+		return ce.cmdGuard(cmdArgs)
 	default:
 		return CommandResult{
 			Text:    fmt.Sprintf("未知命令: /%s\n输入 /help 查看可用命令。", cmdName),
@@ -627,6 +630,208 @@ func (ce *CommandExecutor) cmdJobs() CommandResult {
 	sb.WriteString("\n命令: `/job run|enable|disable|delete <ID>`")
 	return CommandResult{Text: sb.String()}
 }
+
+func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
+	svc := GetIPGuardService()
+	args = strings.TrimSpace(args)
+
+	if args == "" || args == "status" {
+		status := "❌ 未启用"
+		if svc.IsEnabled() {
+			status = "✅ 已启用"
+		}
+		return CommandResult{Text: fmt.Sprintf("IP 审批状态: %s", status)}
+	}
+
+	parts := strings.SplitN(args, " ", 2)
+	sub := parts[0]
+	subArgs := ""
+	if len(parts) > 1 {
+		subArgs = strings.TrimSpace(parts[1])
+	}
+
+	switch sub {
+	case "on":
+		if svc.IsEnabled() {
+			return CommandResult{Text: "IP 审批已经是启用状态。"}
+		}
+		if err := svc.Start(); err != nil {
+			return CommandResult{Text: fmt.Sprintf("启用失败: %v", err), IsError: true}
+		}
+		return CommandResult{Text: "✅ IP 审批已启用"}
+
+	case "off":
+		if err := svc.Disable(); err != nil {
+			return CommandResult{Text: fmt.Sprintf("停用失败: %v", err), IsError: true}
+		}
+		return CommandResult{Text: "✅ IP 审批已停用"}
+
+	case "list":
+		records, err := svc.ListIPs()
+		if err != nil {
+			return CommandResult{Text: fmt.Sprintf("查询失败: %v", err), IsError: true}
+		}
+		if len(records) == 0 {
+			return CommandResult{Text: "当前没有 IP 记录。"}
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("**IP 记录 (%d)：**\n\n", len(records)))
+		sb.WriteString("| ID | IP | 状态 | 归属地 | 过期时间 |\n")
+		sb.WriteString("|---|---|---|---|---|\n")
+		for _, r := range records {
+			st := r.Status
+			switch st {
+			case "pending":
+				st = "⏳ 待审批"
+			case "approved":
+				st = "✅ 已放行"
+			case "rejected":
+				st = "❌ 已拒绝"
+			}
+			expires := "永久"
+			if r.ExpiresAt > 0 {
+				expires = time.Unix(r.ExpiresAt, 0).Format("01-02 15:04")
+			}
+			loc := r.Location
+			if loc == "" {
+				loc = "-"
+			}
+			sb.WriteString(fmt.Sprintf("| %d | `%s` | %s | %s | %s |\n", r.ID, r.IP, st, loc, expires))
+		}
+		sb.WriteString("\n命令: `/guard approve|reject|remove <ID>`")
+		return CommandResult{Text: sb.String()}
+
+	case "approve":
+		if subArgs == "" {
+			return CommandResult{Text: "用法: /guard approve <IP或ID>", IsError: true}
+		}
+		rec, err := resolveIPArg(strings.SplitN(subArgs, " ", 2)[0])
+		if err != nil {
+			return CommandResult{Text: fmt.Sprintf("查找失败: %v", err), IsError: true}
+		}
+		if err := svc.ApproveIP(rec.IP, 0); err != nil {
+			return CommandResult{Text: fmt.Sprintf("放行失败: %v", err), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("✅ 已放行 #%d %s", rec.ID, rec.IP)}
+
+	case "reject":
+		if subArgs == "" {
+			return CommandResult{Text: "用法: /guard reject <IP或ID>", IsError: true}
+		}
+		rec, err := resolveIPArg(strings.SplitN(subArgs, " ", 2)[0])
+		if err != nil {
+			return CommandResult{Text: fmt.Sprintf("查找失败: %v", err), IsError: true}
+		}
+		if err := svc.RejectIP(rec.IP); err != nil {
+			return CommandResult{Text: fmt.Sprintf("拒绝失败: %v", err), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("✅ 已拒绝 #%d %s", rec.ID, rec.IP)}
+
+	case "remove":
+		if subArgs == "" {
+			return CommandResult{Text: "用法: /guard remove <IP或ID>", IsError: true}
+		}
+		rec, err := resolveIPArg(strings.SplitN(subArgs, " ", 2)[0])
+		if err != nil {
+			return CommandResult{Text: fmt.Sprintf("查找失败: %v", err), IsError: true}
+		}
+		if err := svc.RemoveIP(rec.IP); err != nil {
+			return CommandResult{Text: fmt.Sprintf("删除失败: %v", err), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("✅ 已删除 #%d %s", rec.ID, rec.IP)}
+
+	case "cidr":
+		return ce.cmdGuardCIDR(subArgs)
+
+	default:
+		return CommandResult{
+			Text:    "用法: /guard [status|on|off|list|approve <IP或ID>|reject <IP或ID>|remove <IP或ID>|cidr ...]",
+			IsError: true,
+		}
+	}
+}
+
+// resolveIPArg resolves an argument that can be either a numeric ID or an IP address string.
+func resolveIPArg(arg string) (*database.IPRecord, error) {
+	var id int64
+	if _, err := fmt.Sscanf(arg, "%d", &id); err == nil && id > 0 {
+		return database.IPGuardGetByID(id)
+	}
+	return database.IPGuardGetByIP(arg)
+}
+
+func (ce *CommandExecutor) cmdGuardCIDR(args string) CommandResult {
+	svc := GetIPGuardService()
+	parts := strings.SplitN(args, " ", 2)
+	sub := strings.TrimSpace(parts[0])
+	subArgs := ""
+	if len(parts) > 1 {
+		subArgs = strings.TrimSpace(parts[1])
+	}
+
+	switch sub {
+	case "list", "":
+		cidrs, err := svc.ListCIDRs()
+		if err != nil {
+			return CommandResult{Text: fmt.Sprintf("查询失败: %v", err), IsError: true}
+		}
+		if len(cidrs) == 0 {
+			return CommandResult{Text: "当前没有白名单网段。"}
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("**白名单网段 (%d)：**\n\n", len(cidrs)))
+		sb.WriteString("| ID | 网段 | 备注 | 自动 |\n")
+		sb.WriteString("|---|---|---|---|\n")
+		for _, c := range cidrs {
+			auto := ""
+			if c.AutoAdded {
+				auto = "🔵 自动"
+			}
+			note := c.Note
+			if note == "" {
+				note = "-"
+			}
+			sb.WriteString(fmt.Sprintf("| %d | `%s` | %s | %s |\n", c.ID, c.CIDR, note, auto))
+		}
+		sb.WriteString("\n命令: `/guard cidr add <CIDR> [备注]` | `/guard cidr remove <ID>`")
+		return CommandResult{Text: sb.String()}
+
+	case "add":
+		if subArgs == "" {
+			return CommandResult{Text: "用法: /guard cidr add <CIDR> [备注]", IsError: true}
+		}
+		addParts := strings.SplitN(subArgs, " ", 2)
+		cidr := addParts[0]
+		note := ""
+		if len(addParts) > 1 {
+			note = strings.TrimSpace(addParts[1])
+		}
+		if err := svc.AddCIDR(cidr, note); err != nil {
+			return CommandResult{Text: fmt.Sprintf("添加失败: %v", err), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("✅ 已添加白名单网段: %s", cidr)}
+
+	case "remove":
+		if subArgs == "" {
+			return CommandResult{Text: "用法: /guard cidr remove <ID>", IsError: true}
+		}
+		id := int64(0)
+		if _, err := fmt.Sscanf(subArgs, "%d", &id); err != nil || id <= 0 {
+			return CommandResult{Text: "ID 必须是正整数", IsError: true}
+		}
+		if err := svc.RemoveCIDR(id); err != nil {
+			return CommandResult{Text: fmt.Sprintf("删除失败: %v", err), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("✅ 已删除白名单网段 ID: %d", id)}
+
+	default:
+		return CommandResult{
+			Text:    "用法: /guard cidr [list|add <CIDR> [备注]|remove <ID>]",
+			IsError: true,
+		}
+	}
+}
+
 
 func (ce *CommandExecutor) cmdJob(args string) CommandResult {
 	parts := strings.SplitN(args, " ", 2)

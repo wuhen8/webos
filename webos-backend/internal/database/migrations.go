@@ -162,6 +162,28 @@ var migrations = []string{
 		created_at      INTEGER NOT NULL
 	);
 	CREATE INDEX idx_ai_summary_conv ON ai_summaries(conversation_id);`,
+
+	// version 2: IP guard table
+	`CREATE TABLE IF NOT EXISTS ip_guard (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		ip         TEXT NOT NULL UNIQUE,
+		status     TEXT NOT NULL DEFAULT 'pending',
+		location   TEXT NOT NULL DEFAULT '',
+		note       TEXT NOT NULL DEFAULT '',
+		expires_at INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	CREATE INDEX idx_ip_guard_status ON ip_guard(status);
+	CREATE INDEX idx_ip_guard_expires ON ip_guard(status, expires_at);
+
+	CREATE TABLE IF NOT EXISTS ip_guard_cidrs (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		cidr       TEXT NOT NULL UNIQUE,
+		note       TEXT NOT NULL DEFAULT '',
+		auto_added INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL
+	);`,
 }
 
 func migrate() error {

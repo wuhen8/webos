@@ -70,6 +70,9 @@ func main() {
 
 	service.InitDefaultSkipDirs()
 
+	// Download IP geolocation database if not present (async, non-blocking)
+	go service.EnsureIPDB()
+
 	// Reconcile static apps (sync disk → DB)
 	service.ReconcileWebApps()
 
@@ -222,6 +225,9 @@ func main() {
 	log.Printf("Received signal %v, shutting down...", sig)
 
 	// Graceful shutdown sequence
+	service.GetIPGuardService().Stop()
+	log.Println("IP guard stopped")
+
 	scheduler.Stop()
 	log.Println("Scheduler stopped")
 
