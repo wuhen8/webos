@@ -170,6 +170,48 @@ func (s *IPGuardService) RemoveIP(ip string) error {
 	return s.fw.RemoveIP(ip, s.port)
 }
 
+// BatchApproveIPs approves multiple IPs at once.
+func (s *IPGuardService) BatchApproveIPs(ips []string, ttlSeconds int64) (int, []string) {
+	var errs []string
+	ok := 0
+	for _, ip := range ips {
+		if err := s.ApproveIP(ip, ttlSeconds); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", ip, err))
+		} else {
+			ok++
+		}
+	}
+	return ok, errs
+}
+
+// BatchRejectIPs rejects multiple IPs at once.
+func (s *IPGuardService) BatchRejectIPs(ips []string) (int, []string) {
+	var errs []string
+	ok := 0
+	for _, ip := range ips {
+		if err := s.RejectIP(ip); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", ip, err))
+		} else {
+			ok++
+		}
+	}
+	return ok, errs
+}
+
+// BatchRemoveIPs removes multiple IPs at once.
+func (s *IPGuardService) BatchRemoveIPs(ips []string) (int, []string) {
+	var errs []string
+	ok := 0
+	for _, ip := range ips {
+		if err := s.RemoveIP(ip); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", ip, err))
+		} else {
+			ok++
+		}
+	}
+	return ok, errs
+}
+
 // ListIPs returns all IP records.
 func (s *IPGuardService) ListIPs() ([]database.IPRecord, error) {
 	return database.IPGuardList()

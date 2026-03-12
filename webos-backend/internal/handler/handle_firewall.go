@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"webos-backend/internal/database"
 	"webos-backend/internal/service"
 )
 
@@ -28,7 +29,7 @@ func init() {
 		"firewall.rules.add":    handleFirewallRulesAdd,
 		"firewall.rules.remove": handleFirewallRulesRemove,
 
-		// IP guard (part of firewall, no separate enable/disable)
+		// IP guard
 		"ip_guard.list":        handleIPGuardList,
 		"ip_guard.approve":     handleIPGuardApprove,
 		"ip_guard.reject":      handleIPGuardReject,
@@ -81,7 +82,7 @@ func handleFirewallDisable(c *WSConn, raw json.RawMessage) {
 func handleFirewallRulesList(c *WSConn, raw json.RawMessage) {
 	var p struct {
 		baseReq
-		Table string `json:"table"` // filter or nat
+		Table string `json:"table"`
 	}
 	json.Unmarshal(raw, &p)
 	if p.Table == "" {
@@ -154,63 +155,130 @@ func handleIPGuardList(c *WSConn, raw json.RawMessage) {
 	}()
 }
 
+// parseIPs extracts IPs from a request where "ip" can be a string, number (ID),
+// or an array of strings/numbers. Numeric values are resolved as DB record IDs.
+func parseIPs(raw json.RawMessage) ([]string, error) {
+	var wrapper struct {
+		IP json.RawMessage `json:"ip"`
+	}
+	json.Unmarshal(raw, &wrapper)
+	if len(wrapper.IP) == 0 {
+		return nil, fmt.Errorf("ip is required")
+	}
+
+	// Try single number (ID)
+	var singleID int64
+	if err := json.Unmarshal(wrapper.IP, &singleID); err == nil && singleID > 0 {
+		rec, err := database.IPGuardGetByID(singleID)
+		if err != nil {
+			return nil, fmt.Errorf("ID %d not found", singleID)
+		}
+		return []string{rec.IP}, nil
+	}
+
+	// Try single string (IP or numeric string as ID)
+	var single string
+	if err := json.Unmarshal(wrapper.IP, &single); err == nil && single != "" {
+		ip, err := resolveIPOrID(single)
+		if err != nil {
+			return nil, err
+		}
+		return []string{ip}, nil
+	}
+
+	// Try array of mixed string/number
+	var arr []json.RawMessage
+	if err := json.Unmarshal(wrapper.IP, &arr); err == nil && len(arr) > 0 {
+		var ips []string
+		for _, item := range arr {
+			var id int64
+			if err := json.Unmarshal(item, &id); err == nil && id > 0 {
+				rec, err := database.IPGuardGetByID(id)
+				if err != nil {
+					return nil, fmt.Errorf("ID %d not found", id)
+				}
+				ips = append(ips, rec.IP)
+				continue
+			}
+			var s string
+			if err := json.Unmarshal(item, &s); err == nil && s != "" {
+				ip, err := resolveIPOrID(s)
+				if err != nil {
+					return nil, err
+				}
+				ips = append(ips, ip)
+				continue
+			}
+			return nil, fmt.Errorf("invalid item in ip array")
+		}
+		return ips, nil
+	}
+
+	return nil, fmt.Errorf("ip is required")
+}
+
+// resolveIPOrID resolves a string that can be a numeric ID or an IP address.
+func resolveIPOrID(s string) (string, error) {
+	var id int64
+	if _, err := fmt.Sscanf(s, "%d", &id); err == nil && id > 0 {
+		rec, err := database.IPGuardGetByID(id)
+		if err != nil {
+			return "", fmt.Errorf("ID %d not found", id)
+		}
+		return rec.IP, nil
+	}
+	return s, nil
+}
+
 func handleIPGuardApprove(c *WSConn, raw json.RawMessage) {
 	var p struct {
 		baseReq
-		IP  string `json:"ip"`
-		TTL int64  `json:"ttl"`
+		TTL int64 `json:"ttl"`
 	}
 	json.Unmarshal(raw, &p)
+	ips, err := parseIPs(raw)
+	if err != nil {
+		c.ReplyErr("ip_guard.approve", p.ReqID, err)
+		return
+	}
 	go func() {
-		if p.IP == "" {
-			c.ReplyErr("ip_guard.approve", p.ReqID, fmt.Errorf("ip is required"))
-			return
-		}
-		if err := service.GetFirewallService().Guard().ApproveIP(p.IP, p.TTL); err != nil {
-			c.ReplyErr("ip_guard.approve", p.ReqID, err)
-			return
-		}
-		c.Reply("ip_guard.approve", p.ReqID, map[string]string{"ok": "approved"})
+		guard := service.GetFirewallService().Guard()
+		ok, errs := guard.BatchApproveIPs(ips, p.TTL)
+		c.Reply("ip_guard.approve", p.ReqID, map[string]interface{}{"ok": ok, "errors": errs})
 	}()
 }
 
 func handleIPGuardReject(c *WSConn, raw json.RawMessage) {
-	var p struct {
-		baseReq
-		IP string `json:"ip"`
-	}
+	var p struct{ baseReq }
 	json.Unmarshal(raw, &p)
+	ips, err := parseIPs(raw)
+	if err != nil {
+		c.ReplyErr("ip_guard.reject", p.ReqID, err)
+		return
+	}
 	go func() {
-		if p.IP == "" {
-			c.ReplyErr("ip_guard.reject", p.ReqID, fmt.Errorf("ip is required"))
-			return
-		}
-		if err := service.GetFirewallService().Guard().RejectIP(p.IP); err != nil {
-			c.ReplyErr("ip_guard.reject", p.ReqID, err)
-			return
-		}
-		c.Reply("ip_guard.reject", p.ReqID, map[string]string{"ok": "rejected"})
+		guard := service.GetFirewallService().Guard()
+		ok, errs := guard.BatchRejectIPs(ips)
+		c.Reply("ip_guard.reject", p.ReqID, map[string]interface{}{"ok": ok, "errors": errs})
 	}()
 }
 
 func handleIPGuardRemove(c *WSConn, raw json.RawMessage) {
-	var p struct {
-		baseReq
-		IP string `json:"ip"`
-	}
+	var p struct{ baseReq }
 	json.Unmarshal(raw, &p)
+	ips, err := parseIPs(raw)
+	if err != nil {
+		c.ReplyErr("ip_guard.remove", p.ReqID, err)
+		return
+	}
 	go func() {
-		if p.IP == "" {
-			c.ReplyErr("ip_guard.remove", p.ReqID, fmt.Errorf("ip is required"))
-			return
-		}
-		if err := service.GetFirewallService().Guard().RemoveIP(p.IP); err != nil {
-			c.ReplyErr("ip_guard.remove", p.ReqID, err)
-			return
-		}
-		c.Reply("ip_guard.remove", p.ReqID, map[string]string{"ok": "removed"})
+		guard := service.GetFirewallService().Guard()
+		ok, errs := guard.BatchRemoveIPs(ips)
+		c.Reply("ip_guard.remove", p.ReqID, map[string]interface{}{"ok": ok, "errors": errs})
 	}()
 }
+
+// ==================== CIDR & Config ====================
 
 func handleIPGuardCIDRList(c *WSConn, raw json.RawMessage) {
 	var p struct{ baseReq }

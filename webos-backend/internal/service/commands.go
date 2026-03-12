@@ -705,48 +705,66 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 
 	case "approve":
 		if subArgs == "" {
-			return CommandResult{Text: "用法: /guard approve <IP或ID>", IsError: true}
+			return CommandResult{Text: "用法: /guard approve <IP或ID ...>", IsError: true}
 		}
-		rec, err := resolveIPArg(strings.SplitN(subArgs, " ", 2)[0])
-		if err != nil {
-			return CommandResult{Text: fmt.Sprintf("查找失败: %v", err), IsError: true}
-		}
-		ttl := int64(604800) // default 7 days
+		ttl := int64(604800)
 		if v := database.FWConfigGet("guard_default_ttl"); v != "" {
 			if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
 				ttl = parsed
 			}
 		}
-		if err := guard.ApproveIP(rec.IP, ttl); err != nil {
-			return CommandResult{Text: fmt.Sprintf("放行失败: %v", err), IsError: true}
+		args := strings.Fields(subArgs)
+		var ips []string
+		for _, a := range args {
+			rec, err := resolveIPArg(a)
+			if err != nil {
+				return CommandResult{Text: fmt.Sprintf("查找失败 %s: %v", a, err), IsError: true}
+			}
+			ips = append(ips, rec.IP)
 		}
-		return CommandResult{Text: fmt.Sprintf("✅ 已放行 #%d %s", rec.ID, rec.IP)}
+		ok, errs := guard.BatchApproveIPs(ips, ttl)
+		if len(errs) > 0 {
+			return CommandResult{Text: fmt.Sprintf("放行 %d 个，失败: %s", ok, strings.Join(errs, "; ")), IsError: true}
+		}
+		return CommandResult{Text: fmt.Sprintf("✅ 已放行 %d 个 IP", ok)}
 
 	case "reject":
 		if subArgs == "" {
-			return CommandResult{Text: "用法: /guard reject <IP或ID>", IsError: true}
+			return CommandResult{Text: "用法: /guard reject <IP或ID ...>", IsError: true}
 		}
-		rec, err := resolveIPArg(strings.SplitN(subArgs, " ", 2)[0])
-		if err != nil {
-			return CommandResult{Text: fmt.Sprintf("查找失败: %v", err), IsError: true}
+		args := strings.Fields(subArgs)
+		var ips []string
+		for _, a := range args {
+			rec, err := resolveIPArg(a)
+			if err != nil {
+				return CommandResult{Text: fmt.Sprintf("查找失败 %s: %v", a, err), IsError: true}
+			}
+			ips = append(ips, rec.IP)
 		}
-		if err := guard.RejectIP(rec.IP); err != nil {
-			return CommandResult{Text: fmt.Sprintf("拒绝失败: %v", err), IsError: true}
+		ok, errs := guard.BatchRejectIPs(ips)
+		if len(errs) > 0 {
+			return CommandResult{Text: fmt.Sprintf("拒绝 %d 个，失败: %s", ok, strings.Join(errs, "; ")), IsError: true}
 		}
-		return CommandResult{Text: fmt.Sprintf("✅ 已拒绝 #%d %s", rec.ID, rec.IP)}
+		return CommandResult{Text: fmt.Sprintf("✅ 已拒绝 %d 个 IP", ok)}
 
 	case "remove":
 		if subArgs == "" {
-			return CommandResult{Text: "用法: /guard remove <IP或ID>", IsError: true}
+			return CommandResult{Text: "用法: /guard remove <IP或ID ...>", IsError: true}
 		}
-		rec, err := resolveIPArg(strings.SplitN(subArgs, " ", 2)[0])
-		if err != nil {
-			return CommandResult{Text: fmt.Sprintf("查找失败: %v", err), IsError: true}
+		args := strings.Fields(subArgs)
+		var ips []string
+		for _, a := range args {
+			rec, err := resolveIPArg(a)
+			if err != nil {
+				return CommandResult{Text: fmt.Sprintf("查找失败 %s: %v", a, err), IsError: true}
+			}
+			ips = append(ips, rec.IP)
 		}
-		if err := guard.RemoveIP(rec.IP); err != nil {
-			return CommandResult{Text: fmt.Sprintf("删除失败: %v", err), IsError: true}
+		ok, errs := guard.BatchRemoveIPs(ips)
+		if len(errs) > 0 {
+			return CommandResult{Text: fmt.Sprintf("删除 %d 个，失败: %s", ok, strings.Join(errs, "; ")), IsError: true}
 		}
-		return CommandResult{Text: fmt.Sprintf("✅ 已删除 #%d %s", rec.ID, rec.IP)}
+		return CommandResult{Text: fmt.Sprintf("✅ 已删除 %d 个 IP", ok)}
 
 	case "cidr":
 		return ce.cmdGuardCIDR(subArgs)
