@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react"
 import type { FileInfo, ClipboardState } from "@/types"
 import { fsApi } from "@/lib/storageApi"
-import { request as wsRequest } from "@/stores/webSocketStore"
+import { exec } from "@/lib/services"
 import { useProcessStore } from "@/stores"
 import { useWindowStore } from "@/stores/windowStore"
 import { useSettingsStore } from "@/stores/settingsStore"
@@ -87,7 +87,7 @@ export function useFileActions(ctx: FileActionsContext) {
     const mountName = file.name.replace(/\.iso$/i, '').replace(/[^a-zA-Z0-9_-]/g, '_')
     const mountPoint = `/mnt/iso_${mountName}`
     try {
-      const resp = await wsRequest('exec', { command: `mkdir -p "${mountPoint}" && mount -o loop,ro "${file.path}" "${mountPoint}"` })
+      const resp = await exec(`mkdir -p "${mountPoint}" && mount -o loop,ro "${file.path}" "${mountPoint}"`)
       if (resp.exitCode !== 0) {
         toast({ title: "挂载失败", description: resp.stderr || "无法挂载 ISO", variant: "destructive" }); return
       }

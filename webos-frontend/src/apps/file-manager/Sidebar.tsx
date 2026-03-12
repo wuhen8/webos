@@ -24,8 +24,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useSidebarConfig } from "@/hooks/useSidebarConfig"
 import { getContextMenu } from "@/config/appRegistry"
 import { getStorageNodes } from "@/lib/storageApi"
-import { request as wsRequest } from "@/stores/webSocketStore"
-import { fsService } from "@/lib/services"
+import { exec, fsService } from "@/lib/services"
 import { useWindowStore } from "@/stores/windowStore"
 
 export interface MountedIso {
@@ -560,7 +559,7 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
                       onClick={async (e) => {
                         e.stopPropagation()
                         try {
-                          const resp = await wsRequest('exec', { command: `umount "${iso.mountPoint}" && rmdir "${iso.mountPoint}"` })
+                          const resp = await exec(`umount "${iso.mountPoint}" && rmdir "${iso.mountPoint}"`)
                           if (resp.exitCode !== 0) {
                             toast({ title: "卸载失败", description: resp.stderr || "无法卸载", variant: "destructive" })
                             return
