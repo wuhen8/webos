@@ -65,7 +65,7 @@ func init() {
 		{Name: "job disable", Description: "禁用指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
 		{Name: "job delete", Description: "删除指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
 		{Name: "ai", Description: "AI 自驱动入口：给 AI 发消息触发思考和工具调用，可用于定时任务实现自动巡检、主动提醒等", Category: "chat", CategoryLabel: "💬 对话", CategoryOrder: 10, Args: "<消息内容>"},
-		{Name: "guard", Description: "IP 访问审批：管理 IP 白名单", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "[status|on|off|list|approve <IP或ID>|reject <IP或ID>|remove <IP或ID>|cidr ...]"},
+		{Name: "guard", Description: "IP 访问审批：管理 IP 白名单，支持批量操作（空格分隔多个 IP 或 ID）", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "[status|on|off|list|approve <IP或ID ...>|reject <IP或ID ...>|remove <IP或ID ...>|cidr ...]"},
 	}
 }
 
@@ -771,7 +771,7 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 
 	default:
 		return CommandResult{
-			Text:    "用法: /guard [status|on|off|list|approve <IP或ID>|reject <IP或ID>|remove <IP或ID>|cidr ...]",
+			Text:    "用法: /guard [status|on|off|list|approve <IP或ID ...>|reject <IP或ID ...>|remove <IP或ID ...>|cidr ...]",
 			IsError: true,
 		}
 	}
