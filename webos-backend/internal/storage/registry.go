@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"webos-backend/internal/config"
@@ -33,16 +34,21 @@ func InitDrivers(nodes []StorageNodeDef) error {
 	driverRegistry = make(map[string]Driver)
 	nodeConfigs = make(map[string]map[string]interface{})
 
+	var initErrors []string
 	for _, node := range nodes {
 		driver, err := createDriver(node)
 		if err != nil {
 			fmt.Printf("Warning: failed to init storage node %q (%s): %v\n", node.Name, node.ID, err)
+			initErrors = append(initErrors, fmt.Sprintf("%s: %v", node.ID, err))
 			continue
 		}
 		driverRegistry[node.ID] = driver
 		nodeConfigs[node.ID] = node.Config
 	}
 
+	if len(initErrors) > 0 {
+		return fmt.Errorf("failed to init storage nodes: %s", strings.Join(initErrors, "; "))
+	}
 	return nil
 }
 

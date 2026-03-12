@@ -43,19 +43,50 @@ func ListStorageNodes() ([]StorageNodeResp, error) {
 	return nodes, nil
 }
 
-// AddStorageNode adds a new storage node.
-func AddStorageNode(id, name, typ string, cfg map[string]interface{}) error {
-	if id == "" || name == "" || typ == "" {
-		return fmt.Errorf("id, name, and type are required")
+// AddStorageNode adds a new storage node. The ID is generated automatically
+// using the pattern "{type}_{n}" to avoid conflicts.
+func AddStorageNode(name, typ string, cfg map[string]interface{}) (string, error) {
+	if name == "" || typ == "" {
+		return "", fmt.Errorf("name and type are required")
 	}
+
+	// Generate a unique ID like "s3_1", "s3_2", "local_2", etc.
+	id, err := nextStorageNodeID(typ)
+	if err != nil {
+		return "", err
+	}
+
 	cfgBytes, _ := json.Marshal(cfg)
 	if err := database.InsertStorageNode(database.StorageNodeRow{
 		ID: id, Name: name, Type: typ, Config: string(cfgBytes),
 	}); err != nil {
-		return err
+		return "", err
 	}
-	_ = storage.ReloadDrivers()
-	return nil
+	if err := storage.ReloadDrivers(); err != nil {
+		_ = database.DeleteStorageNode(id)
+		return "", fmt.Errorf("driver init failed: %w", err)
+	}
+	return id, nil
+}
+
+// nextStorageNodeID finds the next available ID for the given type.
+func nextStorageNodeID(typ string) (string, error) {
+	rows, err := database.ListStorageNodes()
+	if err != nil {
+		return "", err
+	}
+	max := 0
+	prefix := typ + "_"
+	for _, r := range rows {
+		if strings.HasPrefix(r.ID, prefix) {
+			numStr := strings.TrimPrefix(r.ID, prefix)
+			var n int
+			if _, err := fmt.Sscanf(numStr, "%d", &n); err == nil && n > max {
+				max = n
+			}
+		}
+	}
+	return fmt.Sprintf("%s%d", prefix, max+1), nil
 }
 
 // UpdateStorageNode updates an existing storage node.
@@ -84,7 +115,9 @@ func UpdateStorageNode(id, name, typ string, cfg map[string]interface{}) error {
 	}); err != nil {
 		return err
 	}
-	_ = storage.ReloadDrivers()
+	if err := storage.ReloadDrivers(); err != nil {
+		return fmt.Errorf("driver reload failed after update: %w", err)
+	}
 	return nil
 }
 
@@ -93,7 +126,9 @@ func DeleteStorageNode(id string) error {
 	if err := database.DeleteStorageNode(id); err != nil {
 		return err
 	}
-	_ = storage.ReloadDrivers()
+	if err := storage.ReloadDrivers(); err != nil {
+		return fmt.Errorf("driver reload failed after delete: %w", err)
+	}
 	return nil
 }
 

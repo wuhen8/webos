@@ -45,10 +45,11 @@ func handleStorageNodeAdd(c *WSConn, raw json.RawMessage) {
 	var p storageNodeReq
 	json.Unmarshal(raw, &p)
 	go func() {
-		if err := service.AddStorageNode(p.ID, p.StName, p.StType, p.StConfig); err != nil {
+		id, err := service.AddStorageNode(p.StName, p.StType, p.StConfig)
+		if err != nil {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
-			c.Reply("settings.storage_node_add", p.ReqID, map[string]string{"id": p.ID})
+			c.Reply("settings.storage_node_add", p.ReqID, map[string]string{"id": id})
 		}
 	}()
 }
