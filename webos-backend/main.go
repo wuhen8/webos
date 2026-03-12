@@ -65,6 +65,9 @@ func main() {
 	// Initialize AI service and executor (requires DB + storage to be ready)
 	handler.InitAI()
 
+	// Register all pubsub channels (must be after services are initialized)
+	service.RegisterChannels()
+
 	// Recover S3 upload sessions from DB before accepting new requests
 	handler.RecoverS3Uploads()
 

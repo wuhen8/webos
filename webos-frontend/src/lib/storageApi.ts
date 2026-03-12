@@ -6,10 +6,6 @@ import type { StorageNodeConfig } from '@/types'
 
 // ==================== Storage Node CRUD ====================
 
-export async function getStorageNodes(): Promise<StorageNodeConfig[]> {
-  return wsRequest('settings.storage_nodes_list', {})
-}
-
 export async function addStorageNode(node: Omit<StorageNodeConfig, 'id'>): Promise<string> {
   const resp = await wsRequest('settings.storage_node_add', {
     stName: node.name,

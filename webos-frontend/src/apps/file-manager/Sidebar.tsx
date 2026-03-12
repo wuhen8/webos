@@ -23,8 +23,8 @@ import type { FileInfo, GlobalMenuState, StorageNodeConfig } from "@/types"
 import { useToast } from "@/hooks/use-toast"
 import { useSidebarConfig } from "@/hooks/useSidebarConfig"
 import { getContextMenu } from "@/config/appRegistry"
-import { getStorageNodes } from "@/lib/storageApi"
-import { exec, fsService } from "@/lib/services"
+import { useWebSocketStore } from "@/stores"
+import { exec } from "@/lib/services"
 import { useWindowStore } from "@/stores/windowStore"
 
 export interface MountedIso {
@@ -35,16 +35,16 @@ export interface MountedIso {
 
 function useMountedIsos() {
   const [isos, setIsos] = useState<MountedIso[]>([])
+  const subscribe = useWebSocketStore((s) => s.subscribe)
   useEffect(() => {
-    const unsub = fsService.watchMounts((mounts: any[]) => {
-      setIsos((mounts || []).map((m: any) => ({
+    return subscribe("sub.mounts", 0, (data: any) => {
+      setIsos((Array.isArray(data) ? data : []).map((m: any) => ({
         name: m.name || m.device,
         mountPoint: m.mountPoint,
         device: m.device,
       })))
     })
-    return unsub
-  }, [])
+  }, [subscribe])
   return isos
 }
 
@@ -99,11 +99,16 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
   const [reorderTo, setReorderTo] = useState<number | null>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
   const [storageNodes, setStorageNodes] = useState<StorageNodeConfig[]>([])
+  const subscribe = useWebSocketStore((s) => s.subscribe)
 
-  // Load storage nodes
+  // Subscribe to storage nodes — gets initial push + live updates on change
   useEffect(() => {
-    getStorageNodes().then(setStorageNodes).catch(() => {})
-  }, [])
+    return subscribe("sub.storage_nodes", 0, (data: any) => {
+      if (Array.isArray(data)) {
+        setStorageNodes(data)
+      }
+    })
+  }, [subscribe])
 
   // 监听添加收藏夹事件
   useEffect(() => {

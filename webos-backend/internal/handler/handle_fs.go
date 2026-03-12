@@ -40,8 +40,6 @@ func init() {
 		"fs.trash_restore":    handleFsTrashRestore,
 		"fs.trash_delete":     handleFsTrashDelete,
 		"fs.trash_empty":      handleFsTrashEmpty,
-		"fs.mount_watch":      handleMountWatch,
-		"fs.mount_unwatch":    handleMountUnwatch,
 	})
 }
 
@@ -674,20 +672,4 @@ func handleFsUnwatch(c *WSConn, raw json.RawMessage) {
 	}
 }
 
-// ==================== Mount watch handlers ====================
 
-func handleMountWatch(c *WSConn, raw json.RawMessage) {
-	if !c.MountWatching {
-		c.MountWatching = true
-		c.MountWatcher.Subscribe(c.ConnID, func(mounts []service.MountInfo) {
-			c.Notify("fs.mount_watch", mounts)
-		})
-	}
-}
-
-func handleMountUnwatch(c *WSConn, raw json.RawMessage) {
-	if c.MountWatching {
-		c.MountWatcher.Unsubscribe(c.ConnID)
-		c.MountWatching = false
-	}
-}

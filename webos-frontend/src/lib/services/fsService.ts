@@ -2,8 +2,6 @@ import { request, notify, registerMessageHandler, registerReconnectHook, registe
 import type { FileInfo } from '@/types'
 
 const fsWatchHandlers = new Map<string, Set<(files: any[]) => void>>()
-const mountWatchHandlers = new Set<(mounts: any[]) => void>()
-let mountWatchActive = false
 
 registerMessageHandler((msg) => {
   if (msg.method === 'fs.watch' && msg.params) {
@@ -14,10 +12,6 @@ registerMessageHandler((msg) => {
     }
     return true
   }
-  if (msg.method === 'fs.mount_watch' && msg.params) {
-    for (const handler of mountWatchHandlers) handler(msg.params)
-    return true
-  }
   return false
 })
 
@@ -26,12 +20,10 @@ registerReconnectHook(() => {
     const [nodeId, ...pathParts] = key.split(':')
     notify('fs.watch', { nodeId, path: pathParts.join(':') })
   }
-  if (mountWatchActive) notify('fs.mount_watch')
 })
 
 registerDisconnectHook(() => {
   fsWatchHandlers.clear()
-  mountWatchActive = false
 })
 
 export const fsService = {
@@ -127,20 +119,6 @@ export const fsService = {
       if (h.size === 0) {
         fsWatchHandlers.delete(key)
         notify('fs.unwatch', { nodeId, path })
-      }
-    }
-  },
-  watchMounts(handler: (mounts: any[]) => void): () => void {
-    mountWatchHandlers.add(handler)
-    if (!mountWatchActive) {
-      mountWatchActive = true
-      notify('fs.mount_watch')
-    }
-    return () => {
-      mountWatchHandlers.delete(handler)
-      if (mountWatchHandlers.size === 0) {
-        mountWatchActive = false
-        notify('fs.mount_unwatch')
       }
     }
   },

@@ -8,23 +8,21 @@ import (
 
 func init() {
 	RegisterHandlers(map[string]Handler{
-		"settings.storage_nodes_list": asyncHandler[struct{ baseReq }]("settings.storage_nodes_list", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
-			return service.ListStorageNodes()
-		}),
+		// Storage node mutations (read via pubsub subscribe "sub.storage_nodes")
 		"settings.storage_node_add":    handleStorageNodeAdd,
 		"settings.storage_node_update": handleStorageNodeUpdate,
 		"settings.storage_node_delete": handleStorageNodeDelete,
+		// Preferences
 		"settings.preferences_get": asyncHandler[struct{ baseReq }]("settings.preferences_get", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return service.GetPreferences()
 		}),
-		"settings.preferences_save":   handlePreferencesSave,
+		"settings.preferences_save":  handlePreferencesSave,
 		"settings.preferences_reset": asyncHandler[struct{ baseReq }]("settings.preferences_reset", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return service.ResetPreferences()
 		}),
-		"settings.sidebar_get": asyncHandler[struct{ baseReq }]("settings.sidebar_get", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
-			return service.GetSidebar()
-		}),
-		"settings.sidebar_save":         handleSidebarSave,
+		// Sidebar mutation (read via pubsub subscribe "sub.sidebar")
+		"settings.sidebar_save": handleSidebarSave,
+		// App overrides
 		"settings.app_overrides_get": asyncHandler[struct{ baseReq }]("settings.app_overrides_get", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return service.GetAppOverrides()
 		}),
@@ -50,6 +48,7 @@ func handleStorageNodeAdd(c *WSConn, raw json.RawMessage) {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
 			c.Reply("settings.storage_node_add", p.ReqID, map[string]string{"id": id})
+			service.NotifyStorageNodesChanged()
 		}
 	}()
 }
@@ -62,6 +61,7 @@ func handleStorageNodeUpdate(c *WSConn, raw json.RawMessage) {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
 			c.Reply("settings.storage_node_update", p.ReqID, nil)
+			service.NotifyStorageNodesChanged()
 		}
 	}()
 }
@@ -77,6 +77,7 @@ func handleStorageNodeDelete(c *WSConn, raw json.RawMessage) {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
 			c.Reply("settings.storage_node_delete", p.ReqID, nil)
+			service.NotifyStorageNodesChanged()
 		}
 	}()
 }
@@ -112,6 +113,7 @@ func handleSidebarSave(c *WSConn, raw json.RawMessage) {
 			c.ReplyErr("error", p.ReqID, err)
 		} else {
 			c.Reply("settings.sidebar_save", p.ReqID, nil)
+			service.NotifySidebarChanged()
 		}
 	}()
 }

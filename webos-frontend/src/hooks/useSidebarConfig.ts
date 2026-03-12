@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { request as wsRequest } from '@/stores/webSocketStore'
+import { useWebSocketStore } from '@/stores'
 
 // 侧边栏项目类型
 export interface SidebarItem {
@@ -79,26 +80,20 @@ export const useSidebarConfig = () => {
     expandedItems: loadExpandedItems(),
   })
   const [isLoading, setIsLoading] = useState(true)
+  const subscribe = useWebSocketStore((s) => s.subscribe)
 
-  // 初始化加载配置
+  // Subscribe to sidebar channel — initial push + live updates on change
   useEffect(() => {
-    const initConfig = async () => {
-      setIsLoading(true)
-      try {
-        const data = await wsRequest('settings.sidebar_get', {})
-        if (Array.isArray(data) && data.length > 0) {
-          setSidebarConfig(prev => ({
-            items: data.map(mapApiItem),
-            expandedItems: prev.expandedItems,
-          }))
-        }
-      } catch (error) {
-        console.error('Failed to load sidebar config:', error)
+    return subscribe("sub.sidebar", 0, (data: any) => {
+      if (Array.isArray(data)) {
+        setSidebarConfig(prev => ({
+          items: data.length > 0 ? data.map(mapApiItem) : DEFAULT_ITEMS,
+          expandedItems: prev.expandedItems,
+        }))
       }
       setIsLoading(false)
-    }
-    initConfig()
-  }, [])
+    })
+  }, [subscribe])
 
   // 保存配置到后端
   const saveSidebarConfig = useCallback(async (config: SidebarConfig) => {

@@ -11,6 +11,7 @@ import (
 
 	"webos-backend/internal/ai"
 	"webos-backend/internal/auth"
+	"webos-backend/internal/pubsub"
 	"webos-backend/internal/service"
 
 	"github.com/gorilla/websocket"
@@ -107,15 +108,14 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 			defer writeMu.Unlock()
 			return conn.WriteJSON(v)
 		},
-		Subs:         make(map[string]*Subscription),
-		TickCh:       make(chan string, 16),
-		Pushing:      make(map[string]bool),
 		Sessions:     make(map[string]*TerminalSession),
 		FileWatcher:  service.GetFileWatcher(),
 		FsWatches:    make(map[string]string),
-		MountWatcher: service.GetMountWatcher(),
 		Cancels:      make(map[string]context.CancelFunc),
 	}
+
+	// Register as a pubsub sink so subscribe/publish can push data to this connection.
+	pubsub.Default.RegisterSink(connID, &wsPubsubSink{conn: wc})
 
 	// Subscribe to background task updates
 	taskUnsub := service.GetTaskManager().Subscribe(connID, func(task service.BackgroundTask) {
@@ -178,12 +178,7 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 		ai.UnregisterClientContext(connID)
 		taskUnsub()
 		service.GetScheduler().Unsubscribe(schedConnID)
-		for k, sub := range wc.Subs {
-			if k == "sub.docker_containers" {
-				dockerSvc.StopStats()
-			}
-			sub.Ticker.Stop()
-		}
+		pubsub.Default.UnregisterSink(connID)
 		for _, sess := range wc.Sessions {
 			sess.Cleanup()
 		}
@@ -193,9 +188,6 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 		}
 		wc.LogSubMu.Unlock()
 		wc.FileWatcher.UnsubscribeAll(connID)
-		if wc.MountWatching {
-			wc.MountWatcher.Unsubscribe(connID)
-		}
 		// Cancel all pending long-running operations
 		wc.CancelMu.Lock()
 		for k, cancel := range wc.Cancels {
@@ -218,8 +210,6 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 					params = json.RawMessage(`{}`)
 				}
 
-				// Extract the JSON-RPC protocol id for response matching.
-				// This is separate from any business "reqId" in params (used for progress notifications).
 				protoID := ""
 				if msg.ID != nil {
 					switch v := msg.ID.(type) {
@@ -230,17 +220,12 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
-				// Always inject the protocol id as reqId so handlers use it for Reply/ReplyErr.
-				// If the client also sent a business reqId in params, preserve it as "progressId"
-				// so handlers can use it for progress notifications.
 				if protoID != "" {
 					var paramsMap map[string]json.RawMessage
 					if json.Unmarshal(params, &paramsMap) == nil {
 						if bizReqID, exists := paramsMap["reqId"]; exists {
-							// Move business reqId to progressId
 							paramsMap["progressId"] = bizReqID
 						}
-						// Set reqId to protocol id (used by Reply/ReplyErr)
 						quotedID, _ := json.Marshal(protoID)
 						paramsMap["reqId"] = quotedID
 						params, _ = json.Marshal(paramsMap)
@@ -258,11 +243,15 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 				}
 				wc.ReplyErr(msg.Method, reqID, fmt.Errorf("unknown method: %s", msg.Method))
 			}
-
-		case ch := <-wc.TickCh:
-			if _, ok := wc.Subs[ch]; ok {
-				go wc.PushData(ch)
-			}
 		}
 	}
+}
+
+// wsPubsubSink adapts a WSConn to the pubsub.Sink interface.
+type wsPubsubSink struct {
+	conn *WSConn
+}
+
+func (s *wsPubsubSink) Push(channel string, data interface{}) {
+	s.conn.Notify(channel, data)
 }

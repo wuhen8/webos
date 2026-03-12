@@ -1,7 +1,10 @@
 package service
 
 import (
-	"sync"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 // MountInfo represents a single mount entry.
@@ -12,95 +15,81 @@ type MountInfo struct {
 	Name       string `json:"name"`
 }
 
-// MountWatchCallback is called when iso9660 mounts change.
-type MountWatchCallback func(mounts []MountInfo)
-
-// MountWatcher monitors mount changes for iso9660 mounts.
-type MountWatcher struct {
-	mu          sync.Mutex
-	subscribers map[string]MountWatchCallback
-	lastMounts  []MountInfo
-	stopCh      chan struct{}
-	running     bool
+// ParseIsoMounts returns currently mounted iso9660 / cd9660 filesystems.
+// Cross-platform: uses the `mount` command available on Linux, macOS, and BSDs.
+func ParseIsoMounts() []MountInfo {
+	out, err := exec.Command("mount").Output()
+	if err != nil {
+		return nil
+	}
+	return parseIsoMountsFromOutput(string(out))
 }
 
-var (
-	mountWatcherOnce     sync.Once
-	mountWatcherInstance *MountWatcher
-)
+// parseIsoMountsFromOutput parses `mount` output.
+// Linux format:  /dev/loop0 on /mnt/iso type iso9660 (ro,relatime)
+// macOS format:  /dev/disk4 on /Volumes/DISC (cd9660, local, nodev, nosuid, read-only)
+func parseIsoMountsFromOutput(output string) []MountInfo {
+	var mounts []MountInfo
+	isoTypes := map[string]bool{"iso9660": true, "cd9660": true, "udf": true}
 
-// GetMountWatcher returns the singleton MountWatcher instance.
-func GetMountWatcher() *MountWatcher {
-	mountWatcherOnce.Do(func() {
-		mountWatcherInstance = &MountWatcher{
-			subscribers: make(map[string]MountWatchCallback),
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
-	})
-	return mountWatcherInstance
-}
 
-// Subscribe registers a callback for mount changes.
-func (mw *MountWatcher) Subscribe(subscriberID string, cb MountWatchCallback) {
-	mw.mu.Lock()
-	defer mw.mu.Unlock()
-
-	mw.subscribers[subscriberID] = cb
-
-	// Start watching if this is the first subscriber
-	if !mw.running {
-		mw.running = true
-		mw.stopCh = make(chan struct{})
-		go mw.pollLoop()
-	}
-
-	// Send current state immediately
-	mounts := parseIsoMounts()
-	mw.lastMounts = mounts
-	go cb(mounts)
-}
-
-// Unsubscribe removes a subscriber.
-func (mw *MountWatcher) Unsubscribe(subscriberID string) {
-	mw.mu.Lock()
-	defer mw.mu.Unlock()
-
-	delete(mw.subscribers, subscriberID)
-
-	// Stop watching if no subscribers remain
-	if len(mw.subscribers) == 0 && mw.running {
-		close(mw.stopCh)
-		mw.running = false
-	}
-}
-
-func (mw *MountWatcher) notifyIfChanged() {
-	mounts := parseIsoMounts()
-
-	mw.mu.Lock()
-	if mountsEqual(mw.lastMounts, mounts) {
-		mw.mu.Unlock()
-		return
-	}
-	mw.lastMounts = mounts
-	cbs := make([]MountWatchCallback, 0, len(mw.subscribers))
-	for _, cb := range mw.subscribers {
-		cbs = append(cbs, cb)
-	}
-	mw.mu.Unlock()
-
-	for _, cb := range cbs {
-		cb(mounts)
-	}
-}
-
-func mountsEqual(a, b []MountInfo) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i].Device != b[i].Device || a[i].MountPoint != b[i].MountPoint {
-			return false
+		// Split on " on " to get device and rest
+		onIdx := strings.Index(line, " on ")
+		if onIdx < 0 {
+			continue
 		}
+		device := line[:onIdx]
+		rest := line[onIdx+4:]
+
+		var mountPoint, fsType string
+
+		if runtime.GOOS == "linux" {
+			// Linux: /mnt/iso type iso9660 (ro,relatime)
+			typeIdx := strings.Index(rest, " type ")
+			if typeIdx < 0 {
+				continue
+			}
+			mountPoint = rest[:typeIdx]
+			afterType := rest[typeIdx+6:]
+			spIdx := strings.IndexByte(afterType, ' ')
+			if spIdx < 0 {
+				fsType = afterType
+			} else {
+				fsType = afterType[:spIdx]
+			}
+		} else {
+			// macOS/BSD: /Volumes/DISC (cd9660, local, nodev, ...)
+			parenIdx := strings.LastIndex(rest, "(")
+			if parenIdx < 0 {
+				continue
+			}
+			mountPoint = strings.TrimSpace(rest[:parenIdx])
+			opts := rest[parenIdx+1:]
+			opts = strings.TrimSuffix(opts, ")")
+			parts := strings.SplitN(opts, ",", 2)
+			fsType = strings.TrimSpace(parts[0])
+		}
+
+		if !isoTypes[fsType] {
+			continue
+		}
+
+		name := filepath.Base(device)
+		if name == "." || name == "/" {
+			name = device
+		}
+
+		mounts = append(mounts, MountInfo{
+			Device:     device,
+			MountPoint: mountPoint,
+			FsType:     fsType,
+			Name:       name,
+		})
 	}
-	return true
+	return mounts
 }

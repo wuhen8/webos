@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { Settings, Plus, Trash2 } from "lucide-react"
-import { getStorageNodes, addStorageNode, updateStorageNode, deleteStorageNode } from "@/lib/storageApi"
+import { addStorageNode, updateStorageNode, deleteStorageNode } from "@/lib/storageApi"
 import type { StorageNodeConfig } from "@/types"
 import { SettingsIcon } from "./SettingsIcon"
+import { useWebSocketStore } from "@/stores"
 
 export default function StorageTab() {
   const [storageNodes, setStorageNodes] = useState<StorageNodeConfig[]>([])
-  const [storageLoading, setStorageLoading] = useState(false)
+  const [storageLoading, setStorageLoading] = useState(true)
+  const subscribe = useWebSocketStore((s) => s.subscribe)
   const [storageShowAdd, setStorageShowAdd] = useState(false)
   const [storageEditId, setStorageEditId] = useState<string | null>(null)
   const [storageForm, setStorageForm] = useState({
@@ -28,14 +30,15 @@ export default function StorageTab() {
     setStorageShowAdd(false)
   }
 
-  const loadStorageNodes = useCallback(async () => {
-    setStorageLoading(true)
-    try {
-      const nodes = await getStorageNodes()
-      setStorageNodes(nodes)
-    } catch {}
-    setStorageLoading(false)
-  }, [])
+  // Subscribe to storage nodes — initial push + live updates
+  useEffect(() => {
+    return subscribe("sub.storage_nodes", 0, (data: any) => {
+      if (Array.isArray(data)) {
+        setStorageNodes(data)
+        setStorageLoading(false)
+      }
+    })
+  }, [subscribe])
 
   const handleSaveStorageNode = async () => {
     const config: Record<string, any> = storageForm.type === "s3"
@@ -55,14 +58,12 @@ export default function StorageTab() {
         await addStorageNode(node)
       }
       resetStorageForm()
-      loadStorageNodes()
     } catch {}
   }
 
   const handleDeleteStorageNode = async (id: string) => {
     try {
       await deleteStorageNode(id)
-      loadStorageNodes()
     } catch {}
   }
 
@@ -82,10 +83,6 @@ export default function StorageTab() {
     })
     setStorageShowAdd(true)
   }
-
-  useEffect(() => {
-    loadStorageNodes()
-  }, [loadStorageNodes])
 
   return (
     <div className="max-w-2xl mx-auto">
