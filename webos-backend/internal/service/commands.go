@@ -714,15 +714,15 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 			}
 		}
 		args := strings.Fields(subArgs)
-		var ips []string
+		var ids []int64
 		for _, a := range args {
 			rec, err := resolveIPArg(a)
 			if err != nil {
 				return CommandResult{Text: fmt.Sprintf("查找失败 %s: %v", a, err), IsError: true}
 			}
-			ips = append(ips, rec.IP)
+			ids = append(ids, rec.ID)
 		}
-		ok, errs := guard.BatchApproveIPs(ips, ttl)
+		ok, errs := guard.BatchApproveIPs(ids, ttl)
 		if len(errs) > 0 {
 			return CommandResult{Text: fmt.Sprintf("放行 %d 个，失败: %s", ok, strings.Join(errs, "; ")), IsError: true}
 		}
@@ -733,15 +733,15 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 			return CommandResult{Text: "用法: /guard reject <IP或ID ...>", IsError: true}
 		}
 		args := strings.Fields(subArgs)
-		var ips []string
+		var ids []int64
 		for _, a := range args {
 			rec, err := resolveIPArg(a)
 			if err != nil {
 				return CommandResult{Text: fmt.Sprintf("查找失败 %s: %v", a, err), IsError: true}
 			}
-			ips = append(ips, rec.IP)
+			ids = append(ids, rec.ID)
 		}
-		ok, errs := guard.BatchRejectIPs(ips)
+		ok, errs := guard.BatchRejectIPs(ids)
 		if len(errs) > 0 {
 			return CommandResult{Text: fmt.Sprintf("拒绝 %d 个，失败: %s", ok, strings.Join(errs, "; ")), IsError: true}
 		}
@@ -752,15 +752,15 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 			return CommandResult{Text: "用法: /guard remove <IP或ID ...>", IsError: true}
 		}
 		args := strings.Fields(subArgs)
-		var ips []string
+		var removeIDs []int64
 		for _, a := range args {
 			rec, err := resolveIPArg(a)
 			if err != nil {
 				return CommandResult{Text: fmt.Sprintf("查找失败 %s: %v", a, err), IsError: true}
 			}
-			ips = append(ips, rec.IP)
+			removeIDs = append(removeIDs, rec.ID)
 		}
-		ok, errs := guard.BatchRemoveIPs(ips)
+		ok, errs := guard.BatchRemoveIPs(removeIDs)
 		if len(errs) > 0 {
 			return CommandResult{Text: fmt.Sprintf("删除 %d 个，失败: %s", ok, strings.Join(errs, "; ")), IsError: true}
 		}
@@ -777,17 +777,9 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 	}
 }
 
-// resolveIPArg resolves an argument that can be either a numeric ID or an IP address string.
+// resolveIPArg resolves a CLI argument via the service layer.
 func resolveIPArg(arg string) (*database.IPRecord, error) {
-	// If it contains '.' or ':' it's an IP address, not a numeric ID
-	if strings.Contains(arg, ".") || strings.Contains(arg, ":") {
-		return database.IPGuardGetByIP(arg)
-	}
-	var id int64
-	if _, err := fmt.Sscanf(arg, "%d", &id); err == nil && id > 0 {
-		return database.IPGuardGetByID(id)
-	}
-	return database.IPGuardGetByIP(arg)
+	return GetFirewallService().Guard().ResolveIPArg(arg)
 }
 
 func (ce *CommandExecutor) cmdGuardCIDR(args string) CommandResult {

@@ -145,38 +145,58 @@ func (s *IPGuardService) IsEnabled() bool {
 	return s.enabled
 }
 
-// ApproveIP approves an IP and adds firewall rule.
-func (s *IPGuardService) ApproveIP(ip string, ttlSeconds int64) error {
-	if err := database.IPGuardApprove(ip, ttlSeconds); err != nil {
-		return err
-	}
-	rec, err := database.IPGuardGetByIP(ip)
+// ApproveIP approves an IP by record ID and adds firewall rule.
+func (s *IPGuardService) ApproveIP(id int64, ttlSeconds int64) error {
+	rec, err := database.IPGuardGetByID(id)
 	if err != nil {
+		return fmt.Errorf("ID %d not found", id)
+	}
+	if err := database.IPGuardApprove(rec.IP, ttlSeconds); err != nil {
 		return err
 	}
-	return s.fw.AllowIP(ip, s.port, rec.Location)
+	return s.fw.AllowIP(rec.IP, s.port, rec.Location)
 }
 
-// RejectIP rejects an IP.
-func (s *IPGuardService) RejectIP(ip string) error {
-	return database.IPGuardReject(ip)
+// ResolveIPArg resolves a CLI argument (IP string or numeric ID) to a record.
+func (s *IPGuardService) ResolveIPArg(arg string) (*database.IPRecord, error) {
+	if strings.Contains(arg, ".") || strings.Contains(arg, ":") {
+		return database.IPGuardGetByIP(arg)
+	}
+	var id int64
+	if _, err := fmt.Sscanf(arg, "%d", &id); err == nil && id > 0 {
+		return database.IPGuardGetByID(id)
+	}
+	return database.IPGuardGetByIP(arg)
 }
 
-// RemoveIP removes an IP from both DB and firewall.
-func (s *IPGuardService) RemoveIP(ip string) error {
-	if err := database.IPGuardRemove(ip); err != nil {
+// RejectIP rejects an IP by record ID.
+func (s *IPGuardService) RejectIP(id int64) error {
+	rec, err := database.IPGuardGetByID(id)
+	if err != nil {
+		return fmt.Errorf("ID %d not found", id)
+	}
+	return database.IPGuardReject(rec.IP)
+}
+
+// RemoveIP removes an IP from both DB and firewall by record ID.
+func (s *IPGuardService) RemoveIP(id int64) error {
+	rec, err := database.IPGuardGetByID(id)
+	if err != nil {
+		return fmt.Errorf("ID %d not found", id)
+	}
+	if err := database.IPGuardRemove(rec.IP); err != nil {
 		return err
 	}
-	return s.fw.RemoveIP(ip, s.port)
+	return s.fw.RemoveIP(rec.IP, s.port)
 }
 
-// BatchApproveIPs approves multiple IPs at once.
-func (s *IPGuardService) BatchApproveIPs(ips []string, ttlSeconds int64) (int, []string) {
+// BatchApproveIPs approves multiple IPs by record IDs.
+func (s *IPGuardService) BatchApproveIPs(ids []int64, ttlSeconds int64) (int, []string) {
 	var errs []string
 	ok := 0
-	for _, ip := range ips {
-		if err := s.ApproveIP(ip, ttlSeconds); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", ip, err))
+	for _, id := range ids {
+		if err := s.ApproveIP(id, ttlSeconds); err != nil {
+			errs = append(errs, fmt.Sprintf("#%d: %v", id, err))
 		} else {
 			ok++
 		}
@@ -184,13 +204,13 @@ func (s *IPGuardService) BatchApproveIPs(ips []string, ttlSeconds int64) (int, [
 	return ok, errs
 }
 
-// BatchRejectIPs rejects multiple IPs at once.
-func (s *IPGuardService) BatchRejectIPs(ips []string) (int, []string) {
+// BatchRejectIPs rejects multiple IPs by record IDs.
+func (s *IPGuardService) BatchRejectIPs(ids []int64) (int, []string) {
 	var errs []string
 	ok := 0
-	for _, ip := range ips {
-		if err := s.RejectIP(ip); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", ip, err))
+	for _, id := range ids {
+		if err := s.RejectIP(id); err != nil {
+			errs = append(errs, fmt.Sprintf("#%d: %v", id, err))
 		} else {
 			ok++
 		}
@@ -198,13 +218,13 @@ func (s *IPGuardService) BatchRejectIPs(ips []string) (int, []string) {
 	return ok, errs
 }
 
-// BatchRemoveIPs removes multiple IPs at once.
-func (s *IPGuardService) BatchRemoveIPs(ips []string) (int, []string) {
+// BatchRemoveIPs removes multiple IPs by record IDs.
+func (s *IPGuardService) BatchRemoveIPs(ids []int64) (int, []string) {
 	var errs []string
 	ok := 0
-	for _, ip := range ips {
-		if err := s.RemoveIP(ip); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", ip, err))
+	for _, id := range ids {
+		if err := s.RemoveIP(id); err != nil {
+			errs = append(errs, fmt.Sprintf("#%d: %v", id, err))
 		} else {
 			ok++
 		}

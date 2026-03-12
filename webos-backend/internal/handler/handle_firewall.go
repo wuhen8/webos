@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 
-	"webos-backend/internal/database"
 	"webos-backend/internal/service"
 )
 
@@ -167,13 +166,7 @@ func handleIPGuardApprove(c *WSConn, raw json.RawMessage) {
 		return
 	}
 	go func() {
-		rec, err := database.IPGuardGetByID(p.ID)
-		if err != nil {
-			c.ReplyErr("ip_guard.approve", p.ReqID, fmt.Errorf("ID %d not found", p.ID))
-			return
-		}
-		guard := service.GetFirewallService().Guard()
-		if err := guard.ApproveIP(rec.IP, p.TTL); err != nil {
+		if err := service.GetFirewallService().Guard().ApproveIP(p.ID, p.TTL); err != nil {
 			c.ReplyErr("ip_guard.approve", p.ReqID, err)
 			return
 		}
@@ -192,13 +185,7 @@ func handleIPGuardReject(c *WSConn, raw json.RawMessage) {
 		return
 	}
 	go func() {
-		rec, err := database.IPGuardGetByID(p.ID)
-		if err != nil {
-			c.ReplyErr("ip_guard.reject", p.ReqID, fmt.Errorf("ID %d not found", p.ID))
-			return
-		}
-		guard := service.GetFirewallService().Guard()
-		if err := guard.RejectIP(rec.IP); err != nil {
+		if err := service.GetFirewallService().Guard().RejectIP(p.ID); err != nil {
 			c.ReplyErr("ip_guard.reject", p.ReqID, err)
 			return
 		}
@@ -217,13 +204,7 @@ func handleIPGuardRemove(c *WSConn, raw json.RawMessage) {
 		return
 	}
 	go func() {
-		rec, err := database.IPGuardGetByID(p.ID)
-		if err != nil {
-			c.ReplyErr("ip_guard.remove", p.ReqID, fmt.Errorf("ID %d not found", p.ID))
-			return
-		}
-		guard := service.GetFirewallService().Guard()
-		if err := guard.RemoveIP(rec.IP); err != nil {
+		if err := service.GetFirewallService().Guard().RemoveIP(p.ID); err != nil {
 			c.ReplyErr("ip_guard.remove", p.ReqID, err)
 			return
 		}
