@@ -10,7 +10,6 @@ export default function StorageTab() {
   const [storageShowAdd, setStorageShowAdd] = useState(false)
   const [storageEditId, setStorageEditId] = useState<string | null>(null)
   const [storageForm, setStorageForm] = useState({
-    id: "",
     name: "",
     type: "s3" as "local" | "s3",
     endpoint: "",
@@ -24,7 +23,7 @@ export default function StorageTab() {
   })
 
   const resetStorageForm = () => {
-    setStorageForm({ id: "", name: "", type: "s3", endpoint: "", bucket: "", region: "", accessKey: "", secretKey: "", useSSL: true, path: "", externalHost: "" })
+    setStorageForm({ name: "", type: "s3", endpoint: "", bucket: "", region: "", accessKey: "", secretKey: "", useSSL: true, path: "", externalHost: "" })
     setStorageEditId(null)
     setStorageShowAdd(false)
   }
@@ -43,8 +42,7 @@ export default function StorageTab() {
       ? { endpoint: storageForm.endpoint, bucket: storageForm.bucket, region: storageForm.region, accessKey: storageForm.accessKey, secretKey: storageForm.secretKey, useSSL: storageForm.useSSL, externalHost: storageForm.externalHost }
       : { externalHost: storageForm.externalHost }
 
-    const node: StorageNodeConfig = {
-      id: storageForm.id,
+    const node: Omit<StorageNodeConfig, 'id'> & { id?: string } = {
       name: storageForm.name,
       type: storageForm.type,
       config,
@@ -71,7 +69,6 @@ export default function StorageTab() {
   const handleEditStorageNode = (node: StorageNodeConfig) => {
     setStorageEditId(node.id)
     setStorageForm({
-      id: node.id,
       name: node.name,
       type: node.type as "local" | "s3",
       endpoint: node.config?.endpoint || "",
@@ -155,18 +152,6 @@ export default function StorageTab() {
                 S3 对象存储
               </button>
             </div>
-
-            {!storageEditId && (
-              <div>
-                <label className="block text-[0.75rem] text-gray-500 mb-1">节点 ID</label>
-                <input
-                  value={storageForm.id}
-                  onChange={e => setStorageForm(f => ({ ...f, id: e.target.value }))}
-                  placeholder="如 s3_1"
-                  className="w-full h-8 px-3 rounded-lg border border-gray-200 text-[0.8125rem] focus:outline-none focus:ring-1 focus:ring-blue-500/40"
-                />
-              </div>
-            )}
 
             <div>
               <label className="block text-[0.75rem] text-gray-500 mb-1">名称</label>
@@ -262,7 +247,7 @@ export default function StorageTab() {
               </button>
               <button
                 onClick={handleSaveStorageNode}
-                disabled={!storageForm.name || (!storageEditId && !storageForm.id)}
+                disabled={!storageForm.name}
                 className="px-4 py-1.5 rounded-lg text-[0.8125rem] font-medium text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {storageEditId ? '保存' : '添加'}

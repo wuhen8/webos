@@ -10,13 +10,13 @@ export async function getStorageNodes(): Promise<StorageNodeConfig[]> {
   return wsRequest('settings.storage_nodes_list', {})
 }
 
-export async function addStorageNode(node: StorageNodeConfig): Promise<void> {
-  await wsRequest('settings.storage_node_add', {
-    id: node.id,
+export async function addStorageNode(node: Omit<StorageNodeConfig, 'id'>): Promise<string> {
+  const resp = await wsRequest('settings.storage_node_add', {
     stName: node.name,
     stType: node.type,
     stConfig: node.config,
   })
+  return (resp as any)?.id ?? ''
 }
 
 export async function updateStorageNode(id: string, node: Partial<StorageNodeConfig>): Promise<void> {
