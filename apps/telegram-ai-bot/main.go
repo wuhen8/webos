@@ -40,6 +40,12 @@ func ensureInit() {
 		logMsg("Telegram AI Bot 初始化完成 (token=...%s, 自动注册模式：首个发消息的用户将被自动授权)" + token[len(token)-4:])
 	} else {
 		logMsg(fmt.Sprintf("Telegram AI Bot 初始化完成 (token=...%s, 授权用户=%d个)", token[len(token)-4:], len(allowedChatIDs)))
+		// 自动设置 activeChatID 为第一个授权用户
+		for cid := range allowedChatIDs {
+			activeChatID = cid
+			logMsg(fmt.Sprintf("自动设置活跃 chat: %d", cid))
+			break
+		}
 	}
 
 	request("client_context.register", map[string]interface{}{

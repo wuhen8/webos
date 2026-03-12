@@ -77,6 +77,12 @@ func ensureInit() {
 		logMsg("自动注册模式：首个发消息的用户将被自动授权")
 	} else {
 		logMsg(fmt.Sprintf("授权用户: %d 个", len(allowedUserIDs)))
+		// 自动设置 activeUserID 为第一个授权用户
+		for uid := range allowedUserIDs {
+			activeUserID = uid
+			logMsg(fmt.Sprintf("自动设置活跃用户: %s", uid))
+			break
+		}
 	}
 
 	// 注册客户端上下文
