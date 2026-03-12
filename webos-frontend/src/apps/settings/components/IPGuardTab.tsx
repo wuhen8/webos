@@ -32,14 +32,14 @@ export default function IPGuardTab() {
     try { setCidrs(await request("ip_guard.cidr_list", {}) || []) } catch {}
   }, [])
 
-  const approveIP = async (ip: string) => {
-    try { await request("ip_guard.approve", { ip, ttl: defaultTTL > 0 ? defaultTTL : 0 }); loadRecords() } catch {}
+  const approveIP = async (id: number) => {
+    try { await request("ip_guard.approve", { id, ttl: defaultTTL > 0 ? defaultTTL : 0 }); loadRecords() } catch (e: any) { alert(e?.message || "放行失败") }
   }
-  const rejectIP = async (ip: string) => {
-    try { await request("ip_guard.reject", { ip }); loadRecords() } catch {}
+  const rejectIP = async (id: number) => {
+    try { await request("ip_guard.reject", { id }); loadRecords() } catch (e: any) { alert(e?.message || "拒绝失败") }
   }
-  const removeIP = async (ip: string) => {
-    try { await request("ip_guard.remove", { ip }); loadRecords() } catch {}
+  const removeIP = async (id: number) => {
+    try { await request("ip_guard.remove", { id }); loadRecords() } catch (e: any) { alert(e?.message || "删除失败") }
   }
   const addCIDR = async () => {
     if (!newCIDR.trim()) return
@@ -218,8 +218,8 @@ export default function IPGuardTab() {
                   <span className="text-[0.6875rem] text-gray-400">{formatTime(r.createdAt)}</span>
                 </div>
                 <div className="flex items-center gap-1.5 ml-3">
-                  <button onClick={() => approveIP(r.ip)} className="flex items-center gap-1 px-2.5 py-1 text-[0.6875rem] font-medium bg-green-500 hover:bg-green-600 text-white rounded-md transition-colors"><Check className="w-3 h-3" />放行</button>
-                  <button onClick={() => rejectIP(r.ip)} className="flex items-center gap-1 px-2.5 py-1 text-[0.6875rem] font-medium bg-red-500 hover:bg-red-600 text-white rounded-md transition-colors"><X className="w-3 h-3" />拒绝</button>
+                  <button onClick={() => approveIP(r.id)} className="flex items-center gap-1 px-2.5 py-1 text-[0.6875rem] font-medium bg-green-500 hover:bg-green-600 text-white rounded-md transition-colors"><Check className="w-3 h-3" />放行</button>
+                  <button onClick={() => rejectIP(r.id)} className="flex items-center gap-1 px-2.5 py-1 text-[0.6875rem] font-medium bg-red-500 hover:bg-red-600 text-white rounded-md transition-colors"><X className="w-3 h-3" />拒绝</button>
                 </div>
               </div>
             ))}
@@ -242,7 +242,7 @@ export default function IPGuardTab() {
                 </div>
                 <div className="flex items-center gap-2 ml-3">
                   <span className="text-[0.6875rem] text-gray-400"><Clock className="w-3 h-3 inline mr-0.5" />{formatExpiry(r.expiresAt)}</span>
-                  <button onClick={() => removeIP(r.ip)} className="p-1 hover:bg-red-50 rounded transition-colors" title="移除"><Trash2 className="w-3.5 h-3.5 text-red-400 hover:text-red-600" /></button>
+                  <button onClick={() => removeIP(r.id)} className="p-1 hover:bg-red-50 rounded transition-colors" title="移除"><Trash2 className="w-3.5 h-3.5 text-red-400 hover:text-red-600" /></button>
                 </div>
               </div>
             ))}
@@ -264,8 +264,8 @@ export default function IPGuardTab() {
                   {r.location && <span className="flex items-center gap-0.5 text-[0.6875rem] text-gray-400"><MapPin className="w-3 h-3" />{r.location}</span>}
                 </div>
                 <div className="flex items-center gap-1.5 ml-3">
-                  <button onClick={() => approveIP(r.ip)} className="px-2 py-0.5 text-[0.6875rem] text-green-600 hover:bg-green-50 rounded transition-colors">放行</button>
-                  <button onClick={() => removeIP(r.ip)} className="p-1 hover:bg-red-50 rounded transition-colors" title="删除记录"><Trash2 className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" /></button>
+                  <button onClick={() => approveIP(r.id)} className="px-2 py-0.5 text-[0.6875rem] text-green-600 hover:bg-green-50 rounded transition-colors">放行</button>
+                  <button onClick={() => removeIP(r.id)} className="p-1 hover:bg-red-50 rounded transition-colors" title="删除记录"><Trash2 className="w-3.5 h-3.5 text-gray-400 hover:text-red-500" /></button>
                 </div>
               </div>
             ))}

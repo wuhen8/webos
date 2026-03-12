@@ -779,6 +779,10 @@ func (ce *CommandExecutor) cmdGuard(args string) CommandResult {
 
 // resolveIPArg resolves an argument that can be either a numeric ID or an IP address string.
 func resolveIPArg(arg string) (*database.IPRecord, error) {
+	// If it contains '.' or ':' it's an IP address, not a numeric ID
+	if strings.Contains(arg, ".") || strings.Contains(arg, ":") {
+		return database.IPGuardGetByIP(arg)
+	}
 	var id int64
 	if _, err := fmt.Sscanf(arg, "%d", &id); err == nil && id > 0 {
 		return database.IPGuardGetByID(id)
