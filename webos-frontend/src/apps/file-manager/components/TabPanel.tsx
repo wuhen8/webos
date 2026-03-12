@@ -167,11 +167,11 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
     }
   }, [activeNodeId, windowId, tabIndex, updateFmTabState])
 
-  // On path change: restore from cache or load fresh
+  // On path or node change: restore from cache or load fresh
   useEffect(() => {
     const [cached, touchedCache] = getPathCache(pathCacheRef.current, currentPath)
-    if (cached) {
-      // Cache hit: render immediately, then silent refresh
+    if (cached && activeNodeId === (cached.files?.[0]?.nodeId ?? activeNodeId)) {
+      // Cache hit (same node): render immediately, then silent refresh
       setFiles(cached.files)
       filesRef.current = cached.files
       pendingScrollRef.current = cached.scrollTop
@@ -179,13 +179,13 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
       updateFmTabState(windowId, tabIndex, { pathCache: touchedCache })
       loadFilesSilent(currentPath)
     } else {
-      // Cache miss: clear and load with loading state
+      // Cache miss or node changed: clear and load with loading state
       setFiles([])
       filesRef.current = []
       pendingScrollRef.current = null
       loadFiles(currentPath)
     }
-  }, [currentPath]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentPath, activeNodeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Restore scroll position after files render
   useEffect(() => {
