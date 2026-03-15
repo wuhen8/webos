@@ -1,3 +1,6 @@
+# Private files
+catalog.json
+
 webos-backend/release
 webos-backend/dist
 webos-backend/webos-backend

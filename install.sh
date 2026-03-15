@@ -28,7 +28,7 @@ SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 
 # 下载基础地址 (latest 始终指向最新版本)
 # 最终下载链接 = ${DOWNLOAD_BASE_URL}/webos-linux-${ARCH}
-DOWNLOAD_BASE_URL="https://gitea.com/admin/webos/releases/download/latest"
+DOWNLOAD_BASE_URL="https://github.com/wuhen8/webos/releases/latest/download"
 
 # ---------- 前置检查 ----------
 check_root() {
