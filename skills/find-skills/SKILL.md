@@ -31,7 +31,7 @@ The Skillhub CLI is the package manager for the Skillhub skills ecosystem. Skill
 
 ## For WebOS Users
 
-In WebOS, skills are installed to `/opt/webos/skills/`. Use these commands:
+In WebOS, skills are installed to `{{DATA_DIR}}/skills/`. Use these commands:
 
 ### Search Skills
 ```bash
@@ -42,23 +42,23 @@ python3 /root/.skillhub/skills_store_cli.py search calendar
 ### Install Skill (WebOS-specific)
 ```bash
 python3 /root/.skillhub/skills_store_cli.py \
-  --dir /opt/webos/skills \
+  --dir {{DATA_DIR}}/skills \
   install <skill-slug>
 ```
-**Important:** Must use `--dir /opt/webos/skills` to install to WebOS directory.
+**Important:** Must use `--dir {{DATA_DIR}}/skills` to install to WebOS directory.
 
 ### List Installed Skills
 ```bash
-python3 /root/.skillhub/skills_store_cli.py --dir /opt/webos/skills list
+python3 /root/.skillhub/skills_store_cli.py --dir {{DATA_DIR}}/skills list
 ```
 
 ### Upgrade Skills
 ```bash
 # Upgrade all
-python3 /root/.skillhub/skills_store_cli.py --dir /opt/webos/skills upgrade
+python3 /root/.skillhub/skills_store_cli.py --dir {{DATA_DIR}}/skills upgrade
 
 # Upgrade specific skill
-python3 /root/.skillhub/skills_store_cli.py --dir /opt/webos/skills upgrade <slug>
+python3 /root/.skillhub/skills_store_cli.py --dir {{DATA_DIR}}/skills upgrade <slug>
 ```
 
 ## How to Help Users Find Skills
@@ -107,7 +107,7 @@ Then activate with `activate_skill ws-calendar`.
 
 ## Notes
 
-- Install location: `/opt/webos/skills/`
+- Install location: `{{DATA_DIR}}/skills/`
 - Index file: `/root/.skillhub/skills_index.local.json`
 - CLI location: `/root/.skillhub/skills_store_cli.py`
 - Some skills may require external dependencies (e.g., `gcalcli-calendar` needs `gcalcli` installed)
