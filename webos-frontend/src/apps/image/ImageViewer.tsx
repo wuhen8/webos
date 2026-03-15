@@ -58,15 +58,32 @@ export default function ImageViewer({ windowId }: ImageViewerProps) {
 
   const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s))
 
-  const resetView = useCallback(() => {
-    setEnableTransition(true)
-    setScale(1)
-    setRotation(0)
+  const fitToWindow = useCallback(() => {
+    const container = containerRef.current
+    const img = imgRef.current
+    if (!container || !img || !img.naturalWidth || !img.naturalHeight) return
+
+    const containerRect = container.getBoundingClientRect()
+    const padding = 40 // Leave some padding
+    const availWidth = containerRect.width - padding
+    const availHeight = containerRect.height - padding
+
+    const scaleX = availWidth / img.naturalWidth
+    const scaleY = availHeight / img.naturalHeight
+    const fitScale = Math.min(scaleX, scaleY, 1) // Don't scale up beyond 100%
+
+    setScale(fitScale)
     setPosition({ x: 0, y: 0 })
-    setFlipH(false)
-    setFlipV(false)
     setIsFitted(true)
   }, [])
+
+  const resetView = useCallback(() => {
+    setEnableTransition(true)
+    setRotation(0)
+    setFlipH(false)
+    setFlipV(false)
+    fitToWindow()
+  }, [fitToWindow])
 
   const resetToolbarTimer = useCallback(() => {
     setShowToolbar(true)
@@ -346,7 +363,12 @@ export default function ImageViewer({ windowId }: ImageViewerProps) {
               transition: enableTransition ? 'transform 0.2s ease' : 'none',
               visibility: imageLoaded ? 'visible' : 'hidden',
             }}
-            onLoad={() => setImageLoaded(true)}
+            onLoad={() => {
+              setImageLoaded(true)
+              if (isFitted) {
+                fitToWindow()
+              }
+            }}
             onError={() => setError(true)}
           />
         </div>
