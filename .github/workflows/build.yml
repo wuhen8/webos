@@ -78,7 +78,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          go build -ldflags "-s -w -X webos-backend/internal/handler.Version=${VERSION}" -o ../webos-${{ matrix.suffix }}${{ matrix.ext }} .
+          go build -ldflags "-s -w -X webos-backend/internal/service.Version=${VERSION}" -o ../webos-${{ matrix.suffix }}${{ matrix.ext }} .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -30,7 +30,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourorg/webos.git
+git clone https://github.com/wuhen8/webos.git
 cd webos
 
 # 启动服务
@@ -58,7 +58,7 @@ docker run -d \
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourorg/webos.git
+git clone https://github.com/wuhen8/webos.git
 cd webos
 
 # 构建镜像
