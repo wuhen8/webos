@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+.gitea
+.github
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# IDE
+.idea
+.vscode
+.claude
+.kiro
+
+# Node
+node_modules/
+**/node_modules/
+**/dist/
+**/.vite/
+
+# Go
+**/release/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Build artifacts
+webos
+webos-backend/webos
+webos-backend/dist/
+
+# Test files
+**/*_test.go
+**/*.test.ts
+**/*.spec.ts
+**/coverage/
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+.env
+.env.*
+!.env.example

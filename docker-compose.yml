@@ -1,0 +1,54 @@
+services:
+  webos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wuhen8/webos:latest
+    container_name: webos
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Docker socket (用于容器管理)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # 数据持久化
+      - webos-data:/data
+      # 可选: 挂载本地目录作为存储
+      # - ./data:/data
+    environment:
+      - TZ=Asia/Shanghai
+      - WEBOS_DATA_DIR=/data
+      # JWT 密钥 (生产环境请修改)
+      - WEBOS_JWT_SECRET=your-secret-key-change-in-production
+      # 调试模式 (生产环境设为 false)
+      - GIN_MODE=release
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - webos-network
+    labels:
+      - "com.webos.description=WebOS - Web-based Operating System"
+
+  # Sandbox 容器 (用于运行不信任代码)
+  webos-sandbox:
+    build:
+      context: ./webos-backend
+      dockerfile: sandbox.Dockerfile
+    image: webos-sandbox:latest
+    container_name: webos-sandbox
+    restart: unless-stopped
+    command: sleep infinity
+    networks:
+      - webos-network
+
+volumes:
+  webos-data:
+    driver: local
+
+networks:
+  webos-network:
+    driver: bridge
