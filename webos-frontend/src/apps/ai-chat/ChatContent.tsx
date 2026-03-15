@@ -131,6 +131,7 @@ export default function ChatContent() {
   const thinkingRafRef = useRef(0)
   const convIdRef = useRef(convId)
   const streamTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const ensureConvPromiseRef = useRef<Promise<boolean> | null>(null)
   useEffect(() => { convIdRef.current = convId }, [convId])
 
   const resetStreamTimeout = useCallback(() => {
@@ -838,59 +839,126 @@ export default function ChatContent() {
       resetStreamTimeout()
     }
 
-    // New chat: create & activate a new conversation first, wait for result
-    if (!convIdRef.current && !isCommand) {
-      const created = await new Promise<boolean>(resolve => {
-        const unsub = onChatEvent(ev => {
-          if (ev.type === 'command_result') {
-            unsub()
-            if (ev.commandResult?.isError) {
+    const ensureConversationReady = async (): Promise<boolean> => {
+      if (isCommand) return true
+
+      if (ensureConvPromiseRef.current) {
+        return ensureConvPromiseRef.current
+      }
+
+      const promise = (async () => {
+        // New chat: create & activate a new conversation first, wait until conv id is actually bound
+        if (!convIdRef.current) {
+          return await new Promise<boolean>(resolve => {
+            let settled = false
+            let timeout: ReturnType<typeof setTimeout> | undefined
+            const finish = (ok: boolean) => {
+              if (settled) return
+              settled = true
+              if (timeout) clearTimeout(timeout)
+              unsub()
+              resolve(ok)
+            }
+            const unsub = onChatEvent(ev => {
+              if (ev.type === 'chat.conv_switched' && ev.convSwitched?.convId) {
+                const newId = ev.convSwitched.convId
+                convIdRef.current = newId
+                setConvId(newId)
+                setActiveConvId(newId)
+                finish(true)
+                return
+              }
+              if (ev.type === 'command_result' && ev.commandResult?.isError) {
+                setStreaming(false)
+                clearStreamTimeout()
+                setMessages(prev => [...prev, {
+                  id: `sys-${Date.now()}`,
+                  type: 'error',
+                  content: ev.commandResult!.text,
+                  timestamp: Date.now(),
+                }])
+                finish(false)
+              }
+            })
+            timeout = setTimeout(() => {
               setStreaming(false)
               clearStreamTimeout()
               setMessages(prev => [...prev, {
                 id: `sys-${Date.now()}`,
                 type: 'error',
-                content: ev.commandResult!.text,
+                content: '创建会话超时，请重试',
                 timestamp: Date.now(),
               }])
-              resolve(false)
-            } else {
-              resolve(true)
-            }
-          }
-        })
-        chatSend('', '/conv new')
-      })
-      if (!created) return
-    }
+              finish(false)
+            }, 5000)
+            chatSend('', '/conv new')
+          })
+        }
 
-    // Viewing a non-active conversation: switch backend active conv before sending
-    if (convIdRef.current && convIdRef.current !== activeConvId && !isCommand) {
-      const switched = await new Promise<boolean>(resolve => {
-        const unsub = onChatEvent(ev => {
-          if (ev.type === 'command_result') {
-            unsub()
-            if (ev.commandResult?.isError) {
+        // Viewing a non-active conversation: switch backend active conv before sending,
+        // and wait until the switch is actually confirmed.
+        if (convIdRef.current && convIdRef.current !== activeConvId) {
+          const targetId = convIdRef.current
+          return await new Promise<boolean>(resolve => {
+            let settled = false
+            let timeout: ReturnType<typeof setTimeout> | undefined
+            const finish = (ok: boolean) => {
+              if (settled) return
+              settled = true
+              if (timeout) clearTimeout(timeout)
+              unsub()
+              resolve(ok)
+            }
+            const unsub = onChatEvent(ev => {
+              if (ev.type === 'chat.conv_switched' && ev.convSwitched?.convId === targetId) {
+                setActiveConvId(targetId)
+                finish(true)
+                return
+              }
+              if (ev.type === 'command_result' && ev.commandResult?.isError) {
+                setStreaming(false)
+                clearStreamTimeout()
+                setMessages(prev => [...prev, {
+                  id: `sys-${Date.now()}`,
+                  type: 'error',
+                  content: ev.commandResult!.text,
+                  timestamp: Date.now(),
+                }])
+                finish(false)
+              }
+            })
+            timeout = setTimeout(() => {
               setStreaming(false)
               clearStreamTimeout()
               setMessages(prev => [...prev, {
                 id: `sys-${Date.now()}`,
                 type: 'error',
-                content: ev.commandResult!.text,
+                content: '切换会话超时，请重试',
                 timestamp: Date.now(),
               }])
-              resolve(false)
-            } else {
-              resolve(true)
-            }
-          }
-        })
-        chatSend('', `/conv switch ${convIdRef.current}`)
-      })
-      if (!switched) return
+              finish(false)
+            }, 5000)
+            chatSend('', `/conv switch ${targetId}`)
+          })
+        }
+
+        return true
+      })()
+
+      ensureConvPromiseRef.current = promise
+      try {
+        return await promise
+      } finally {
+        if (ensureConvPromiseRef.current === promise) {
+          ensureConvPromiseRef.current = null
+        }
+      }
     }
 
-    chatSend('', text)
+    const ready = await ensureConversationReady()
+    if (!ready) return
+
+    chatSend(convIdRef.current || '', text)
     setTimeout(() => {
       if (inputRef.current) {
         inputRef.current.style.height = 'auto'
