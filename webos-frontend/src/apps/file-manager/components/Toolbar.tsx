@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { ArrowLeft, ArrowRight, ArrowUp, FilePlus, FolderPlus, Upload, Download, Search, X, MoreHorizontal, List, LayoutGrid, ArrowDownAZ, Check, CheckSquare, Copy, Scissors, Trash2, Archive, XCircle, CheckCheck, ClipboardPaste } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -74,6 +74,15 @@ export function Toolbar({
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const isTouch = isTouchDevice()
+  const prevSearchKeywordRef = useRef(searchKeyword)
+
+  // 当 searchKeyword 从有内容变为空时（导航清空），同步关闭搜索框
+  useEffect(() => {
+    if (prevSearchKeywordRef.current && !searchKeyword && searchOpen) {
+      setSearchOpen(false)
+    }
+    prevSearchKeywordRef.current = searchKeyword
+  }, [searchKeyword, searchOpen])
 
   // Mobile multi-select mode: show dedicated toolbar
   if (isTouch && multiSelectMode) {
