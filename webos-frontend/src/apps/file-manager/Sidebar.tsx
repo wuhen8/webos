@@ -23,7 +23,8 @@ import type { FileInfo, GlobalMenuState, StorageNodeConfig } from "@/types"
 import { useToast } from "@/hooks/use-toast"
 import { useSidebarConfig } from "@/hooks/useSidebarConfig"
 import { getContextMenu } from "@/config/appRegistry"
-import { useWebSocketStore } from "@/stores"
+import { useDataStore } from "@/stores/dataStore"
+import { useMountsData } from "@/hooks/useDataSubscription"
 import { exec } from "@/lib/services"
 import { useWindowStore } from "@/stores/windowStore"
 
@@ -34,18 +35,12 @@ export interface MountedIso {
 }
 
 function useMountedIsos() {
-  const [isos, setIsos] = useState<MountedIso[]>([])
-  const subscribe = useWebSocketStore((s) => s.subscribe)
-  useEffect(() => {
-    return subscribe("sub.mounts", 0, (data: any) => {
-      setIsos((Array.isArray(data) ? data : []).map((m: any) => ({
-        name: m.name || m.device,
-        mountPoint: m.mountPoint,
-        device: m.device,
-      })))
-    })
-  }, [subscribe])
-  return isos
+  const { mounts } = useMountsData()
+  return mounts.map((m: any) => ({
+    name: m.name || m.device,
+    mountPoint: m.mountPoint,
+    device: m.device,
+  }))
 }
 
 interface SidebarItem {
@@ -88,6 +83,7 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
 
   const { toast } = useToast()
   const mountedIsos = useMountedIsos()
+  const storageNodes = useDataStore((s) => s.storageNodes)
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [editingItemName, setEditingItemName] = useState("")
@@ -98,17 +94,6 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
   const [reorderFrom, setReorderFrom] = useState<number | null>(null)
   const [reorderTo, setReorderTo] = useState<number | null>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
-  const [storageNodes, setStorageNodes] = useState<StorageNodeConfig[]>([])
-  const subscribe = useWebSocketStore((s) => s.subscribe)
-
-  // Subscribe to storage nodes — gets initial push + live updates on change
-  useEffect(() => {
-    return subscribe("sub.storage_nodes", 0, (data: any) => {
-      if (Array.isArray(data)) {
-        setStorageNodes(data)
-      }
-    })
-  }, [subscribe])
 
   // 监听添加收藏夹事件
   useEffect(() => {

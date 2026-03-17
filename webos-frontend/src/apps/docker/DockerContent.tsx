@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react"
 import { useToast } from "@/hooks/use-toast"
-import { useWebSocketStore } from "@/stores"
+import { useDataStore } from "@/stores/dataStore"
 import { useWindowStore } from "@/stores/windowStore"
 import { useUIStore } from "@/stores/uiStore"
 import { exec, dockerService } from "@/lib/services"
+import { subscribeChannel } from "@/lib/dataSync"
 import ComposeCreator from "./ComposeCreator"
 import DockerSettings from "./DockerSettings"
 import {
@@ -17,57 +18,77 @@ import {
 function DockerContent() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<TabType>("compose")
-  const [available, setAvailable] = useState<boolean | null>(null)
-  const [containers, setContainers] = useState<DockerContainer[]>([])
-  const [images, setImages] = useState<DockerImage[]>([])
-  const [composeProjects, setComposeProjects] = useState<ComposeProject[]>([])
-  const [networks, setNetworks] = useState<DockerNetwork[]>([])
-  const [volumes, setVolumes] = useState<DockerVolume[]>([])
+
+  // 从全局 store 读取数据
+  const available = useDataStore((s) => s.dockerAvailable)
+  const containers = useDataStore((s) => s.dockerContainers)
+  const images = useDataStore((s) => s.dockerImages)
+  const composeProjects = useDataStore((s) => s.dockerComposeProjects)
+  const networks = useDataStore((s) => s.dockerNetworks)
+  const volumes = useDataStore((s) => s.dockerVolumes)
   const [searchQuery, setSearchQuery] = useState("")
   const [logsModal, setLogsModal] = useState<{ title: string; logs: string } | null>(null)
   const [inspectModal, setInspectModal] = useState<{ title: string; data: string } | null>(null)
   const [showComposeCreator, setShowComposeCreator] = useState(false)
   const [importedYaml, setImportedYaml] = useState<string | null>(null)
   const importFileRef = useRef<HTMLInputElement>(null)
-  const [autoRefresh, setAutoRefresh] = useState(true)
-  const [refreshInterval, setRefreshInterval] = useState(5000)
   const [editingCompose, setEditingCompose] = useState<{ projectDir: string; yaml: string } | null>(null)
 
-  const connected = useWebSocketStore((s) => s.connected)
-  const subscribe = useWebSocketStore((s) => s.subscribe)
+  // Docker 设置相关状态（仅用于 UI 控制，不影响数据订阅）
+  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [refreshInterval, setRefreshInterval] = useState(5000)
+
   const openWindow = useWindowStore((s) => s.openWindow)
+  const connected = useDataStore((s) => s.dockerAvailable)
 
   const logsUnsubRef = useRef<(() => void) | null>(null)
 
-  // WebSocket subscription: containers are always subscribed (except settings)
+  // 按需订阅 Docker 数据
+  // 容器数据始终订阅（所有标签页都需要显示容器数量）
   useEffect(() => {
     if (!autoRefresh || activeTab === "settings") return
-    const unsubs: (() => void)[] = []
-    // Global container subscription
-    unsubs.push(subscribe("sub.docker_containers", refreshInterval, (data: any) => {
-      if (data.available === false) { setAvailable(false); return }
-      setAvailable(true); setContainers(data.containers || [])
-    }))
-    // Tab-specific subscriptions
+
+    const store = useDataStore.getState()
+    const unsubs: Array<() => void> = []
+
+    // 容器数据（所有标签页都需要）
+    unsubs.push(
+      subscribeChannel('sub.docker_containers', refreshInterval, (data: any) => {
+        store.setDockerContainers(data)
+      })
+    )
+
+    // 根据当前标签页订阅对应数据
     if (activeTab === "images") {
-      unsubs.push(subscribe("sub.docker_images", refreshInterval, (data: any) => {
-        if (data.available !== false) setImages(data.images || [])
-      }))
+      unsubs.push(
+        subscribeChannel('sub.docker_images', refreshInterval, (data: any) => {
+          store.setDockerImages(data)
+        })
+      )
     } else if (activeTab === "compose") {
-      unsubs.push(subscribe("sub.docker_compose", refreshInterval, (data: any) => {
-        if (data.available !== false) setComposeProjects(data.projects || [])
-      }))
+      unsubs.push(
+        subscribeChannel('sub.docker_compose', refreshInterval, (data: any) => {
+          store.setDockerComposeProjects(data)
+        })
+      )
     } else if (activeTab === "networks") {
-      unsubs.push(subscribe("sub.docker_networks", refreshInterval, (data: any) => {
-        if (data.available !== false) setNetworks(data.networks || [])
-      }))
+      unsubs.push(
+        subscribeChannel('sub.docker_networks', refreshInterval, (data: any) => {
+          store.setDockerNetworks(data)
+        })
+      )
     } else if (activeTab === "volumes") {
-      unsubs.push(subscribe("sub.docker_volumes", refreshInterval, (data: any) => {
-        if (data.available !== false) setVolumes(data.volumes || [])
-      }))
+      unsubs.push(
+        subscribeChannel('sub.docker_volumes', refreshInterval, (data: any) => {
+          store.setDockerVolumes(data)
+        })
+      )
     }
-    return () => { unsubs.forEach((fn) => fn()) }
-  }, [activeTab, autoRefresh, refreshInterval, subscribe])
+
+    return () => {
+      unsubs.forEach(fn => fn())
+    }
+  }, [activeTab, autoRefresh, refreshInterval])
 
   const dockerRefreshChannels = ['sub.docker_containers', 'sub.docker_images', 'sub.docker_compose', 'sub.docker_networks', 'sub.docker_volumes']
 

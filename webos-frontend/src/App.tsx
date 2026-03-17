@@ -18,6 +18,7 @@ import ContextMenuRenderer from "@/components/ContextMenuRenderer"
 import { ProgressDialog } from "@/components/ProgressDialog"
 
 import '@/lib/services'  // Register all service message handlers before WS connects
+import { initGlobalSync, destroyGlobalSync } from '@/lib/dataSync'
 
 import Window from "@/components/Window"
 import TopMenuBar from "@/components/TopMenuBar"
@@ -87,6 +88,17 @@ function App() {
       wsConnect()
     }
   }, [authPhase, wsConnect, wsDisconnect])
+
+  // Initialize global data synchronization when WebSocket is connected
+  // 只订阅全局性的频道（存储节点、侧边栏配置）
+  // 其他频道由各个组件按需订阅
+  useEffect(() => {
+    if (wsConnected) {
+      initGlobalSync()
+    } else {
+      destroyGlobalSync()
+    }
+  }, [wsConnected])
 
   // Global menu position correction
   useEffect(() => {

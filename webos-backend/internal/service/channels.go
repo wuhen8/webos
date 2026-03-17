@@ -187,17 +187,6 @@ func RegisterChannels() {
 		},
 	})
 
-	// ── Poll channel: mounted ISO/disc images ──
-
-	ps.Register(&pubsub.ChannelDef{
-		Name:            "sub.mounts",
-		Mode:            pubsub.Poll,
-		DefaultInterval: 3 * time.Second,
-		Fetch: func() (interface{}, error) {
-			return ParseIsoMounts(), nil
-		},
-	})
-
 	// ── Event channels (push on change only) ──
 
 	ps.Register(&pubsub.ChannelDef{
@@ -216,6 +205,15 @@ func RegisterChannels() {
 		},
 	})
 
+	// ISO/disc image mounts (Event mode - only push on mount/unmount)
+	ps.Register(&pubsub.ChannelDef{
+		Name: "sub.mounts",
+		Mode: pubsub.Event,
+		Fetch: func() (interface{}, error) {
+			return ParseIsoMounts(), nil
+		},
+	})
+
 }
 
 // NotifyStorageNodesChanged pushes the latest storage node list to all subscribers.
@@ -226,4 +224,9 @@ func NotifyStorageNodesChanged() {
 // NotifySidebarChanged pushes the latest sidebar config to all subscribers.
 func NotifySidebarChanged() {
 	pubsub.Default.PublishFetch("sub.sidebar")
+}
+
+// NotifyMountsChanged pushes the latest mounts list to all subscribers.
+func NotifyMountsChanged() {
+	pubsub.Default.PublishFetch("sub.mounts")
 }

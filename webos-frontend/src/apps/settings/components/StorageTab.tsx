@@ -1,14 +1,13 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Settings, Plus, Trash2 } from "lucide-react"
 import { addStorageNode, updateStorageNode, deleteStorageNode } from "@/lib/storageApi"
 import type { StorageNodeConfig } from "@/types"
 import { SettingsIcon } from "./SettingsIcon"
-import { useWebSocketStore } from "@/stores"
+import { useDataStore } from "@/stores/dataStore"
 
 export default function StorageTab() {
-  const [storageNodes, setStorageNodes] = useState<StorageNodeConfig[]>([])
-  const [storageLoading, setStorageLoading] = useState(true)
-  const subscribe = useWebSocketStore((s) => s.subscribe)
+  const storageNodes = useDataStore((s) => s.storageNodes)
+  const storageLoading = useDataStore((s) => s.storageNodesLoading)
   const [storageShowAdd, setStorageShowAdd] = useState(false)
   const [storageEditId, setStorageEditId] = useState<string | null>(null)
   const [storageForm, setStorageForm] = useState({
@@ -29,16 +28,6 @@ export default function StorageTab() {
     setStorageEditId(null)
     setStorageShowAdd(false)
   }
-
-  // Subscribe to storage nodes — initial push + live updates
-  useEffect(() => {
-    return subscribe("sub.storage_nodes", 0, (data: any) => {
-      if (Array.isArray(data)) {
-        setStorageNodes(data)
-        setStorageLoading(false)
-      }
-    })
-  }, [subscribe])
 
   const handleSaveStorageNode = async () => {
     const config: Record<string, any> = storageForm.type === "s3"

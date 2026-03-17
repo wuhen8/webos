@@ -20,9 +20,13 @@ type MountInfo struct {
 func ParseIsoMounts() []MountInfo {
 	out, err := exec.Command("mount").Output()
 	if err != nil {
-		return nil
+		return []MountInfo{} // 返回空数组而不是 nil
 	}
-	return parseIsoMountsFromOutput(string(out))
+	result := parseIsoMountsFromOutput(string(out))
+	if result == nil {
+		return []MountInfo{} // 确保返回空数组
+	}
+	return result
 }
 
 // parseIsoMountsFromOutput parses `mount` output.

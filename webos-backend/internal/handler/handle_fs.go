@@ -671,5 +671,3 @@ func handleFsUnwatch(c *WSConn, raw json.RawMessage) {
 		delete(c.FsWatches, watchKey)
 	}
 }
-
-

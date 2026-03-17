@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { request as wsRequest } from '@/stores/webSocketStore'
-import { useWebSocketStore } from '@/stores'
+import { useDataStore } from '@/stores/dataStore'
 
 // 侧边栏项目类型
 export interface SidebarItem {
@@ -75,31 +75,28 @@ const DEFAULT_ITEMS: SidebarItem[] = [
 ]
 
 export const useSidebarConfig = () => {
-  const [sidebarConfig, setSidebarConfig] = useState<SidebarConfig>({
-    items: DEFAULT_ITEMS,
-    expandedItems: loadExpandedItems(),
-  })
-  const [isLoading, setIsLoading] = useState(true)
-  const subscribe = useWebSocketStore((s) => s.subscribe)
+  const sidebarItems = useDataStore((s) => s.sidebarItems)
+  const isLoading = useDataStore((s) => s.sidebarLoading)
 
-  // Subscribe to sidebar channel — initial push + live updates on change
+  const [expandedItems, setExpandedItems] = useState<string[]>(loadExpandedItems())
+
+  // 当从 dataStore 获取到数据时，更新本地状态
   useEffect(() => {
-    return subscribe("sub.sidebar", 0, (data: any) => {
-      if (Array.isArray(data)) {
-        setSidebarConfig(prev => ({
-          items: data.length > 0 ? data.map(mapApiItem) : DEFAULT_ITEMS,
-          expandedItems: prev.expandedItems,
-        }))
-      }
-      setIsLoading(false)
-    })
-  }, [subscribe])
+    if (sidebarItems.length === 0 && !isLoading) {
+      // 使用默认配置
+    }
+  }, [sidebarItems, isLoading])
+
+  const sidebarConfig: SidebarConfig = {
+    items: sidebarItems.length > 0 ? sidebarItems.map(mapApiItem) : DEFAULT_ITEMS,
+    expandedItems,
+  }
 
   // 保存配置到后端
   const saveSidebarConfig = useCallback(async (config: SidebarConfig) => {
     try {
       await wsRequest('settings.sidebar_save', { items: config.items.map(mapToApiItem) })
-      setSidebarConfig(config)
+      // 数据会通过 WebSocket 推送回来，自动更新 dataStore
     } catch (error) {
       console.error('Failed to save sidebar config:', error)
       throw error
@@ -186,13 +183,13 @@ export const useSidebarConfig = () => {
 
   // 切换展开状态（纯前端，不需要后端持久化）
   const toggleExpand = useCallback(async (itemId: string) => {
-    setSidebarConfig(prev => {
-      const isExpanded = prev.expandedItems.includes(itemId)
+    setExpandedItems(prev => {
+      const isExpanded = prev.includes(itemId)
       const newExpanded = isExpanded
-        ? prev.expandedItems.filter(id => id !== itemId)
-        : [...prev.expandedItems, itemId]
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
       saveExpandedItems(newExpanded)
-      return { ...prev, expandedItems: newExpanded }
+      return newExpanded
     })
   }, [])
 

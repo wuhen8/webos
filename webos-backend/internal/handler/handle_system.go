@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"webos-backend/internal/service"
 )
@@ -65,6 +66,12 @@ func handleExec(c *WSConn, raw json.RawMessage) {
 				return "", fmt.Errorf("命令执行失败，退出码: %d", exitCode)
 			}
 			r.AppendLog("执行完成")
+
+			// 如果是挂载/卸载命令且执行成功，推送更新
+			if strings.Contains(p.Command, "mount") {
+				service.NotifyMountsChanged()
+			}
+
 			return "执行成功", nil
 		}, opts...)
 		c.Reply("system.exec", p.ReqID, map[string]interface{}{
@@ -83,6 +90,11 @@ func handleExec(c *WSConn, raw json.RawMessage) {
 				"stdout":   stdout,
 				"stderr":   stderr,
 			})
+
+			// 如果是挂载/卸载命令且执行成功，推送更新
+			if exitCode == 0 && strings.Contains(p.Command, "mount") {
+				service.NotifyMountsChanged()
+			}
 		}
 	}()
 }
