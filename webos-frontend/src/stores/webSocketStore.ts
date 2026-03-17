@@ -234,13 +234,25 @@ export const useWebSocketStore = create<WebSocketState>((set) => ({
 
   subscribe: (channel: string, interval: number, handler: MessageHandler) => {
     let sub = channels.get(channel)
+    const isNewChannel = !sub
+
     if (!sub) {
       sub = { interval, handlers: new Set() }
       channels.set(channel, sub)
     }
+
     sub.handlers.add(handler)
-    if (sub.interval !== interval) sub.interval = interval
-    request('sub.subscribe', { channel, interval }).catch(() => {})
+
+    // 使用最小的 interval（更频繁的更新）
+    const needsUpdate = sub.interval !== interval && interval < sub.interval
+    if (needsUpdate) {
+      sub.interval = interval
+    }
+
+    // 只在新频道或需要更新 interval 时发送订阅请求
+    if (isNewChannel || needsUpdate) {
+      request('sub.subscribe', { channel, interval: sub.interval }).catch(() => {})
+    }
 
     return () => {
       const s = channels.get(channel)

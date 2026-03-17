@@ -3,7 +3,7 @@ import type { GlobalMenuState, ConfirmDialogOptions } from '@/types'
 
 interface UIState {
   globalMenu: GlobalMenuState | null
-  clearSelectionTick: number
+  clearSelectionSignal: number
   topMenuOpen: boolean
   confirmDialog: ConfirmDialogOptions | null
   spotlightOpen: boolean
@@ -20,7 +20,7 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   globalMenu: null,
-  clearSelectionTick: 0,
+  clearSelectionSignal: 0,
   topMenuOpen: false,
   confirmDialog: null,
   spotlightOpen: false,
@@ -28,7 +28,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   openGlobalMenu: (menu) => set({ globalMenu: menu }),
   closeGlobalMenu: () => set({ globalMenu: null }),
-  incrementClearSelection: () => set((s) => ({ clearSelectionTick: s.clearSelectionTick + 1 })),
+  incrementClearSelection: () => set((s) => ({ clearSelectionSignal: s.clearSelectionSignal + 1 })),
   setTopMenuOpen: (v) => set({ topMenuOpen: v }),
   showConfirm: (options) => set({ confirmDialog: options }),
   closeConfirm: () => set({ confirmDialog: null }),

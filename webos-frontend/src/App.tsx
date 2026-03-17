@@ -30,6 +30,7 @@ import type { ContextMenuItemConfig } from "@/types"
 import { useAuthStore, useSettingsStore, useUIStore, useWindowStore, useWebSocketStore } from "@/stores"
 import { useProgressDialogStore } from "@/stores/progressDialogStore"
 import GlobalMusicPlayer from "@/apps/music-player/GlobalMusicPlayer"
+import { UnifiedDesktop } from "@/components/desktop/UnifiedDesktop"
 
 function App() {
   const authPhase = useAuthStore((s) => s.authPhase)
@@ -106,9 +107,20 @@ function App() {
     closeGlobalMenu()
     if (action === 'desktop.openWebview' && menuItem?.url) {
       openWebviewWindow(menuItem.url, menuItem.label || 'Webview')
+    } else if (action === 'desktop.addWidget') {
+      // 通过自定义事件通知 WidgetLayer 添加小组件
+      const widgetType = menuItem?.id?.replace('widget.', '')
+      if (widgetType) {
+        window.dispatchEvent(new CustomEvent('widget:add', { detail: { type: widgetType } }))
+      }
     } else {
       dispatchMenuAction(action)
     }
+  }
+
+  // 动态替换右键菜单标签
+  const getDesktopContextMenu = () => {
+    return desktopContextMenu
   }
 
   const isLocked = authPhase !== 'authenticated'
@@ -130,7 +142,7 @@ function App() {
             openGlobalMenu({
               x: e.clientX,
               y: e.clientY,
-              config: desktopContextMenu,
+              config: getDesktopContextMenu(),
               context: {},
               onAction: handleDesktopActionWithItem,
             })
@@ -163,8 +175,11 @@ function App() {
         )}
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wNSkiLz48L3N2Zz4=')] opacity-20"></div>
 
-        {/* 窗口容器 — z-0 creates a stacking context so windows never overlap menu bar / dock */}
-        <div className="absolute inset-0 z-0 overflow-hidden">
+        {/* 统一桌面层 — 包含文件图标和小组件，z-[5] */}
+        <UnifiedDesktop />
+
+        {/* 窗口容器 — z-[20] 在桌面之上，菜单栏/Dock 之下 */}
+        <div className="absolute inset-0 z-[20] overflow-hidden pointer-events-none">
           <AnimatePresence>
             {windows.map((win) => (
               <Window key={win.id} window={win}>

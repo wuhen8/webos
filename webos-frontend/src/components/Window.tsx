@@ -615,7 +615,7 @@ export function Window({ window: win, children }: WindowProps) {
       // Unmount animation (close)
       exit={{ opacity: 0, scale: 0.88, transition: { duration: 0.18, ease: 'easeIn' } }}
       transition={isInteracting ? noTransition : { ...springTransition, opacity: { duration: 0.18 } }}
-      className={`window-container absolute flex flex-col rounded-2xl ${
+      className={`window-container absolute flex flex-col rounded-2xl pointer-events-auto ${
         win.isActive ? 'shadow-2xl' : 'shadow-lg'
       } ${win.isMaximized ? 'rounded-xl' : ''}`}
       data-window-id={win.id}

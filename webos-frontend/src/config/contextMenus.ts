@@ -19,6 +19,36 @@ export const desktopContextMenu: ContextMenuConfig = {
       action: 'desktop.openEditor',
     },
     {
+      id: 'desktop-divider-widgets',
+      type: 'divider',
+    },
+    {
+      id: 'desktop-add-widget',
+      label: '添加小组件',
+      icon: 'AppWindow',
+      action: 'desktop.addWidget',
+      children: [
+        {
+          id: 'widget.clock',
+          label: '时钟',
+          icon: 'Clock',
+          action: 'desktop.addWidget',
+        },
+        {
+          id: 'widget.weather',
+          label: '天气',
+          icon: 'Cloud',
+          action: 'desktop.addWidget',
+        },
+        {
+          id: 'widget.system-monitor',
+          label: '系统监控',
+          icon: 'Activity',
+          action: 'desktop.addWidget',
+        },
+      ],
+    },
+    {
       id: 'desktop-divider-web',
       type: 'divider',
     },

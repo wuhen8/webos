@@ -35,7 +35,7 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
   const setClipboard = useFileManagerStore((s) => s.setClipboard)
   const openGlobalMenu = useUIStore((s) => s.openGlobalMenu)
   const closeGlobalMenu = useUIStore((s) => s.closeGlobalMenu)
-  const clearSelectionTick = useUIStore((s) => s.clearSelectionTick)
+  const clearSelectionSignal = useUIStore((s) => s.clearSelectionSignal)
   const showConfirm = useUIStore((s) => s.showConfirm)
   const { toast } = useToast()
 
@@ -234,10 +234,10 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
     updateFmTabState(windowId, tabIndex, { pathCache: newCache })
   }, [currentPath, windowId, tabIndex, updateFmTabState])
 
-  // Clear selection on global tick
+  // Clear selection on global signal
   useEffect(() => {
     setSelectedFiles(new Set())
-  }, [clearSelectionTick])
+  }, [clearSelectionSignal])
 
   // Report file counts to parent when active
   useEffect(() => {
