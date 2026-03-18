@@ -54,6 +54,13 @@ export const desktopContextMenu: ContextMenuConfig = {
     },
     {
       id: 'desktop-open-github',
+      label: 'GitHub 仓库',
+      icon: 'Github',
+      action: 'desktop.openUrl',
+      url: 'https://github.com/wuhen8/webos',
+    },
+    {
+      id: 'desktop-open-clipboard',
       label: '打开剪切板',
       icon: 'Globe',
       action: 'desktop.openWebview',
@@ -118,6 +125,25 @@ export const dockItemContextMenu: ContextMenuConfig = {
       icon: 'LogOut',
       action: 'dock.quit',
       variant: 'danger',
+    },
+  ],
+}
+
+// GitHub Dock 图标右键菜单
+export const githubDockContextMenu: ContextMenuConfig = {
+  id: 'github-dock',
+  items: [
+    {
+      id: 'github-open',
+      label: '打开 GitHub 仓库',
+      icon: 'Globe',
+      action: 'github.open',
+    },
+    {
+      id: 'github-copy',
+      label: '复制链接',
+      icon: 'Copy',
+      action: 'github.copy',
     },
   ],
 }

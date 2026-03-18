@@ -28,18 +28,27 @@ export function WidgetContainer({ widget }: WidgetContainerProps) {
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // 动态计算边界
+  const bounds = {
+    left: 0,
+    top: TOP_BAR_HEIGHT,
+    right: Math.max(0, window.innerWidth - widget.size.width),
+    bottom: Math.max(TOP_BAR_HEIGHT, window.innerHeight - DOCK_HEIGHT - widget.size.height),
+  }
+
+  // 约束位置在边界内
+  const constrainedPosition = {
+    x: Math.max(bounds.left, Math.min(widget.position.x, bounds.right)),
+    y: Math.max(bounds.top, Math.min(widget.position.y, bounds.bottom)),
+  }
+
   const { isDragging, position, handleMouseDown } = useDraggable({
-    initialPosition: widget.position,
-    disabled: false,  // 始终可以拖动
+    initialPosition: constrainedPosition,
+    disabled: false,
     onDragEnd: (x, y) => {
       updateWidget(widget.id, { position: { x, y } })
     },
-    bounds: {
-      left: 0,
-      top: TOP_BAR_HEIGHT,
-      right: window.innerWidth - widget.size.width,
-      bottom: window.innerHeight - DOCK_HEIGHT - widget.size.height,
-    },
+    bounds,
   })
 
   const handleResizeStart = (e: React.MouseEvent) => {

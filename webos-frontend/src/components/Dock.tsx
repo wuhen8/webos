@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback } from "react"
 import { getDockItems, getAppConfig, getAllApps, resolveIcon, saveAppOverride } from "@/config/appRegistry"
-import { dockItemContextMenu } from "@/config/contextMenus"
+import { dockItemContextMenu, githubDockContextMenu } from "@/config/contextMenus"
 import { useWindowStore, useProcessStore, useSettingsStore, useUIStore } from "@/stores"
 import { useEditorStore } from "@/apps/editor/store"
 import { isTouchDevice } from "@/lib/env"
-import { Rocket } from "lucide-react"
+import { Rocket, Github } from "lucide-react"
 import type { ContextMenuConfig } from "@/types"
 
 function Dock() {
@@ -251,6 +251,17 @@ function Dock() {
 
   // ==================== Build items ====================
 
+  // GitHub 伪应用
+  const githubAppItem = {
+    id: 'github',
+    icon: <Github style={{ width: iconSize, height: iconSize }} className="text-white" />,
+    gradient: 'from-gray-700 to-gray-900',
+    shadow: 'shadow-gray-700/30',
+    label: 'GitHub',
+    isRunning: false,
+    badge: undefined,
+  }
+
   // Pinned items (left of separator)
   const pinnedItems = dockApps.map((app) => {
     const appProcesses = processes.filter(p => p.appId === app.id)
@@ -276,6 +287,9 @@ function Dock() {
       badge,
     }
   })
+
+  // 所有 Dock items = pinnedItems + GitHub（放最后）
+  const allDockItems = [...pinnedItems, githubAppItem]
 
   // Running but unpinned apps (right of separator)
   // 过滤掉子窗口，子窗口不单独出现在 Dock
@@ -405,13 +419,41 @@ function Dock() {
           />
 
           {/* ===== Pinned items (left of separator) ===== */}
-          {pinnedItems.map((item, index) => (
+          {allDockItems.map((item, index) => (
             <button
               key={item.id}
               data-dock-item
-              draggable
-              onClick={() => handleDockItemClick(item.id)}
-              onContextMenu={(e) => handleDockItemContextMenu(e, item.id)}
+              draggable={item.id !== 'github'}
+              onClick={() => {
+                if (isTouchDevice()) setHoveredIndex(null)
+                if (item.id === 'github') {
+                  window.open('https://github.com/wuhen8/webos', '_blank')
+                } else {
+                  handleDockItemClick(item.id)
+                }
+              }}
+              onContextMenu={(e) => {
+                if (item.id === 'github') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  openGlobalMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    config: githubDockContextMenu,
+                    context: {},
+                    onAction: (action: string) => {
+                      closeGlobalMenu()
+                      if (action === 'github.open') {
+                        window.open('https://github.com/wuhen8/webos', '_blank')
+                      } else if (action === 'github.copy') {
+                        navigator.clipboard.writeText('https://github.com/wuhen8/webos')
+                      }
+                    },
+                  })
+                } else {
+                  handleDockItemContextMenu(e, item.id)
+                }
+              }}
               onMouseEnter={() => setHoveredIndex(index)}
               onDragStart={(e) => handleDragStart(e, index)}
               onDragOver={(e) => handleDragOver(e, index)}

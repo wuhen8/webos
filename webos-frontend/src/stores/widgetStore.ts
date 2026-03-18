@@ -3,7 +3,7 @@ import { create } from 'zustand'
 export interface Widget {
   id: string
   type: string
-  position: { x: number; y: number }
+  position: { x: number; y: number } // 绝对像素位置
   size: { width: number; height: number }
   config: Record<string, any>
   zIndex: number

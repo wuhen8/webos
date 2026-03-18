@@ -119,6 +119,8 @@ function App() {
     closeGlobalMenu()
     if (action === 'desktop.openWebview' && menuItem?.url) {
       openWebviewWindow(menuItem.url, menuItem.label || 'Webview')
+    } else if (action === 'desktop.openUrl' && menuItem?.url) {
+      window.open(menuItem.url, '_blank')
     } else if (action === 'desktop.addWidget') {
       // 通过自定义事件通知 WidgetLayer 添加小组件
       const widgetType = menuItem?.id?.replace('widget.', '')

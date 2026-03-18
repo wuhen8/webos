@@ -10,7 +10,7 @@ export const manifest: AppConfig = {
   defaultSize: { width: 900, height: 650 },
   defaultPosition: { xOffset: 100, yOffset: 80 },
   singleton: false,
-  showInDock: true,
+  showInDock: false,
   dockOrder: 2,
   menus: [
     {

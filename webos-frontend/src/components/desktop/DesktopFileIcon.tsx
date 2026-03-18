@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import type { FileInfo } from '@/types'
 import type { DesktopItem } from '@/stores/desktopLayoutStore'
@@ -30,29 +30,31 @@ export function DesktopFileIcon({ item, file, position, isSelected, onSelect }: 
   const closeGlobalMenu = useUIStore((s) => s.closeGlobalMenu)
   const findOrCreateEditorWindow = useEditorStore((s) => s.findOrCreateEditorWindow)
 
-  const [localPosition, setLocalPosition] = useState(position)
+  // 动态计算边界
+  const bounds = useMemo(() => ({
+    left: PADDING,
+    top: 0,
+    right: Math.max(PADDING, window.innerWidth - item.width - PADDING),
+    bottom: Math.max(0, window.innerHeight - DOCK_HEIGHT - TOP_BAR_HEIGHT - item.height - PADDING),
+  }), [item.width, item.height])
+
+  // 约束位置在边界内
+  const constrainedPosition = {
+    x: Math.max(bounds.left, Math.min(position.x, bounds.right)),
+    y: Math.max(bounds.top, Math.min(position.y, bounds.bottom)),
+  }
+
+  const handleDragEnd = useCallback((x: number, y: number) => {
+    moveItem(item.id, x, y)
+  }, [item.id, moveItem])
 
   const { isDragging, position: dragPosition, handleMouseDown } = useDraggable({
-    initialPosition: position,
-    onDragEnd: (x, y) => {
-      moveItem(item.id, x, y)
-    },
-    bounds: {
-      left: PADDING,
-      top: 0,
-      right: window.innerWidth - item.width - PADDING,
-      bottom: window.innerHeight - DOCK_HEIGHT - TOP_BAR_HEIGHT - item.height - PADDING,
-    },
+    initialPosition: constrainedPosition,
+    onDragEnd: handleDragEnd,
+    bounds,
   })
 
-  // 同步外部位置变化
-  useEffect(() => {
-    if (!isDragging) {
-      setLocalPosition(position)
-    }
-  }, [position, isDragging])
-
-  const displayPosition = isDragging ? dragPosition : localPosition
+  const displayPosition = isDragging ? dragPosition : constrainedPosition
 
   const iconConfig = getFileIconConfig(file)
   const Icon = iconConfig.icon

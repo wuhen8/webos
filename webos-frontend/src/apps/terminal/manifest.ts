@@ -12,7 +12,7 @@ export const manifest: AppConfig = {
   singleton: false,
   autoNumber: true,
   showInDock: true,
-  dockOrder: 4,
+  dockOrder: 3,
   menus: [
     {
       label: 'Shell',

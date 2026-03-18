@@ -11,7 +11,7 @@ export const manifest: AppConfig = {
   singleton: true,
   backgroundable: true,
   showInDock: true,
-  dockOrder: 6,
+  dockOrder: 4,
   menus: [
     {
       label: '对话',

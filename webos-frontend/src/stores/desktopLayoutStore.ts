@@ -5,12 +5,12 @@ import type { Widget } from './widgetStore'
 // 桌面项类型
 export type DesktopItemType = 'file' | 'widget'
 
-// 统一的桌面项（像素坐标）
+// 统一的桌面项（绝对像素坐标）
 export interface DesktopItem {
   id: string
   type: DesktopItemType
-  x: number  // 像素 X 坐标
-  y: number  // 像素 Y 坐标
+  x: number  // 绝对像素 X 坐标
+  y: number  // 绝对像素 Y 坐标
   width: number   // 像素宽度
   height: number  // 像素高度
   // 文件相关
@@ -140,7 +140,7 @@ export const useDesktopLayoutStore = create<DesktopLayoutStore>((set, get) => ({
               }
             }
 
-            // 确保不超出边界（坐标相对于 UnifiedDesktop 容器，容器已经有 top: TOP_BAR_HEIGHT）
+            // 确保不超出边界
             const maxX = window.innerWidth - i.width - PADDING
             const maxY = window.innerHeight - DOCK_HEIGHT - TOP_BAR_HEIGHT - i.height - PADDING
             newX = Math.max(PADDING, Math.min(newX, maxX))
@@ -219,7 +219,7 @@ export const useDesktopLayoutStore = create<DesktopLayoutStore>((set, get) => ({
       ]
 
       for (const pos of positions) {
-        // 检查是否在边界内（坐标相对于容器）
+        // 检查是否在边界内
         if (pos.x < PADDING || pos.y < 0) continue
         if (pos.x > maxX || pos.y > maxY) continue
 

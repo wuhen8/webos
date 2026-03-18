@@ -10,6 +10,6 @@ export const manifest: AppConfig = {
   defaultPosition: { xOffset: 80, yOffset: 80 },
   singleton: true,
   showInDock: true,
-  dockOrder: 3,
+  dockOrder: 2,
   menus: [],
 }
