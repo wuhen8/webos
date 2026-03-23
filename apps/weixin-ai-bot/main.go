@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 	"unsafe"
 )
 
@@ -120,6 +123,14 @@ func nextSendSeq() int64 {
 	return sendSeq
 }
 
+func nextWeixinClientID() string {
+	var suffix [4]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return fmt.Sprintf("webos-weixin:%d-%08x", time.Now().UnixMilli(), nextSendSeq())
+	}
+	return fmt.Sprintf("webos-weixin:%d-%x", time.Now().UnixMilli(), suffix)
+}
+
 //go:wasmexport on_event
 func on_event(ptr uint32, size uint32) uint32 {
 	if size == 0 {
@@ -141,7 +152,7 @@ func on_event(ptr uint32, size uint32) uint32 {
 	case "chat.delta":
 		onChatDelta(ev.Params)
 	case "chat.done":
-		onChatDone()
+		onChatDone(ev.Params)
 	case "chat.error":
 		onChatError(ev.Params)
 	case "chat.command_result":
@@ -163,12 +174,15 @@ func on_event(ptr uint32, size uint32) uint32 {
 
 func beginReplyStream(userID, contextToken string) {
 	activeUserID = userID
+	if strings.TrimSpace(contextToken) == "" && strings.TrimSpace(userID) != "" {
+		contextToken = kvGet("ctx:" + userID)
+	}
 	activeContextTok = contextToken
 	replyBuf.Reset()
 }
 
 func onChatDelta(data json.RawMessage) {
-	if activeUserID == "" || activeContextTok == "" {
+	if activeUserID == "" {
 		return
 	}
 	var d struct {
@@ -181,11 +195,18 @@ func onChatDelta(data json.RawMessage) {
 	replyBuf.WriteString(d.Content)
 }
 
-func onChatDone() {
-	if activeUserID == "" || activeContextTok == "" {
+func onChatDone(data json.RawMessage) {
+	if activeUserID == "" {
 		return
 	}
+	var d struct {
+		FullText string `json:"fullText"`
+	}
+	_ = json.Unmarshal(data, &d)
 	text := strings.TrimSpace(replyBuf.String())
+	if strings.TrimSpace(d.FullText) != "" {
+		text = strings.TrimSpace(d.FullText)
+	}
 	if text == "" {
 		text = "(空回复)"
 	}
@@ -200,7 +221,7 @@ func onChatDone() {
 }
 
 func onChatError(data json.RawMessage) {
-	if activeUserID == "" || activeContextTok == "" {
+	if activeUserID == "" {
 		return
 	}
 	var d struct {
@@ -216,7 +237,7 @@ func onChatError(data json.RawMessage) {
 }
 
 func onCommandResult(data json.RawMessage) {
-	if activeUserID == "" || activeContextTok == "" {
+	if activeUserID == "" {
 		return
 	}
 	var d struct {
@@ -336,13 +357,17 @@ func handleInboundMessage(msg WeixinMessage) {
 	if msg.ContextToken != "" {
 		kvSet("ctx:"+uid, msg.ContextToken)
 	}
+	ctxToken := strings.TrimSpace(msg.ContextToken)
+	if ctxToken == "" {
+		ctxToken = strings.TrimSpace(kvGet("ctx:" + uid))
+	}
 	activeUserID = uid
-	activeContextTok = msg.ContextToken
+	activeContextTok = ctxToken
 
 	userText := describeWeixinMessage(msg)
 	plainText := extractWeixinText(msg)
 	if plainText == "/start" {
-		sendWeixinTextAsync(uid, msg.ContextToken, "你好！我是 WebOS AI 助手，直接发消息给我就可以对话。", nil)
+		sendWeixinTextAsync(uid, ctxToken, "你好！我是 WebOS AI 助手，直接发消息给我就可以对话。", nil)
 		return
 	}
 	if kind, fileName, media := chooseInboundMedia(msg); media != nil {
@@ -354,7 +379,7 @@ func handleInboundMessage(msg WeixinMessage) {
 			if reqID != "" {
 				pendingDownloads[reqID] = &PendingDownload{
 					UserID:       uid,
-					ContextToken: msg.ContextToken,
+					ContextToken: ctxToken,
 					UserText:     plainText,
 					FileName:     safeName,
 					Kind:         kind,
@@ -369,7 +394,7 @@ func handleInboundMessage(msg WeixinMessage) {
 		return
 	}
 	logMsg(fmt.Sprintf("[weixin:%s] %s", uid, truncate(userText, 120)))
-	beginReplyStream(uid, msg.ContextToken)
+	beginReplyStream(uid, ctxToken)
 	request("chat.send", map[string]interface{}{
 		"messageContent": userText,
 		"clientId":       "weixin-ai-bot",
@@ -416,26 +441,24 @@ func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 		handleDownloadedPath(savedPath)
 		return
 	}
-	decryptCmd := "tmp=$(mktemp); openssl enc -d -aes-128-ecb -K " + shellQuote(pd.AESKey) + " -nosalt -in " + shellQuote(savedPath) + " -out \"$tmp\" && mv \"$tmp\" " + shellQuote(savedPath) + " ; r=$?; rm -f \"$tmp\"; exit $r"
-	processExecAsync(decryptCmd, 300, func(success bool, stdout, stderr, err string) {
-		if !success {
-			logMsg(fmt.Sprintf("[weixin:%s] 附件解密失败: %s", pd.UserID, truncate(err+" "+stderr, 240)))
-			msg := pd.UserText
-			if strings.TrimSpace(msg) == "" {
-				msg = fmt.Sprintf("[附件解密失败: %s]", pd.FileName)
-			}
-			beginReplyStream(pd.UserID, pd.ContextToken)
-			request("chat.send", map[string]interface{}{
-				"messageContent": msg,
-				"clientId":       "weixin-ai-bot",
-			})
-			return
+	if err := decryptFileInPlace(savedPath, strings.TrimSpace(pd.AESKey)); err != nil {
+		logMsg(fmt.Sprintf("[weixin:%s] 附件解密失败: %s", pd.UserID, truncate(err.Error(), 240)))
+		msg := pd.UserText
+		if strings.TrimSpace(msg) == "" {
+			msg = fmt.Sprintf("[附件解密失败: %s]", pd.FileName)
 		}
-		handleDownloadedPath(savedPath)
-	})
+		beginReplyStream(pd.UserID, pd.ContextToken)
+		request("chat.send", map[string]interface{}{
+			"messageContent": msg,
+			"clientId":       "weixin-ai-bot",
+		})
+		return
+	}
+	handleDownloadedPath(savedPath)
 }
 
 func onChatMedia(data json.RawMessage) {
+	ensureInit()
 	if activeUserID == "" || activeContextTok == "" {
 		logMsg("WARN: 收到 chat.media 但 activeUserID 或 activeContextTok 为空")
 		return
@@ -480,66 +503,62 @@ func onChatMedia(data json.RawMessage) {
 		mediaType = 2
 	}
 	logMsg(fmt.Sprintf("开始发送微信附件: user=%s file=%s mime=%s mediaType=%d", uid, fileName, a.MimeType, mediaType))
-	metaCode := "import hashlib,secrets,sys,json; p=sys.argv[1]; raw=open(p,'rb').read(); rawsize=len(raw); pad=16-(rawsize%16); pad=16 if pad==0 else pad; filesize=rawsize+pad; print(json.dumps({'rawsize':rawsize,'filesize':filesize,'rawfilemd5':hashlib.md5(raw).hexdigest(),'filekey':secrets.token_hex(16),'aeskey':secrets.token_hex(16)}))"
-	metaCmd := "python3 -c " + shellQuote(metaCode) + " " + shellQuote(filePath)
-	processExecAsync(metaCmd, 120, func(success bool, stdout, stderr, err string) {
-		if !success {
-			logMsg("ERROR: 读取附件元数据失败: " + truncate(err+" "+stderr+" stdout="+stdout, 240))
-			sendWeixinTextAsync(uid, ctx, "附件发送失败：无法读取文件", nil)
+	meta, encryptedPath, err := prepareWeixinUpload(filePath)
+	if err != nil {
+		logMsg("ERROR: 读取附件元数据失败: " + truncate(err.Error(), 240))
+		sendWeixinTextAsync(uid, ctx, "附件发送失败：无法读取文件", nil)
+		return
+	}
+	getWeixinUploadURL(meta.FileKey, mediaType, uid, meta.RawSize, meta.FileSize, meta.RawFileMD5, meta.AESKey, func(resp WeixinUploadURLResp, ok bool, raw string) {
+		if !ok {
+			logMsg("ERROR: 获取微信上传地址失败: " + truncate(raw, 240))
+			sendWeixinTextAsync(uid, ctx, "附件发送失败：获取上传地址失败", nil)
 			return
 		}
-		var meta struct {
-			RawSize    int64  `json:"rawsize"`
-			FileSize   int64  `json:"filesize"`
-			RawFileMD5 string `json:"rawfilemd5"`
-			FileKey    string `json:"filekey"`
-			AESKey     string `json:"aeskey"`
-		}
-		if json.Unmarshal([]byte(strings.TrimSpace(stdout)), &meta) != nil || meta.FileKey == "" || meta.AESKey == "" {
-			logMsg("ERROR: 解析附件元数据失败: stdout=" + truncate(stdout, 240) + " stderr=" + truncate(stderr, 240))
-			sendWeixinTextAsync(uid, ctx, "附件发送失败：元数据解析失败", nil)
+		uploadURL := buildWeixinCDNUploadURL(resp.UploadParam, meta.FileKey)
+		if uploadURL == "" {
+			logMsg("ERROR: 构造微信 CDN 上传地址失败")
+			sendWeixinTextAsync(uid, ctx, "附件发送失败：上传地址无效", nil)
 			return
 		}
-		getWeixinUploadURL(meta.FileKey, mediaType, uid, meta.RawSize, meta.FileSize, meta.RawFileMD5, meta.AESKey, func(resp WeixinUploadURLResp, ok bool, raw string) {
-			if !ok {
-				logMsg("ERROR: 获取微信上传地址失败: " + truncate(raw, 240))
-				sendWeixinTextAsync(uid, ctx, "附件发送失败：获取上传地址失败", nil)
+		httpRequestAsyncData(map[string]interface{}{
+			"method": "POST",
+			"url":    uploadURL,
+			"body": map[string]interface{}{
+				"kind":     "file",
+				"path":     encryptedPath,
+				"encoding": "binary",
+			},
+			"headers": map[string]string{
+				"Content-Type": "application/octet-stream",
+			},
+		}, func(success bool, data map[string]interface{}, err string) {
+			defer os.Remove(encryptedPath)
+			if !success {
+				logMsg("ERROR: 微信 CDN 上传失败: " + truncate(err, 240))
+				sendWeixinTextAsync(uid, ctx, "附件发送失败：CDN 上传失败", nil)
 				return
 			}
-			uploadURL := buildWeixinCDNUploadURL(resp.UploadParam, meta.FileKey)
-			if uploadURL == "" {
-				logMsg("ERROR: 构造微信 CDN 上传地址失败")
-				sendWeixinTextAsync(uid, ctx, "附件发送失败：上传地址无效", nil)
+			downloadParam := findHeaderValue(data, "x-encrypted-param")
+			if downloadParam == "" {
+				logMsg("ERROR: 微信 CDN 上传响应缺少 x-encrypted-param")
+				sendWeixinTextAsync(uid, ctx, "附件发送失败：上传响应无效", nil)
 				return
 			}
-			uploadCmd := "tmp=$(mktemp); openssl enc -aes-128-ecb -K " + shellQuote(meta.AESKey) + " -nosalt -in " + shellQuote(filePath) + " -out \"$tmp\" && curl -fsS -D - --data-binary @\"$tmp\" " + shellQuote(uploadURL) + " ; r=$?; rm -f \"$tmp\"; exit $r"
-			processExecAsync(uploadCmd, 600, func(success bool, stdout, stderr, err string) {
-				if !success {
-					logMsg("ERROR: 微信 CDN 上传失败: " + truncate(err+" "+stderr, 240))
-					sendWeixinTextAsync(uid, ctx, "附件发送失败：CDN 上传失败", nil)
+			items := toWeixinMessageItemsForUploaded(a.MimeType, fileName, text, &WeixinUploadedFileInfo{
+				FileKey:                     meta.FileKey,
+				DownloadEncryptedQueryParam: downloadParam,
+				AESKeyHex:                   meta.AESKey,
+				FileSize:                    meta.RawSize,
+				FileSizeCiphertext:          meta.FileSize,
+			})
+			sendWeixinMessageAsync(uid, ctx, items, func(ok bool, resp string) {
+				if !ok {
+					logMsg("ERROR: 微信发送附件消息失败: " + truncate(resp, 240))
+					sendWeixinTextAsync(uid, ctx, "附件发送失败：消息发送失败", nil)
 					return
 				}
-				downloadParam := parseHeaderValue(stdout, "x-encrypted-param")
-				if downloadParam == "" {
-					logMsg("ERROR: 微信 CDN 上传响应缺少 x-encrypted-param: " + truncate(stdout, 240))
-					sendWeixinTextAsync(uid, ctx, "附件发送失败：上传响应无效", nil)
-					return
-				}
-				items := toWeixinMessageItemsForUploaded(a.MimeType, fileName, text, &WeixinUploadedFileInfo{
-					FileKey:                     meta.FileKey,
-					DownloadEncryptedQueryParam: downloadParam,
-					AESKeyHex:                   meta.AESKey,
-					FileSize:                    meta.RawSize,
-					FileSizeCiphertext:          meta.FileSize,
-				})
-				sendWeixinMessageAsync(uid, ctx, items, func(ok bool, resp string) {
-					if !ok {
-						logMsg("ERROR: 微信发送附件消息失败: " + truncate(resp, 240))
-						sendWeixinTextAsync(uid, ctx, "附件发送失败：消息发送失败", nil)
-						return
-					}
-					logMsg("微信附件发送成功: " + fileName)
-				})
+				logMsg("微信附件发送成功: " + fileName)
 			})
 		})
 	})
@@ -669,16 +688,17 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
-}
-
-func parseHeaderValue(raw, key string) string {
-	lowerKey := strings.ToLower(strings.TrimSpace(key)) + ":"
-	for _, line := range strings.Split(raw, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToLower(trimmed), lowerKey) {
-			return strings.TrimSpace(trimmed[len(lowerKey):])
+func findHeaderValue(data map[string]interface{}, key string) string {
+	headers, ok := data["headers"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	want := strings.ToLower(strings.TrimSpace(key))
+	for k, v := range headers {
+		if strings.ToLower(strings.TrimSpace(k)) == want {
+			if s, ok := v.(string); ok {
+				return strings.TrimSpace(s)
+			}
 		}
 	}
 	return ""

@@ -67,9 +67,9 @@ func ensureInit() {
 		}
 	}
 	request("client_context.register", map[string]interface{}{
-		"id":          "feishu-ai-bot",
-		"platform":    "feishu",
-		"displayName": "飞书 Bot",
+		"id":           "feishu-ai-bot",
+		"platform":     "feishu",
+		"displayName":  "飞书 Bot",
 		"capabilities": []string{"markdown_basic", "code_blocks", "bold", "italic", "links"},
 		"constraints":  []string{"no_latex", "no_images_inline"},
 		"systemHint": "当前用户通过飞书客户端与你对话。请遵守以下格式规则：\n" +
@@ -785,29 +785,47 @@ func onMediaAttachment(data json.RawMessage) {
 }
 
 func uploadImageToFeishu(chatID string, a struct {
-	NodeID string `json:"nodeId"`; Path string `json:"path"`; FileName string `json:"fileName"`
-	MimeType string `json:"mimeType"`; Size int64 `json:"size"`; Caption string `json:"caption"`
+	NodeID   string `json:"nodeId"`
+	Path     string `json:"path"`
+	FileName string `json:"fileName"`
+	MimeType string `json:"mimeType"`
+	Size     int64  `json:"size"`
+	Caption  string `json:"caption"`
 }) {
 	withToken(func(token string) {
-		if token == "" { return }
+		if token == "" {
+			return
+		}
 		url := feishuBaseURL + "/im/v1/images"
 		resp := request("http.request", map[string]interface{}{
-			"method":    "POST",
-			"url":       url,
-			"format":    "multipart",
-			"fileField": "image",
-			"headers":   map[string]string{"Authorization": "Bearer " + token},
+			"method":  "POST",
+			"url":     url,
+			"headers": map[string]string{"Authorization": "Bearer " + token},
 			"body": map[string]interface{}{
-				"image":      "[file:" + a.NodeID + ":" + a.Path + "]",
-				"image_type": "message",
+				"kind":   "multipart",
+				"fields": map[string]interface{}{"image_type": "message"},
+				"files": []map[string]interface{}{
+					{"field": "image", "nodeId": a.NodeID, "path": a.Path, "filename": a.FileName},
+				},
 			},
 		})
-		var result struct { RequestID string `json:"requestId"`; Error string `json:"error"` }
+		var result struct {
+			RequestID string `json:"requestId"`
+			Error     string `json:"error"`
+		}
 		json.Unmarshal([]byte(resp), &result)
-		if result.Error != "" { logMsg("ERROR: 飞书图片上传失败: " + result.Error); return }
+		if result.Error != "" {
+			logMsg("ERROR: 飞书图片上传失败: " + result.Error)
+			return
+		}
 		if result.RequestID != "" {
 			httpCallbacks[result.RequestID] = func(resp string) {
-				var imgResp struct { Code int `json:"code"`; Data struct { ImageKey string `json:"image_key"` } `json:"data"` }
+				var imgResp struct {
+					Code int `json:"code"`
+					Data struct {
+						ImageKey string `json:"image_key"`
+					} `json:"data"`
+				}
 				if json.Unmarshal([]byte(resp), &imgResp) == nil && imgResp.Code == 0 && imgResp.Data.ImageKey != "" {
 					cb, _ := json.Marshal(map[string]string{"image_key": imgResp.Data.ImageKey})
 					content := string(cb)
@@ -820,7 +838,9 @@ func uploadImageToFeishu(chatID string, a struct {
 					})
 					hdrs := string(hb)
 					httpRequestAsync("POST", sendURL, string(bodyBytes), hdrs, func(r string) {
-						if !strings.Contains(r, `"code":0`) { logMsg("WARN: 飞书图片消息发送失败: " + r) }
+						if !strings.Contains(r, `"code":0`) {
+							logMsg("WARN: 飞书图片消息发送失败: " + r)
+						}
 					})
 				}
 			}
@@ -829,30 +849,47 @@ func uploadImageToFeishu(chatID string, a struct {
 }
 
 func uploadFileToFeishu(chatID string, a struct {
-	NodeID string `json:"nodeId"`; Path string `json:"path"`; FileName string `json:"fileName"`
-	MimeType string `json:"mimeType"`; Size int64 `json:"size"`; Caption string `json:"caption"`
+	NodeID   string `json:"nodeId"`
+	Path     string `json:"path"`
+	FileName string `json:"fileName"`
+	MimeType string `json:"mimeType"`
+	Size     int64  `json:"size"`
+	Caption  string `json:"caption"`
 }) {
 	withToken(func(token string) {
-		if token == "" { return }
+		if token == "" {
+			return
+		}
 		url := feishuBaseURL + "/im/v1/files"
 		resp := request("http.request", map[string]interface{}{
-			"method":    "POST",
-			"url":       url,
-			"format":    "multipart",
-			"fileField": "file",
-			"headers":   map[string]string{"Authorization": "Bearer " + token},
+			"method":  "POST",
+			"url":     url,
+			"headers": map[string]string{"Authorization": "Bearer " + token},
 			"body": map[string]interface{}{
-				"file":      "[file:" + a.NodeID + ":" + a.Path + "]",
-				"file_type": "stream",
-				"file_name": a.FileName,
+				"kind":   "multipart",
+				"fields": map[string]interface{}{"file_type": "stream", "file_name": a.FileName},
+				"files": []map[string]interface{}{
+					{"field": "file", "nodeId": a.NodeID, "path": a.Path, "filename": a.FileName},
+				},
 			},
 		})
-		var result struct { RequestID string `json:"requestId"`; Error string `json:"error"` }
+		var result struct {
+			RequestID string `json:"requestId"`
+			Error     string `json:"error"`
+		}
 		json.Unmarshal([]byte(resp), &result)
-		if result.Error != "" { logMsg("ERROR: 飞书文件上传失败: " + result.Error); return }
+		if result.Error != "" {
+			logMsg("ERROR: 飞书文件上传失败: " + result.Error)
+			return
+		}
 		if result.RequestID != "" {
 			httpCallbacks[result.RequestID] = func(resp string) {
-				var fileResp struct { Code int `json:"code"`; Data struct { FileKey string `json:"file_key"` } `json:"data"` }
+				var fileResp struct {
+					Code int `json:"code"`
+					Data struct {
+						FileKey string `json:"file_key"`
+					} `json:"data"`
+				}
 				if json.Unmarshal([]byte(resp), &fileResp) == nil && fileResp.Code == 0 && fileResp.Data.FileKey != "" {
 					cb, _ := json.Marshal(map[string]string{"file_key": fileResp.Data.FileKey})
 					content := string(cb)
@@ -865,7 +902,9 @@ func uploadFileToFeishu(chatID string, a struct {
 					})
 					hdrs := string(hb)
 					httpRequestAsync("POST", sendURL, string(bodyBytes), hdrs, func(r string) {
-						if !strings.Contains(r, `"code":0`) { logMsg("WARN: 飞书文件消息发送失败: " + r) }
+						if !strings.Contains(r, `"code":0`) {
+							logMsg("WARN: 飞书文件消息发送失败: " + r)
+						}
 					})
 				}
 			}
@@ -875,9 +914,14 @@ func uploadFileToFeishu(chatID string, a struct {
 
 func humanSize(b int64) string {
 	const unit = 1024
-	if b < unit { return strconv.FormatInt(b, 10) + " B" }
+	if b < unit {
+		return strconv.FormatInt(b, 10) + " B"
+	}
 	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit { div *= unit; exp++ }
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
@@ -949,7 +993,6 @@ func sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, di
 	logMsg(fmt.Sprintf("开始下载飞书媒体: %s (reqID=%s)", displayName, reqID))
 	return reqID
 }
-
 
 // handleDownloadComplete 处理下载完成事件
 func handleDownloadComplete(pending PendingDownload, respBody string) {

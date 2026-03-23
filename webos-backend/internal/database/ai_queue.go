@@ -1,6 +1,9 @@
 package database
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 // AIQueueRow represents a row in ai_queue.
 type AIQueueRow struct {
@@ -30,29 +33,24 @@ func EnqueueAIMessage(convID, content, clientID string) (int64, error) {
 // DequeueAIMessage returns the oldest pending message and marks it as 'processing'.
 // Returns nil if the queue is empty.
 func DequeueAIMessage() (*AIQueueRow, error) {
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, err
-	}
 	var r AIQueueRow
-	err = tx.QueryRow(
-		"SELECT id, conv_id, content, COALESCE(client_id, 'web'), status, created_at FROM ai_queue WHERE status='pending' ORDER BY id LIMIT 1",
-	).Scan(&r.ID, &r.ConvID, &r.Content, &r.ClientID, &r.Status, &r.CreatedAt)
+	err := db.QueryRow(`
+		UPDATE ai_queue
+		SET status='processing'
+		WHERE id = (
+			SELECT id FROM ai_queue
+			WHERE status='pending'
+			ORDER BY id
+			LIMIT 1
+		)
+		RETURNING id, conv_id, content, COALESCE(client_id, 'web'), status, created_at
+	`).Scan(&r.ID, &r.ConvID, &r.Content, &r.ClientID, &r.Status, &r.CreatedAt)
 	if err != nil {
-		tx.Rollback()
-		if err.Error() == "sql: no rows in result set" {
+		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
-	if _, err := tx.Exec("UPDATE ai_queue SET status='processing' WHERE id=?", r.ID); err != nil {
-		tx.Rollback()
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	r.Status = "processing"
 	return &r, nil
 }
 

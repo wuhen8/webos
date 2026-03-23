@@ -65,6 +65,23 @@ func (b *BroadcastSink) broadcast(fn func(id string, sink ChatSink)) {
 	}
 }
 
+func (b *BroadcastSink) sendTo(id string, fn func(ChatSink)) bool {
+	b.mu.RLock()
+	sink, ok := b.sinks[id]
+	b.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[BroadcastSink] sink %s panicked: %v, removing", id, r)
+			b.Remove(id)
+		}
+	}()
+	fn(sink)
+	return true
+}
+
 func (b *BroadcastSink) OnDelta(conversationID, text string) {
 	b.broadcast(func(_ string, s ChatSink) { s.OnDelta(conversationID, text) })
 }
@@ -111,20 +128,7 @@ func (b *BroadcastSink) OnSystemEvent(msgType string, data interface{}) {
 
 // SendToSystemEvent sends a system event to a specific sink by ID. Returns false if not found.
 func (b *BroadcastSink) SendToSystemEvent(sinkID, msgType string, data interface{}) bool {
-	b.mu.RLock()
-	sink, ok := b.sinks[sinkID]
-	b.mu.RUnlock()
-	if !ok {
-		return false
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("[BroadcastSink] sink %s panicked: %v, removing", sinkID, r)
-			b.Remove(sinkID)
-		}
-	}()
-	sink.OnSystemEvent(msgType, data)
-	return true
+	return b.sendTo(sinkID, func(s ChatSink) { s.OnSystemEvent(msgType, data) })
 }
 
 // SinkIDs returns all registered sink IDs.
@@ -147,6 +151,7 @@ type EnqueueMsg struct {
 	ConvID  string
 	Content string
 }
+
 // executeCommand runs a slash command in an independent goroutine (never queued).
 // sinkID is the connection-level ID for directed routing.
 // - non-empty: send to that sink only; silently discard if the sink is gone (don't spam others)
@@ -192,11 +197,11 @@ type EnqueueResult struct {
 
 // ExecutorStatus represents the current state of the executor.
 type ExecutorStatus struct {
-	State           string `json:"state"`           // "idle", "running", or "tool_executing"
-	RunningConvID   string `json:"runningConvId"`   // conversation currently being executed (empty when idle)
+	State            string `json:"state"`            // "idle", "running", or "tool_executing"
+	RunningConvID    string `json:"runningConvId"`    // conversation currently being executed (empty when idle)
 	RunningConvTitle string `json:"runningConvTitle"` // title of the running conversation
-	QueueSize       int    `json:"queueSize"`       // number of queued messages
-	ActiveConvID    string `json:"activeConvId"`    // the active (selected) conversation ID
+	QueueSize        int    `json:"queueSize"`        // number of queued messages
+	ActiveConvID     string `json:"activeConvId"`     // the active (selected) conversation ID
 }
 
 // AIExecutor manages the message queue, broadcast sink, and active conversation.
@@ -369,9 +374,9 @@ func (e *AIExecutor) UnregisterSink(id string) {
 
 // SwitchConvResult represents the result of a conversation switch attempt.
 type SwitchConvResult struct {
-	OK              bool
-	Reason          string // "running" if executor is busy
-	RunningConvID   string
+	OK               bool
+	Reason           string // "running" if executor is busy
+	RunningConvID    string
 	RunningConvTitle string
 }
 
@@ -493,7 +498,60 @@ func (e *AIExecutor) processMessage(row *database.AIQueueRow) {
 	e.mu.Unlock()
 	defer cancel()
 
-	e.service.HandleChat(ctx, row.ConvID, row.Content, row.ClientID, e.broadcastSink)
+	sink := ChatSink(e.broadcastSink)
+	if row.ClientID != "" {
+		sink = &targetedChatSink{sinkID: row.ClientID, sink: e.broadcastSink}
+	}
+	e.service.HandleChat(ctx, row.ConvID, row.Content, row.ClientID, sink)
+}
+
+type targetedChatSink struct {
+	sinkID string
+	sink   *BroadcastSink
+}
+
+func (t *targetedChatSink) OnDelta(conversationID, text string) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnDelta(conversationID, text) })
+}
+
+func (t *targetedChatSink) OnThinking(conversationID, text string) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnThinking(conversationID, text) })
+}
+
+func (t *targetedChatSink) OnToolCallPending(conversationID string, pending ToolCallPending) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnToolCallPending(conversationID, pending) })
+}
+
+func (t *targetedChatSink) OnToolCall(conversationID string, call ToolCall) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnToolCall(conversationID, call) })
+}
+
+func (t *targetedChatSink) OnToolResult(conversationID string, result ToolResult) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnToolResult(conversationID, result) })
+}
+
+func (t *targetedChatSink) OnShellOutput(conversationID, toolCallID string, output ShellOutput) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnShellOutput(conversationID, toolCallID, output) })
+}
+
+func (t *targetedChatSink) OnUIAction(conversationID string, action UIAction) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnUIAction(conversationID, action) })
+}
+
+func (t *targetedChatSink) OnMediaAttachment(conversationID string, attachment MediaAttachment) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnMediaAttachment(conversationID, attachment) })
+}
+
+func (t *targetedChatSink) OnDone(conversationID, fullText string, usage TokenUsage) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnDone(conversationID, fullText, usage) })
+}
+
+func (t *targetedChatSink) OnError(conversationID string, err error) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnError(conversationID, err) })
+}
+
+func (t *targetedChatSink) OnSystemEvent(msgType string, data interface{}) {
+	t.sink.sendTo(t.sinkID, func(s ChatSink) { s.OnSystemEvent(msgType, data) })
 }
 
 // broadcastStatus sends a chat.status_update event to all sinks.

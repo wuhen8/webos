@@ -128,7 +128,6 @@ func httpRequestAsync(method, url, body, headers string, cb func(resp string)) {
 		"method":  method,
 		"url":     url,
 		"headers": map[string]string{},
-		"body":    map[string]interface{}{},
 	}
 	if headers != "" {
 		var h map[string]string
@@ -139,19 +138,26 @@ func httpRequestAsync(method, url, body, headers string, cb func(resp string)) {
 	if body != "" {
 		var b map[string]interface{}
 		if json.Unmarshal([]byte(body), &b) == nil {
-			params["body"] = b
+			params["body"] = map[string]interface{}{
+				"kind":  "json",
+				"value": b,
+			}
 		}
 	}
 	result, ok := requestJSON("http.request", params)
 	if !ok {
-		if cb != nil { cb("") }
+		if cb != nil {
+			cb("")
+		}
 		return
 	}
 	if reqID, _ := result["requestId"].(string); reqID != "" && cb != nil {
 		httpCallbacks[reqID] = cb
 		return
 	}
-	if cb != nil { cb("") }
+	if cb != nil {
+		cb("")
+	}
 }
 
 func hostCall(method string, params map[string]interface{}) string {
@@ -161,7 +167,9 @@ func hostCall(method string, params map[string]interface{}) string {
 func hostCallAsync(method string, params map[string]interface{}, cb func(success bool, data interface{}, err string)) {
 	result, ok := requestJSON(method, params)
 	if !ok {
-		if cb != nil { cb(false, nil, "invalid response") }
+		if cb != nil {
+			cb(false, nil, "invalid response")
+		}
 		return
 	}
 	if reqID, _ := result["requestId"].(string); reqID != "" && cb != nil {

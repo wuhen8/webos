@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strconv"
 	"unsafe"
 )
 
@@ -18,7 +19,7 @@ func get_shared_buf() uint64 {
 	return uint64(ptr)<<32 | uint64(len(_sharedBuf))
 }
 
-var httpCallbacks = map[string]func(resp string){}
+var httpCallbacks = map[string]func(success bool, data map[string]interface{}, err string){}
 var hostCallbacks = map[string]func(success bool, data interface{}, err string){}
 
 type PendingDownload struct {
@@ -127,7 +128,6 @@ func httpRequestAsync(method, url, body, headers string, cb func(resp string)) {
 		"method":  method,
 		"url":     url,
 		"headers": map[string]string{},
-		"body":    map[string]interface{}{},
 	}
 	if headers != "" {
 		var h map[string]string
@@ -138,13 +138,37 @@ func httpRequestAsync(method, url, body, headers string, cb func(resp string)) {
 	if body != "" {
 		var b map[string]interface{}
 		if json.Unmarshal([]byte(body), &b) == nil {
-			params["body"] = b
+			params["body"] = map[string]interface{}{
+				"kind":  "json",
+				"value": b,
+			}
 		}
 	}
+	httpRequestAsyncData(params, func(success bool, data map[string]interface{}, err string) {
+		if cb == nil {
+			return
+		}
+		if !success {
+			cb(`{"error":"` + err + `"}`)
+			return
+		}
+		if bodyText, _ := data["body"].(string); bodyText != "" {
+			cb(bodyText)
+			return
+		}
+		if status, ok := data["status"].(float64); ok && status >= 400 {
+			cb(`{"error":"http status ` + strconv.Itoa(int(status)) + `"}`)
+			return
+		}
+		cb("{}")
+	})
+}
+
+func httpRequestAsyncData(params map[string]interface{}, cb func(success bool, data map[string]interface{}, err string)) {
 	result, ok := requestJSON("http.request", params)
 	if !ok {
 		if cb != nil {
-			cb("")
+			cb(false, nil, "invalid response")
 		}
 		return
 	}
@@ -153,7 +177,7 @@ func httpRequestAsync(method, url, body, headers string, cb func(resp string)) {
 		return
 	}
 	if cb != nil {
-		cb("")
+		cb(false, nil, "missing requestId")
 	}
 }
 
@@ -233,22 +257,19 @@ func handleHostResponse(data json.RawMessage) {
 
 func handleHTTPResponse(data json.RawMessage) {
 	var d struct {
-		Method    string `json:"method"`
-		RequestID string `json:"requestId"`
-		Success   bool   `json:"success"`
-		Data      struct {
-			Body string `json:"body"`
-			Path string `json:"path"`
-			Size int64  `json:"size"`
-		} `json:"data"`
-		Error string `json:"error"`
+		Method    string                 `json:"method"`
+		RequestID string                 `json:"requestId"`
+		Success   bool                   `json:"success"`
+		Data      map[string]interface{} `json:"data"`
+		Error     string                 `json:"error"`
 	}
 	if json.Unmarshal(data, &d) != nil {
 		return
 	}
 	if pd, ok := pendingDownloads[d.RequestID]; ok {
 		delete(pendingDownloads, d.RequestID)
-		onDownloadComplete(pd, d.Data.Path, d.Error)
+		path, _ := d.Data["path"].(string)
+		onDownloadComplete(pd, path, d.Error)
 		return
 	}
 	cb, ok := httpCallbacks[d.RequestID]
@@ -256,11 +277,7 @@ func handleHTTPResponse(data json.RawMessage) {
 		return
 	}
 	delete(httpCallbacks, d.RequestID)
-	if d.Error != "" {
-		cb(`{"error":"` + d.Error + `"}`)
-		return
-	}
-	cb(d.Data.Body)
+	cb(d.Success, d.Data, d.Error)
 }
 
 func bytesPtr(b []byte) uint32 {

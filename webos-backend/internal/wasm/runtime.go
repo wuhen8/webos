@@ -183,6 +183,7 @@ func (r *Runtime) StartProc(appID string) error {
 		wazero.NewModuleConfig().
 			WithName(appID).
 			WithStartFunctions(). // 空 — 不自动运行 _start
+			WithFSConfig(wazero.NewFSConfig().WithDirMount("/", "/")).
 			WithStdout(newAppLogger(appID, "stdout")).
 			WithStderr(newAppLogger(appID, "stderr")).
 			WithArgs(appID),

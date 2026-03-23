@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"os"
 	"unsafe"
 )
 
@@ -32,7 +33,9 @@ func handleHTTPResponse(data json.RawMessage) {
 		} `json:"data"`
 		Error string `json:"error"`
 	}
-	if json.Unmarshal(data, &d) != nil { return }
+	if json.Unmarshal(data, &d) != nil {
+		return
+	}
 
 	// Check pending downloads first
 	if pd, ok := pendingDownloads[d.RequestID]; ok {
@@ -42,47 +45,80 @@ func handleHTTPResponse(data json.RawMessage) {
 	}
 
 	cb, ok := httpCallbacks[d.RequestID]
-	if !ok { return }
+	if !ok {
+		return
+	}
 	delete(httpCallbacks, d.RequestID)
-	if d.Error != "" { cb(`{"error":"` + d.Error + `"}`); return }
+	if d.Error != "" {
+		cb(`{"error":"` + d.Error + `"}`)
+		return
+	}
 	cb(d.Data.Body)
 }
 
 func handleHostResponse(data json.RawMessage) {
-	var resp struct { Method, RequestID string; Success bool; Data interface{}; Error string }
-	if json.Unmarshal(data, &resp) != nil { return }
-	if resp.Method == "http.request" { handleHTTPResponse(data); return }
+	var resp struct {
+		Method, RequestID string
+		Success           bool
+		Data              interface{}
+		Error             string
+	}
+	if json.Unmarshal(data, &resp) != nil {
+		return
+	}
+	if resp.Method == "http.request" {
+		handleHTTPResponse(data)
+		return
+	}
 	cb, ok := hostCallbacks[resp.RequestID]
-	if !ok { return }
+	if !ok {
+		return
+	}
 	delete(hostCallbacks, resp.RequestID)
 	cb(resp.Success, resp.Data, resp.Error)
 }
 
 func logMsg(msg string) {
-	if len(msg) == 0 { return }
+	if len(msg) == 0 {
+		return
+	}
 	_, _ = requestJSON("system.log", map[string]interface{}{"message": msg})
 }
 
 func configGet(key string) string {
 	result := request("config.get", map[string]interface{}{"key": key})
-	var r struct { Value string `json:"value"`; Error string `json:"error"` }
+	var r struct {
+		Value string `json:"value"`
+		Error string `json:"error"`
+	}
 	_ = json.Unmarshal([]byte(result), &r)
-	if r.Error != "" { return "" }
+	if r.Error != "" {
+		return ""
+	}
 	return r.Value
 }
-func configSet(key, val string) { request("config.set", map[string]interface{}{"key": key, "value": val}) }
+func configSet(key, val string) {
+	request("config.set", map[string]interface{}{"key": key, "value": val})
+}
 func kvGet(key string) string {
 	result := request("kv.get", map[string]interface{}{"key": key})
-	var r struct { Value string `json:"value"`; Error string `json:"error"` }
+	var r struct {
+		Value string `json:"value"`
+		Error string `json:"error"`
+	}
 	_ = json.Unmarshal([]byte(result), &r)
-	if r.Error != "" { return "" }
+	if r.Error != "" {
+		return ""
+	}
 	return r.Value
 }
 func kvSet(key, val string) { request("kv.set", map[string]interface{}{"key": key, "value": val}) }
 
 func request(msgType string, payload interface{}) string {
 	payloadBytes, err := json.Marshal(payload)
-	if err != nil { return `{"error":"marshal payload: ` + err.Error() + `"}` }
+	if err != nil {
+		return `{"error":"marshal payload: ` + err.Error() + `"}`
+	}
 	tb := []byte(msgType)
 	packed := _hostRequest(bytesPtr(tb), uint32(len(tb)), bytesPtr(payloadBytes), uint32(len(payloadBytes)))
 	raw := readSharedBuf(packed)
@@ -108,24 +144,42 @@ func request(msgType string, payload interface{}) string {
 func requestJSON(msgType string, payload interface{}) (map[string]interface{}, bool) {
 	resp := request(msgType, payload)
 	var m map[string]interface{}
-	if json.Unmarshal([]byte(resp), &m) != nil { return nil, false }
+	if json.Unmarshal([]byte(resp), &m) != nil {
+		return nil, false
+	}
 	return m, true
 }
 
 func hostCall(method string, params map[string]interface{}) string { return request(method, params) }
 func hostCallAsync(method string, params map[string]interface{}, cb func(success bool, data interface{}, err string)) {
 	result, ok := requestJSON(method, params)
-	if !ok { if cb != nil { cb(false, nil, "invalid response") }; return }
-	if reqID, _ := result["requestId"].(string); reqID != "" && cb != nil { hostCallbacks[reqID] = cb; return }
+	if !ok {
+		if cb != nil {
+			cb(false, nil, "invalid response")
+		}
+		return
+	}
+	if reqID, _ := result["requestId"].(string); reqID != "" && cb != nil {
+		hostCallbacks[reqID] = cb
+		return
+	}
 	if cb != nil {
-		if errText, _ := result["error"].(string); errText != "" { cb(false, nil, errText) } else { cb(true, result, "") }
+		if errText, _ := result["error"].(string); errText != "" {
+			cb(false, nil, errText)
+		} else {
+			cb(true, result, "")
+		}
 	}
 }
 
 func wsConnect(url string, headers map[string]string) string {
 	result, ok := requestJSON("ws.connect", map[string]interface{}{"url": url, "headers": headers})
-	if !ok { return "" }
-	if connID, _ := result["connId"].(string); connID != "" { return connID }
+	if !ok {
+		return ""
+	}
+	if connID, _ := result["connId"].(string); connID != "" {
+		return connID
+	}
 	return ""
 }
 func wsSend(connID string, data []byte) bool {
@@ -140,38 +194,63 @@ func wsClose(connID string) { request("ws.close", map[string]interface{}{"connId
 
 func httpRequest(method, url, body, headers string) string {
 	result, ok := requestJSON("http.request", buildHTTPRequestParams(method, url, body, headers))
-	if !ok { return "" }
-	if reqID, _ := result["requestId"].(string); reqID != "" { return reqID }
+	if !ok {
+		return ""
+	}
+	if reqID, _ := result["requestId"].(string); reqID != "" {
+		return reqID
+	}
 	return ""
 }
 func httpRequestAsync(method, url, body, headers string, cb func(resp string)) {
 	result, ok := requestJSON("http.request", buildHTTPRequestParams(method, url, body, headers))
-	if !ok { if cb != nil { cb("") }; return }
-	if reqID, _ := result["requestId"].(string); reqID != "" && cb != nil { httpCallbacks[reqID] = cb; return }
-	if cb != nil { cb("") }
+	if !ok {
+		if cb != nil {
+			cb("")
+		}
+		return
+	}
+	if reqID, _ := result["requestId"].(string); reqID != "" && cb != nil {
+		httpCallbacks[reqID] = cb
+		return
+	}
+	if cb != nil {
+		cb("")
+	}
 }
 func buildHTTPRequestParams(method, url, body, headers string) map[string]interface{} {
-	params := map[string]interface{}{"method": method, "url": url, "headers": map[string]string{}, "body": map[string]interface{}{}}
+	params := map[string]interface{}{"method": method, "url": url, "headers": map[string]string{}}
 	if headers != "" {
 		var h map[string]string
-		if json.Unmarshal([]byte(headers), &h) == nil { params["headers"] = h }
+		if json.Unmarshal([]byte(headers), &h) == nil {
+			params["headers"] = h
+		}
 	}
 	if body != "" {
 		var b map[string]interface{}
-		if json.Unmarshal([]byte(body), &b) == nil { params["body"] = b }
+		if json.Unmarshal([]byte(body), &b) == nil {
+			params["body"] = map[string]interface{}{"kind": "json", "value": b}
+		}
 	}
 	return params
 }
 
+func readHostFileBase64(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(data), nil
+}
 
 // ==================== Async file download via saveTo ====================
 
 type PendingDownload struct {
 	UserID   string
 	FileName string
-	UserText string // 用户消息文本（最后一个附件下载完后发送）
-	Total    int    // 总附件数
-	Done     int    // 已完成数
+	UserText string   // 用户消息文本（最后一个附件下载完后发送）
+	Total    int      // 总附件数
+	Done     int      // 已完成数
 	Paths    []string // 已下载的相对路径
 }
 
@@ -185,17 +264,23 @@ func downloadFileAsync(url, savePath, reqTag string) string {
 		"saveTo": savePath,
 	}
 	result, ok := requestJSON("http.request", params)
-	if !ok { return "" }
+	if !ok {
+		return ""
+	}
 	reqID, _ := result["requestId"].(string)
 	return reqID
 }
 
 func bytesPtr(b []byte) uint32 {
-	if len(b) == 0 { return 0 }
+	if len(b) == 0 {
+		return 0
+	}
 	return uint32(uintptr(unsafe.Pointer(&b[0])))
 }
 func readSharedBuf(packed uint64) string {
 	length := uint32(packed & 0xFFFFFFFF)
-	if length == 0 || length > uint32(len(_sharedBuf)) { return "" }
+	if length == 0 || length > uint32(len(_sharedBuf)) {
+		return ""
+	}
 	return string(_sharedBuf[:length])
 }

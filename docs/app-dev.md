@@ -259,7 +259,7 @@ export default defineConfig({
 
 # WASM 能力
 
-有 `wasmModule` 的应用会在后端 wazero 沙箱中运行。采用 **Reactor 模式**：`main()` 初始化后返回，模块常驻内存，宿主通过导出函数 `on_event` 推送事件。
+有 `wasmModule` 的应用会在后端 wazero 中运行。当前宿主已将宿主机根目录直接挂载到 guest `/`，WASM 可通过 Go `os`/`io` 标准库直接读写宿主文件系统；这不再是严格沙箱。采用 **Reactor 模式**：`main()` 初始化后返回，模块常驻内存，宿主通过导出函数 `on_event` 推送事件。
 
 ## main.go
 
@@ -419,14 +419,63 @@ request("fs.read", map[string]interface{}{"nodeId": "local", "path": "/etc/hostn
 
 // HTTP 请求
 request("http.request", map[string]interface{}{
-    "method": "GET",
+    "method": "POST",
     "url": "https://api.example.com/data",
+    "headers": map[string]string{
+        "Content-Type": "application/json",
+    },
+    "body": map[string]interface{}{
+        "kind": "json",
+        "value": map[string]interface{}{"hello": "world"},
+    },
 })
 
 // AI 对话
 request("chat.send", map[string]interface{}{
     "conversationId": "c1",
     "messageContent": "你好",
+})
+```
+
+`http.request` 的 `body` 采用统一结构：
+
+- `kind = "json"`：`value` 为 JSON 对象
+- `kind = "text"`：`text` 为纯文本请求体
+- `kind = "multipart"`：`fields` 为表单字段，`files` 为文件列表
+- `kind = "file"`：直接将文件作为整个请求体发送，可选 `encoding = "binary" | "base64"`
+
+示例：multipart 上传
+
+```go
+request("http.request", map[string]interface{}{
+    "method": "POST",
+    "url": "https://api.example.com/upload",
+    "body": map[string]interface{}{
+        "kind": "multipart",
+        "fields": map[string]interface{}{
+            "type": "image",
+        },
+        "files": []map[string]interface{}{
+            {"field": "file", "nodeId": "local_1", "path": "/tmp/demo.png", "filename": "demo.png"},
+        },
+    },
+})
+```
+
+示例：直接发送文件体
+
+```go
+request("http.request", map[string]interface{}{
+    "method": "POST",
+    "url": "https://api.example.com/blob",
+    "headers": map[string]string{
+        "Content-Type": "application/octet-stream",
+    },
+    "body": map[string]interface{}{
+        "kind": "file",
+        "path": "/tmp/data.bin",
+        "encoding": "binary",
+    },
 })
 ```
 

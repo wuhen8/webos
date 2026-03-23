@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -88,9 +90,13 @@ type WeixinUploadedFileInfo struct {
 }
 
 func weixinHeaders(includeJSON bool) map[string]string {
+	uin := make([]byte, 4)
+	if _, err := rand.Read(uin); err != nil {
+		binary.BigEndian.PutUint32(uin, 12345678)
+	}
 	headers := map[string]string{
 		"AuthorizationType": "ilink_bot_token",
-		"X-WECHAT-UIN":      base64.StdEncoding.EncodeToString([]byte("12345678")),
+		"X-WECHAT-UIN":      base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%d", binary.BigEndian.Uint32(uin)))),
 	}
 	if includeJSON {
 		headers["Content-Type"] = "application/json"
@@ -148,26 +154,42 @@ func sendWeixinMessageAsync(toUserID, contextToken string, itemList []map[string
 		}
 		return
 	}
+	contextToken = strings.TrimSpace(contextToken)
+	if contextToken == "" {
+		contextToken = strings.TrimSpace(kvGet("ctx:" + toUserID))
+	}
 	url := strings.TrimRight(weixinBaseURL, "/") + "/ilink/bot/sendmessage"
 	bodyMap := map[string]interface{}{
 		"msg": map[string]interface{}{
 			"from_user_id":  "",
 			"to_user_id":    toUserID,
-			"client_id":     fmt.Sprintf("webos-weixin-%d", nextSendSeq()),
+			"client_id":     nextWeixinClientID(),
 			"message_type":  2,
 			"message_state": 2,
 			"item_list":     itemList,
-			"context_token": contextToken,
 		},
 		"base_info": map[string]interface{}{
 			"channel_version": "webos-weixin-ai-bot/1.0.0",
 		},
 	}
+	if strings.TrimSpace(contextToken) != "" {
+		bodyMap["msg"].(map[string]interface{})["context_token"] = contextToken
+	}
 	body, _ := json.Marshal(bodyMap)
 	headers, _ := json.Marshal(weixinHeaders(true))
 	httpRequestAsync("POST", url, string(body), string(headers), func(raw string) {
 		ok := true
-		if strings.Contains(raw, `"error"`) {
+		var resp struct {
+			Ret     int    `json:"ret"`
+			ErrCode int    `json:"errcode"`
+			ErrMsg  string `json:"errmsg"`
+			Error   string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(raw), &resp); err == nil {
+			if resp.Error != "" || resp.Ret != 0 || resp.ErrCode != 0 {
+				ok = false
+			}
+		} else if strings.TrimSpace(raw) == "" {
 			ok = false
 		}
 		if cb != nil {

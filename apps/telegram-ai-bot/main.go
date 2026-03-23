@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 )
 
@@ -17,6 +18,9 @@ var (
 	activeChatID   int          // 当前活跃的 chat_id（AI 回复发到这里）
 	initialized    bool
 	polling        bool // 防止重复轮询
+	nextPollAt     time.Time
+	pollFailCount  int
+	lastUpdateID   int
 )
 
 func main() {}
@@ -49,9 +53,9 @@ func ensureInit() {
 	}
 
 	request("client_context.register", map[string]interface{}{
-		"id":          "telegram-ai-bot",
-		"platform":    "telegram",
-		"displayName": "Telegram Bot",
+		"id":           "telegram-ai-bot",
+		"platform":     "telegram",
+		"displayName":  "Telegram Bot",
 		"capabilities": []string{"markdown_basic", "code_blocks", "bold", "italic", "links"},
 		"constraints":  []string{"max_message_4096", "no_tables", "no_html", "no_latex", "no_images_inline"},
 		"systemHint": "当前用户通过 Telegram 客户端与你对话。请遵守以下格式规则：\n" +
@@ -223,6 +227,7 @@ func onSystemNotify(data json.RawMessage) {
 		sendTelegramAsync(cid, text, nil)
 	}
 }
+
 // startTelegramDownload 第一步：调 getFile 获取文件路径，然后异步下载
 func startTelegramDownload(fileID, fileName string, chatID int, userName, userText string) {
 	getFileURL := fmt.Sprintf("https://api.telegram.org/bot%s/getFile?file_id=%s", token, fileID)
@@ -308,16 +313,13 @@ func pollOnce() {
 	if token == "" || polling {
 		return
 	}
-	polling = true
-	lastUpdateID := 0
-	if s := kvGet("last_update_id"); s != "" {
-		if v, err := strconv.Atoi(s); err == nil {
-			lastUpdateID = v
-		}
+	if !nextPollAt.IsZero() && time.Now().Before(nextPollAt) {
+		return
 	}
+	polling = true
 	offset := lastUpdateID + 1
 	url := fmt.Sprintf(
-		"https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=0&limit=10",
+		"https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=25&limit=10",
 		token, offset,
 	)
 	httpRequestAsync("GET", url, "", "", func(resp string) {
@@ -326,18 +328,36 @@ func pollOnce() {
 			if resp != "" {
 				logMsg("WARN: getUpdates non-JSON response: " + resp[:min(len(resp), 100)])
 			}
+			schedulePollRetry(0, "non_json")
 			return
 		}
 		var tgResp TelegramResponse
 		if err := json.Unmarshal([]byte(resp), &tgResp); err != nil {
 			logMsg("ERROR: parse Telegram response: " + err.Error())
+			schedulePollRetry(0, "parse_error")
 			return
 		}
-		if !tgResp.OK || len(tgResp.Result) == 0 {
+		if !tgResp.OK {
+			retryAfter := parseTelegramRetryAfter(resp)
+			errText := parseTelegramAPIError(resp)
+			if retryAfter > 0 {
+				logMsg(fmt.Sprintf("WARN: getUpdates rate limited: retry_after=%ds err=%s", retryAfter, errText))
+			} else if errText != "" {
+				logMsg("WARN: getUpdates failed: " + truncateTelegramResp(errText))
+			}
+			schedulePollRetry(retryAfter, "api_error")
 			return
 		}
+		pollFailCount = 0
+		nextPollAt = time.Time{}
+		if len(tgResp.Result) == 0 {
+			return
+		}
+		maxUpdateID := lastUpdateID
 		for _, update := range tgResp.Result {
-			kvSet("last_update_id", strconv.Itoa(update.UpdateID))
+			if update.UpdateID > maxUpdateID {
+				maxUpdateID = update.UpdateID
+			}
 			if update.Message == nil {
 				continue
 			}
@@ -416,7 +436,27 @@ func pollOnce() {
 				"clientId":       "telegram-ai-bot",
 			})
 		}
+		if maxUpdateID > lastUpdateID {
+			lastUpdateID = maxUpdateID
+		}
 	})
+}
+
+func schedulePollRetry(retryAfterSec int, reason string) {
+	delay := 3 * time.Second
+	if retryAfterSec > 0 {
+		delay = time.Duration(retryAfterSec) * time.Second
+		pollFailCount = 0
+	} else {
+		pollFailCount++
+		if pollFailCount < 1 {
+			pollFailCount = 1
+		}
+		backoff := 1 << min(pollFailCount-1, 5)
+		delay = time.Duration(backoff) * time.Second
+	}
+	nextPollAt = time.Now().Add(delay)
+	logMsg(fmt.Sprintf("Telegram 轮询退避: reason=%s delay=%s", reason, delay))
 }
 
 // onMediaAttachment 处理 AI 发送的文件/图片附件
@@ -450,20 +490,23 @@ func onMediaAttachment(data json.RawMessage) {
 
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", token, apiMethod)
 
-	body := map[string]interface{}{
-		fileField: "[file:" + a.NodeID + ":" + a.Path + "]",
+	fields := map[string]interface{}{
 		"chat_id": strconv.Itoa(activeChatID),
 	}
 	if a.Caption != "" {
-		body["caption"] = a.Caption
+		fields["caption"] = a.Caption
 	}
 
 	resp := request("http.request", map[string]interface{}{
-		"method":    "POST",
-		"url":       url,
-		"format":    "multipart",
-		"fileField": fileField,
-		"body":      body,
+		"method": "POST",
+		"url":    url,
+		"body": map[string]interface{}{
+			"kind":   "multipart",
+			"fields": fields,
+			"files": []map[string]interface{}{
+				{"field": fileField, "nodeId": a.NodeID, "path": a.Path, "filename": a.FileName},
+			},
+		},
 	})
 
 	var result struct {

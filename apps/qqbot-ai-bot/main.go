@@ -29,9 +29,9 @@ var (
 	tickCount    int
 
 	// 心跳管理（从 Hello 事件动态获取）
-	heartbeatInterval int   // 心跳间隔（毫秒），0 表示未初始化
-	lastSeq           int   // 最后收到的事件序号
-	heartbeatTick     int   // 下次心跳的 tick 计数
+	heartbeatInterval int // 心跳间隔（毫秒），0 表示未初始化
+	lastSeq           int // 最后收到的事件序号
+	heartbeatTick     int // 下次心跳的 tick 计数
 
 	// Token 管理
 	accessToken string
@@ -87,9 +87,9 @@ func ensureInit() {
 
 	// 注册客户端上下文
 	request("client_context.register", map[string]interface{}{
-		"id":          "qq-ai-bot",
-		"platform":    "qq",
-		"displayName": "QQ Bot",
+		"id":           "qq-ai-bot",
+		"platform":     "qq",
+		"displayName":  "QQ Bot",
 		"capabilities": []string{"markdown_basic", "code_blocks", "bold", "italic"},
 		"constraints":  []string{"no_latex"},
 		"systemHint": "当前用户通过 QQ 客户端与你对话。请遵守以下格式规则：\n" +
@@ -343,11 +343,11 @@ func onTick() {
 func sendIdentify() {
 	// QQ Bot intents
 	const (
-		INTENT_GUILDS               = 1 << 0
-		INTENT_GUILD_MEMBERS        = 1 << 1
-		INTENT_PUBLIC_GUILD_MSGS    = 1 << 30
-		INTENT_DIRECT_MESSAGE       = 1 << 12
-		INTENT_GROUP_AND_C2C        = 1 << 25
+		INTENT_GUILDS            = 1 << 0
+		INTENT_GUILD_MEMBERS     = 1 << 1
+		INTENT_PUBLIC_GUILD_MSGS = 1 << 30
+		INTENT_DIRECT_MESSAGE    = 1 << 12
+		INTENT_GROUP_AND_C2C     = 1 << 25
 	)
 
 	// 完整权限
@@ -356,9 +356,9 @@ func sendIdentify() {
 	identify := map[string]interface{}{
 		"op": 2, // IDENTIFY
 		"d": map[string]interface{}{
-			"token":    "QQBot " + accessToken,
-			"intents":  intents,
-			"shard":    []int{0, 1},
+			"token":   "QQBot " + accessToken,
+			"intents": intents,
+			"shard":   []int{0, 1},
 			"properties": map[string]interface{}{
 				"$os":      "linux",
 				"$browser": "webos-qqbot",
@@ -818,7 +818,7 @@ func sendQQC2CMessage(openid, content string) {
 			"content": content,
 		},
 		"msg_type": 2, // Markdown 格式
-		"msg_seq": getNextMsgSeq(),
+		"msg_seq":  getNextMsgSeq(),
 	}
 	bodyBytes, _ := json.Marshal(body)
 	hb, _ := json.Marshal(map[string]string{
@@ -857,7 +857,7 @@ func sendQQGroupMessage(groupOpenid, content, msgID string) {
 			"content": content,
 		},
 		"msg_type": 2, // Markdown 格式
-		"msg_seq": getNextMsgSeq(),
+		"msg_seq":  getNextMsgSeq(),
 	}
 	if msgID != "" {
 		body["msg_id"] = msgID
@@ -996,20 +996,20 @@ func extractFilePath(content string) string {
 	if end == -1 {
 		return ""
 	}
-	
-	filePart := content[start+len("[文件:"):start+end]
+
+	filePart := content[start+len("[文件:") : start+end]
 	// 格式: node_id:path
 	parts := strings.SplitN(strings.TrimSpace(filePart), ":", 2)
 	if len(parts) != 2 {
 		return ""
 	}
-	
+
 	// 检查节点ID是否为local_1
 	if parts[0] != "local_1" {
 		logMsg(fmt.Sprintf("不支持的文件节点: %s", parts[0]))
 		return ""
 	}
-	
+
 	// 返回完整路径
 	path := strings.TrimSpace(parts[1])
 	if strings.HasPrefix(path, "/") {
@@ -1043,10 +1043,17 @@ func sendQQC2CImage(openid, filePath, msgID, text string) {
 		logMsg("ERROR: accessToken 不可用或已过期，无法发送图片")
 		return
 	}
-	
+
 	logMsg(fmt.Sprintf("发送 C2C 图片: %s, 文本: %s", filePath, text))
-	
-	// 使用 http.request 上传图片（通用 API，自动处理文件 base64）
+	fileDataB64, err := readHostFileBase64(filePath)
+	if err != nil {
+		logMsg("ERROR: 读取QQ图片失败: " + err.Error())
+		if text != "" {
+			sendQQC2CMessage(openid, "❌ 图片读取失败，发送文本: "+text)
+		}
+		return
+	}
+
 	uploadURL := APIBase + "/v2/users/" + openid + "/files"
 	resp := request("http.request", map[string]interface{}{
 		"method": "POST",
@@ -1055,18 +1062,21 @@ func sendQQC2CImage(openid, filePath, msgID, text string) {
 			"Authorization": "QQBot " + accessToken,
 		},
 		"body": map[string]interface{}{
-			"file_type":    1,
-			"srv_send_msg": false,
-			"file_data":    "[file:local_1:" + filePath + "]", // 自动替换为 base64
+			"kind": "json",
+			"value": map[string]interface{}{
+				"file_type":    1,
+				"srv_send_msg": false,
+				"file_data":    fileDataB64,
+			},
 		},
 	})
-	
+
 	var result struct {
 		RequestID string `json:"requestId"`
 		Error     string `json:"error"`
 	}
 	json.Unmarshal([]byte(resp), &result)
-	
+
 	if result.Error != "" {
 		logMsg("ERROR: QQ图片上传失败: " + result.Error)
 		if text != "" {
@@ -1074,11 +1084,11 @@ func sendQQC2CImage(openid, filePath, msgID, text string) {
 		}
 		return
 	}
-	
+
 	if result.RequestID != "" {
 		httpCallbacks[result.RequestID] = func(respBody string) {
 			logMsg("QQ图片上传响应: " + respBody[:min(len(respBody), 300)])
-			
+
 			// 解析上传结果，提取 file_info
 			var uploadResp struct {
 				FileUUID string `json:"file_uuid"`
@@ -1092,7 +1102,7 @@ func sendQQC2CImage(openid, filePath, msgID, text string) {
 				}
 				return
 			}
-			
+
 			if uploadResp.FileInfo == "" {
 				logMsg("ERROR: QQ上传返回空 file_info")
 				if text != "" {
@@ -1100,9 +1110,9 @@ func sendQQC2CImage(openid, filePath, msgID, text string) {
 				}
 				return
 			}
-			
+
 			logMsg(fmt.Sprintf("✅ QQ图片上传成功, file_info=%s", uploadResp.FileInfo[:min(len(uploadResp.FileInfo), 50)]))
-			
+
 			// 发送富媒体消息 (msg_type=7)
 			msgURL := APIBase + "/v2/users/" + openid + "/messages"
 			body := map[string]interface{}{
@@ -1118,7 +1128,7 @@ func sendQQC2CImage(openid, filePath, msgID, text string) {
 			if text != "" {
 				body["content"] = text
 			}
-			
+
 			bodyBytes, _ := json.Marshal(body)
 			hb, _ := json.Marshal(map[string]string{
 				"Content-Type":  "application/json",
@@ -1143,10 +1153,17 @@ func sendQQGroupImage(groupOpenid, filePath, msgID, text string) {
 		logMsg("ERROR: accessToken 不可用或已过期，无法发送图片")
 		return
 	}
-	
+
 	logMsg(fmt.Sprintf("发送群聊图片: %s, 文本: %s", filePath, text))
-	
-	// 使用 http.request 上传图片（通用 API，自动处理文件 base64）
+	fileDataB64, err := readHostFileBase64(filePath)
+	if err != nil {
+		logMsg("ERROR: 读取QQ群图片失败: " + err.Error())
+		if text != "" {
+			sendQQGroupMessage(groupOpenid, "❌ 图片读取失败，发送文本: "+text, msgID)
+		}
+		return
+	}
+
 	uploadURL := APIBase + "/v2/groups/" + groupOpenid + "/files"
 	resp := request("http.request", map[string]interface{}{
 		"method": "POST",
@@ -1155,18 +1172,21 @@ func sendQQGroupImage(groupOpenid, filePath, msgID, text string) {
 			"Authorization": "QQBot " + accessToken,
 		},
 		"body": map[string]interface{}{
-			"file_type":    1,
-			"srv_send_msg": false,
-			"file_data":    "[file:local_1:" + filePath + "]", // 自动替换为 base64
+			"kind": "json",
+			"value": map[string]interface{}{
+				"file_type":    1,
+				"srv_send_msg": false,
+				"file_data":    fileDataB64,
+			},
 		},
 	})
-	
+
 	var result struct {
 		RequestID string `json:"requestId"`
 		Error     string `json:"error"`
 	}
 	json.Unmarshal([]byte(resp), &result)
-	
+
 	if result.Error != "" {
 		logMsg("ERROR: QQ群图片上传失败: " + result.Error)
 		if text != "" {
@@ -1174,11 +1194,11 @@ func sendQQGroupImage(groupOpenid, filePath, msgID, text string) {
 		}
 		return
 	}
-	
+
 	if result.RequestID != "" {
 		httpCallbacks[result.RequestID] = func(respBody string) {
 			logMsg("QQ群图片上传响应: " + respBody[:min(len(respBody), 300)])
-			
+
 			// 解析上传结果，提取 file_info
 			var uploadResp struct {
 				FileUUID string `json:"file_uuid"`
@@ -1192,7 +1212,7 @@ func sendQQGroupImage(groupOpenid, filePath, msgID, text string) {
 				}
 				return
 			}
-			
+
 			if uploadResp.FileInfo == "" {
 				logMsg("ERROR: QQ群上传返回空 file_info")
 				if text != "" {
@@ -1200,9 +1220,9 @@ func sendQQGroupImage(groupOpenid, filePath, msgID, text string) {
 				}
 				return
 			}
-			
+
 			logMsg(fmt.Sprintf("✅ QQ群图片上传成功, file_info=%s", uploadResp.FileInfo[:min(len(uploadResp.FileInfo), 50)]))
-			
+
 			// 发送富媒体消息 (msg_type=7)
 			msgURL := APIBase + "/v2/groups/" + groupOpenid + "/messages"
 			body := map[string]interface{}{
@@ -1218,7 +1238,7 @@ func sendQQGroupImage(groupOpenid, filePath, msgID, text string) {
 			if text != "" {
 				body["content"] = text
 			}
-			
+
 			bodyBytes, _ := json.Marshal(body)
 			hb, _ := json.Marshal(map[string]string{
 				"Content-Type":  "application/json",
@@ -1236,20 +1256,26 @@ func sendQQGroupImage(groupOpenid, filePath, msgID, text string) {
 		}
 	}
 }
+
 // sendQQC2CFile 发送私聊文件
 func sendQQC2CFile(openid, filePath, fileName, caption string) {
 	if !hasValidQQToken() {
 		logMsg("ERROR: accessToken 不可用或已过期，无法发送文件")
 		return
 	}
-	
+
 	if fileName == "" {
 		fileName = filePath[strings.LastIndex(filePath, "/")+1:]
 	}
-	
+
 	logMsg(fmt.Sprintf("发送 C2C 文件: %s, 文件名: %s", filePath, fileName))
-	
-	// 使用 http.request 上传文件（file_type=4, 必须传 file_name）
+	fileDataB64, err := readHostFileBase64(filePath)
+	if err != nil {
+		logMsg("ERROR: 读取QQ文件失败: " + err.Error())
+		sendQQC2CMessage(openid, "❌ 文件读取失败: "+fileName)
+		return
+	}
+
 	uploadURL := APIBase + "/v2/users/" + openid + "/files"
 	resp := request("http.request", map[string]interface{}{
 		"method": "POST",
@@ -1258,29 +1284,32 @@ func sendQQC2CFile(openid, filePath, fileName, caption string) {
 			"Authorization": "QQBot " + accessToken,
 		},
 		"body": map[string]interface{}{
-			"file_type":    4, // 文件类型
-			"srv_send_msg": false,
-			"file_data":    "[file:local_1:" + filePath + "]",
-			"file_name":    fileName,
+			"kind": "json",
+			"value": map[string]interface{}{
+				"file_type":    4,
+				"srv_send_msg": false,
+				"file_data":    fileDataB64,
+				"file_name":    fileName,
+			},
 		},
 	})
-	
+
 	var result struct {
 		RequestID string `json:"requestId"`
 		Error     string `json:"error"`
 	}
 	json.Unmarshal([]byte(resp), &result)
-	
+
 	if result.Error != "" {
 		logMsg("ERROR: QQ文件上传失败: " + result.Error)
 		sendQQC2CMessage(openid, "❌ 文件上传失败: "+fileName)
 		return
 	}
-	
+
 	if result.RequestID != "" {
 		httpCallbacks[result.RequestID] = func(respBody string) {
 			logMsg("QQ文件上传响应: " + respBody[:min(len(respBody), 300)])
-			
+
 			var uploadResp struct {
 				FileUUID string `json:"file_uuid"`
 				FileInfo string `json:"file_info"`
@@ -1291,15 +1320,15 @@ func sendQQC2CFile(openid, filePath, fileName, caption string) {
 				sendQQC2CMessage(openid, "❌ 文件解析失败: "+fileName)
 				return
 			}
-			
+
 			if uploadResp.FileInfo == "" {
 				logMsg("ERROR: QQ文件上传返回空 file_info")
 				sendQQC2CMessage(openid, "❌ 文件上传失败: "+fileName)
 				return
 			}
-			
+
 			logMsg(fmt.Sprintf("✅ QQ文件上传成功, file_info=%s", uploadResp.FileInfo[:min(len(uploadResp.FileInfo), 50)]))
-			
+
 			// 发送富媒体消息 (msg_type=7)
 			msgURL := APIBase + "/v2/users/" + openid + "/messages"
 			body := map[string]interface{}{
@@ -1312,7 +1341,7 @@ func sendQQC2CFile(openid, filePath, fileName, caption string) {
 			if caption != "" {
 				body["content"] = caption
 			}
-			
+
 			bodyBytes, _ := json.Marshal(body)
 			hb, _ := json.Marshal(map[string]string{
 				"Content-Type":  "application/json",
@@ -1337,13 +1366,19 @@ func sendQQGroupFile(groupOpenid, filePath, fileName, caption string) {
 		logMsg("ERROR: accessToken 不可用或已过期，无法发送文件")
 		return
 	}
-	
+
 	if fileName == "" {
 		fileName = filePath[strings.LastIndex(filePath, "/")+1:]
 	}
-	
+
 	logMsg(fmt.Sprintf("发送群聊文件: %s, 文件名: %s", filePath, fileName))
-	
+	fileDataB64, err := readHostFileBase64(filePath)
+	if err != nil {
+		logMsg("ERROR: 读取QQ群文件失败: " + err.Error())
+		sendQQGroupMessage(groupOpenid, "❌ 文件读取失败: "+fileName, "")
+		return
+	}
+
 	uploadURL := APIBase + "/v2/groups/" + groupOpenid + "/files"
 	resp := request("http.request", map[string]interface{}{
 		"method": "POST",
@@ -1352,29 +1387,32 @@ func sendQQGroupFile(groupOpenid, filePath, fileName, caption string) {
 			"Authorization": "QQBot " + accessToken,
 		},
 		"body": map[string]interface{}{
-			"file_type":    4, // 文件类型
-			"srv_send_msg": false,
-			"file_data":    "[file:local_1:" + filePath + "]",
-			"file_name":    fileName,
+			"kind": "json",
+			"value": map[string]interface{}{
+				"file_type":    4,
+				"srv_send_msg": false,
+				"file_data":    fileDataB64,
+				"file_name":    fileName,
+			},
 		},
 	})
-	
+
 	var result struct {
 		RequestID string `json:"requestId"`
 		Error     string `json:"error"`
 	}
 	json.Unmarshal([]byte(resp), &result)
-	
+
 	if result.Error != "" {
 		logMsg("ERROR: QQ群文件上传失败: " + result.Error)
 		sendQQGroupMessage(groupOpenid, "❌ 文件上传失败: "+fileName, "")
 		return
 	}
-	
+
 	if result.RequestID != "" {
 		httpCallbacks[result.RequestID] = func(respBody string) {
 			logMsg("QQ群文件上传响应: " + respBody[:min(len(respBody), 300)])
-			
+
 			var uploadResp struct {
 				FileUUID string `json:"file_uuid"`
 				FileInfo string `json:"file_info"`
@@ -1385,15 +1423,15 @@ func sendQQGroupFile(groupOpenid, filePath, fileName, caption string) {
 				sendQQGroupMessage(groupOpenid, "❌ 文件解析失败: "+fileName, "")
 				return
 			}
-			
+
 			if uploadResp.FileInfo == "" {
 				logMsg("ERROR: QQ群文件上传返回空 file_info")
 				sendQQGroupMessage(groupOpenid, "❌ 文件上传失败: "+fileName, "")
 				return
 			}
-			
+
 			logMsg(fmt.Sprintf("✅ QQ群文件上传成功, file_info=%s", uploadResp.FileInfo[:min(len(uploadResp.FileInfo), 50)]))
-			
+
 			msgURL := APIBase + "/v2/groups/" + groupOpenid + "/messages"
 			body := map[string]interface{}{
 				"msg_type": 7,
@@ -1405,7 +1443,7 @@ func sendQQGroupFile(groupOpenid, filePath, fileName, caption string) {
 			if caption != "" {
 				body["content"] = caption
 			}
-			
+
 			bodyBytes, _ := json.Marshal(body)
 			hb, _ := json.Marshal(map[string]string{
 				"Content-Type":  "application/json",
