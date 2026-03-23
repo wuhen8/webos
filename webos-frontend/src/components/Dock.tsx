@@ -333,7 +333,7 @@ function Dock() {
   const minimizedWindows = topLevelWindows.filter(w => w.isMinimized && !representedAppIds.has(w.appId || w.type))
 
   const hasSeparator = runningUnpinnedItems.length > 0 || minimizedWindows.length > 0
-  const totalPinnedCount = pinnedItems.length
+  const totalPinnedCount = allDockItems.length
   const totalBeforeSep = totalPinnedCount
   const totalAfterSep = runningUnpinnedItems.length + minimizedWindows.length
 

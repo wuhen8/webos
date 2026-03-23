@@ -1,0 +1,18 @@
+{
+  "id": "weixin-ai-bot",
+  "name": "微信 AI Bot",
+  "description": "微信机器人接入 WebOS AI 助手，通过 iLink getupdates 长轮询收消息，支持日志版扫码登录、文本与附件收发",
+  "version": "1.0.0",
+  "icon": "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
+  "wasmModule": "bot.wasm",
+  "background": true,
+  "pollInterval": 3000,
+  "permissions": ["kv", "net"],
+  "configSchema": [
+    { "key": "weixin_bot_token", "label": "微信 Bot Token", "type": "password", "default": "" },
+    { "key": "weixin_bot_type", "label": "微信 bot_type", "type": "text", "default": "3" },
+    { "key": "weixin_user_ids", "label": "授权用户 ID (多个用逗号分隔，留空则自动授权首个用户)", "type": "text", "default": "" },
+    { "key": "weixin_route_tag", "label": "SKRouteTag (可选)", "type": "text", "default": "" },
+    { "key": "proxy", "label": "HTTP 代理（如果宿主支持）", "type": "text", "default": "" }
+  ]
+}

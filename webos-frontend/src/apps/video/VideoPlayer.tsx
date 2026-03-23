@@ -1,7 +1,9 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import Artplayer from 'artplayer'
-import Hls from 'hls.js'
+import { createPlayer, selectPlayback, selectError } from '@videojs/react'
+import { Video, videoFeatures } from '@videojs/react/video'
+import '@videojs/react/video/skin.css'
 import { resolveMediaUrl } from '@/lib/storageApi'
+import { CustomVideoSkin } from './CustomVideoSkin'
 
 export interface PlaylistItem {
   label: string
@@ -15,14 +17,13 @@ interface VideoPlayerProps {
   title: string
 }
 
+const Player = createPlayer({ features: videoFeatures })
+
 export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
-  const artRef = useRef<HTMLDivElement>(null)
-  const playerRef = useRef<Artplayer | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [showPlaylist, setShowPlaylist] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null)
-  const hlsRef = useRef<Hls | null>(null)
   const indexRef = useRef(currentIndex)
   indexRef.current = currentIndex
 
@@ -43,7 +44,7 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
     }
   }, [playlist.length, playIndex])
 
-  // Resolve URL on-demand: if filePath+nodeId present, resolve; otherwise use url directly
+  // Resolve URL on-demand
   useEffect(() => {
     if (!current) return
     let cancelled = false
@@ -68,85 +69,6 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
     return () => { cancelled = true }
   }, [current])
 
-  // Initialize player once URL is resolved
-  const playUrl = resolvedUrl
-
-  useEffect(() => {
-    if (!artRef.current || !playUrl) return
-
-    if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null }
-    if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null }
-
-    const isHls = /\.m3u8(\?|$)/i.test(playUrl)
-
-    // Build controls array — add playlist button next to setting (right side)
-    const controls: any[] = []
-    if (playlist.length > 1) {
-      controls.push({
-        name: 'playlist',
-        position: 'right',
-        index: 5,
-        html: `<span style="cursor:pointer;font-size:12px;opacity:0.9">剧集</span>`,
-        click: () => setShowPlaylist(prev => !prev),
-      })
-    }
-
-    try {
-      playerRef.current = new Artplayer({
-        container: artRef.current,
-        url: playUrl,
-        volume: 0.7,
-        autoplay: true,
-        pip: true,
-        screenshot: true,
-        setting: true,
-        playbackRate: true,
-        aspectRatio: true,
-        fullscreen: true,
-        miniProgressBar: true,
-        mutex: true,
-        backdrop: true,
-        playsInline: true,
-        autoPlayback: true,
-        airplay: true,
-        theme: '#3b82f6',
-        lang: navigator.language.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en',
-        hotkey: true,
-        lock: true,
-        fastForward: true,
-        autoOrientation: true,
-        flip: true,
-        controls,
-        moreVideoAttr: { crossOrigin: 'anonymous' },
-        ...(isHls ? {
-          customType: {
-            m3u8: (video: HTMLVideoElement, url: string) => {
-              if (Hls.isSupported()) {
-                const hls = new Hls()
-                hlsRef.current = hls
-                hls.loadSource(url)
-                hls.attachMedia(video)
-              } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = url
-              }
-            },
-          },
-          type: 'm3u8',
-        } : {}),
-      })
-
-      playerRef.current.on('error', () => setError('视频加载失败，请检查文件格式'))
-      playerRef.current.on('video:ended', () => playNext())
-    } catch {
-      setError('播放器初始化失败')
-    }
-
-    return () => {
-      if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null }
-      if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null }
-    }
-  }, [playUrl, playlist.length, playNext])
-
   if (error) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-black">
@@ -155,15 +77,85 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
     )
   }
 
+  if (!resolvedUrl) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-black">
+        <p className="text-white/80 text-lg">加载中...</p>
+      </div>
+    )
+  }
+
   return (
     <div className="w-full h-full relative bg-black">
-      <div ref={artRef} className="w-full h-full" />
+      <Player.Provider>
+        <PlayerContent
+          url={resolvedUrl}
+          playlist={playlist}
+          currentIndex={currentIndex}
+          showPlaylist={showPlaylist}
+          onPlayIndex={playIndex}
+          onPlayNext={playNext}
+          onTogglePlaylist={() => setShowPlaylist(prev => !prev)}
+          onClosePlaylist={() => setShowPlaylist(false)}
+          current={current}
+        />
+      </Player.Provider>
+    </div>
+  )
+}
 
-      {/* Playlist panel — glassmorphism */}
+interface PlayerContentProps {
+  url: string
+  playlist: PlaylistItem[]
+  currentIndex: number
+  showPlaylist: boolean
+  onPlayIndex: (index: number) => void
+  onPlayNext: () => void
+  onTogglePlaylist: () => void
+  onClosePlaylist: () => void
+  current: PlaylistItem
+}
+
+function PlayerContent({
+  url,
+  playlist,
+  currentIndex,
+  showPlaylist,
+  onPlayIndex,
+  onPlayNext,
+  onTogglePlaylist,
+  onClosePlaylist,
+  current,
+}: PlayerContentProps) {
+  // Monitor playback state for auto-play next
+  const playback = Player.usePlayer(selectPlayback)
+  const errorState = Player.usePlayer(selectError)
+
+  useEffect(() => {
+    if (playback?.ended) {
+      onPlayNext()
+    }
+  }, [playback?.ended, onPlayNext])
+
+  useEffect(() => {
+    if (errorState?.error) {
+      console.error('Video playback error:', errorState.error)
+    }
+  }, [errorState?.error])
+
+  return (
+    <>
+      <CustomVideoSkin
+        onPlaylistClick={onTogglePlaylist}
+        showPlaylistButton={playlist.length > 1}
+      >
+        <Video src={url} autoPlay playsInline crossOrigin="anonymous" />
+      </CustomVideoSkin>
+
+      {/* Playlist panel - independent of player controls */}
       {showPlaylist && (
         <>
-          {/* Backdrop click to close */}
-          <div className="absolute inset-0 z-40" onClick={() => setShowPlaylist(false)} />
+          <div className="absolute inset-0 z-40" onClick={onClosePlaylist} />
 
           <div className="absolute right-0 top-0 bottom-0 w-64 z-50 flex flex-col
             bg-black/60 backdrop-blur-2xl backdrop-saturate-150
@@ -174,7 +166,7 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
                 剧集 · {playlist.length}集
               </span>
               <button
-                onClick={() => setShowPlaylist(false)}
+                onClick={onClosePlaylist}
                 className="w-6 h-6 flex items-center justify-center rounded-full
                   bg-white/[0.1] hover:bg-white/[0.2] text-white/60 hover:text-white
                   transition-all text-xs"
@@ -187,7 +179,7 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
               {playlist.map((item, i) => (
                 <button
                   key={i}
-                  onClick={() => playIndex(i)}
+                  onClick={() => onPlayIndex(i)}
                   className={`w-full text-left px-4 py-2.5 text-sm truncate transition-all duration-200 rounded-md mx-1 ${
                     i === currentIndex
                       ? 'bg-blue-500/25 text-blue-300'
@@ -203,13 +195,12 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
               ))}
             </div>
 
-            {/* Current playing indicator */}
             <div className="px-4 py-2.5 text-xs text-white/40">
               正在播放 · {current?.label}
             </div>
           </div>
         </>
       )}
-    </div>
+    </>
   )
 }

@@ -275,6 +275,26 @@ func parseTelegramAPIError(resp string) string {
 	return truncateTelegramResp(resp)
 }
 
+func parseTelegramRetryAfter(resp string) int {
+	var envelope struct {
+		ErrorCode  int `json:"error_code"`
+		Parameters struct {
+			RetryAfter int `json:"retry_after"`
+		} `json:"parameters"`
+	}
+	if json.Unmarshal([]byte(resp), &envelope) != nil {
+		return 0
+	}
+	if envelope.ErrorCode == 429 && envelope.Parameters.RetryAfter > 0 {
+		return envelope.Parameters.RetryAfter
+	}
+	return 0
+}
+
+func isTelegramTooManyRequests(resp string) bool {
+	return parseTelegramRetryAfter(resp) > 0
+}
+
 func truncateTelegramResp(resp string) string {
 	resp = strings.TrimSpace(resp)
 	if len(resp) <= 400 {
