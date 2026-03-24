@@ -21,7 +21,7 @@ type ScheduledJob struct {
 	Name         string
 	CronExpr     string // 6-field cron: sec min hour dom month dow
 	Run          func()
-	Silent       bool   // true = don't show toast notification on frontend
+	Silent       bool // true = don't show toast notification on frontend
 	Enabled      bool
 	JobType      string // "system" | "shell" | "builtin"
 	Config       string // JSON config
@@ -643,7 +643,7 @@ func MakeJobRunFunc(jobID, jobType, cfg string, silent bool, systemSvc SystemExe
 					GetScheduler().SetJobResult(jobID, "failed", msg)
 					return "", fmt.Errorf("%s", msg)
 				}
-				result := ce.ExecuteCommand("", name, args)
+				result := ce.ExecuteCommandForClient("", name, args, "")
 				if result.IsError {
 					DBUpdateJobStatus(jobID, "failed", result.Text)
 					GetScheduler().SetJobResult(jobID, "failed", result.Text)

@@ -69,7 +69,7 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 		} `json:"params"`
 	}
 	if json.Unmarshal(raw, &authMsg) != nil || authMsg.Method != "auth" || authMsg.Params.Token == "" {
-		conn.WriteJSON(jsonrpcNotification{JSONRPC: "2.0", Method: "auth", Params: map[string]string{"status": "error", "message": "first message must be {\"jsonrpc\":\"2.0\",\"method\":\"auth\",\"params\":{\"token\":\"...\"}}"} })
+		conn.WriteJSON(jsonrpcNotification{JSONRPC: "2.0", Method: "auth", Params: map[string]string{"status": "error", "message": "first message must be {\"jsonrpc\":\"2.0\",\"method\":\"auth\",\"params\":{\"token\":\"...\"}}"}})
 		return
 	}
 	claims, err := auth.ValidateToken(authMsg.Params.Token)
@@ -101,17 +101,18 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 	done := make(chan struct{})
 
 	wc := &WSConn{
-		ConnID: connID,
-		Done:   done,
+		ConnID:   connID,
+		Username: claims.Username,
+		Done:     done,
 		WriteJSON: func(v interface{}) error {
 			writeMu.Lock()
 			defer writeMu.Unlock()
 			return conn.WriteJSON(v)
 		},
-		Sessions:     make(map[string]*TerminalSession),
-		FileWatcher:  service.GetFileWatcher(),
-		FsWatches:    make(map[string]string),
-		Cancels:      make(map[string]context.CancelFunc),
+		Sessions:    make(map[string]*TerminalSession),
+		FileWatcher: service.GetFileWatcher(),
+		FsWatches:   make(map[string]string),
+		Cancels:     make(map[string]context.CancelFunc),
 	}
 
 	// Register as a pubsub sink so subscribe/publish can push data to this connection.
@@ -141,15 +142,20 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 	sysCtx := chatSvc.GetSystemContext()
 	aiSinkID := connID
 	sysCtx.Subscribe(aiSinkID, aiSink)
+	userSinkID := ""
+	if claims.Username != "" {
+		userSinkID = "user:" + claims.Username + "#" + connID
+		sysCtx.Subscribe(userSinkID, aiSink)
+	}
 	// Send current executor status immediately
 	wc.Notify("chat.status_update", sysCtx.Snapshot().Executor)
 
 	// ── Read goroutine ──
 	type rawMsg struct {
-		Method  string          `json:"method"`
-		ID      interface{}     `json:"id"`
-		Params  json.RawMessage `json:"params"`
-		Raw     json.RawMessage
+		Method string          `json:"method"`
+		ID     interface{}     `json:"id"`
+		Params json.RawMessage `json:"params"`
+		Raw    json.RawMessage
 	}
 	msgCh := make(chan rawMsg, 64)
 
@@ -175,6 +181,9 @@ func HandleUnifiedWS(w http.ResponseWriter, r *http.Request) {
 	// ── Cleanup on exit ──
 	defer func() {
 		chatSvc.GetSystemContext().Unsubscribe(aiSinkID)
+		if userSinkID != "" {
+			chatSvc.GetSystemContext().Unsubscribe(userSinkID)
+		}
 		ai.UnregisterClientContext(connID)
 		taskUnsub()
 		service.GetScheduler().Unsubscribe(schedConnID)

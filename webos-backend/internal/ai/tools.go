@@ -1434,9 +1434,10 @@ func (r *ToolRegistry) registerScheduledJobs() {
 支持三种任务类型（job_type）：
 - "shell"（默认）：执行 Linux shell 命令，command 填 shell 命令
 - "command"：执行 WebOS 系统命令，command 填命令内容（无需 / 前缀）。重要的可用命令：
-  · "ai <消息>" — AI 自驱动入口，给 AI 自己发一条消息。AI 收到后会像用户输入一样正常思考和使用工具。
-    用途：定时触发 AI 主动行为、自动化巡检、多步骤自动化流程。
-    例如：command="ai 检查服务器状态，如果异常则通知管理员"
+  · "ai @<客户端ID> <消息>" — AI 自驱动入口，给 AI 发一条消息，并将回复定向发到指定客户端。
+    用途：定时触发 AI 主动行为、自动化巡检、多步骤自动化流程，并把结果发到目标端。
+    例如：command="ai @weixin-ai-bot 检查服务器状态，如果异常则通知管理员"
+  · "ai <消息>" — 仅触发 AI 执行，不回传到任何客户端。适合纯后台处理、写文件、执行自动化流程。
   · "notify <消息>" — 广播系统通知到所有已连接客户端（Web/Telegram/飞书等）
   · "notify @<客户端ID> <消息>" — 定向推送到指定客户端
   · 其他命令：status、jobs、conv list 等所有斜杠命令均可使用
@@ -1464,15 +1465,16 @@ Cron 表达式为 6 字段格式：秒 分 时 日 月 周
 - 用户说"每天/每周/每小时..."等含重复语义 → schedule_type="cron"
 - 用户说"3点提醒我/下午帮我/5分钟后..."等一次性语义 → schedule_type="once"
 - 用户要求发通知、提醒、广播等 → job_type="command", command="notify ..."
-- 用户要求 AI 定时做某事（巡检、汇报、检查、分析等） → job_type="command", command="ai <具体指令>"
+- 用户要求 AI 定时做某事（巡检、汇报、检查、分析等）且需要把结果发到某个端 → job_type="command", command="ai @<客户端ID> <具体指令>"
+- 用户要求 AI 定时做某事但不需要给任何客户端回消息 → job_type="command", command="ai <具体指令>"
 - 用户要求执行脚本、系统命令等 → job_type="shell"
 - 用户要求索引、清理、备份文件等系统维护 → job_type="builtin"
 
 示例：
 - "每天3点重建索引" → cron + builtin, operation="rebuild-index-local"
 - "3点提醒我修 bug" → once + command, command="notify 该修 bug 了"
-- "每天早上检查服务器状态" → cron + command, command="ai 检查系统状态，如有异常通知我"
-- "5分钟后帮我分析日志" → once + command, command="ai 分析最近的系统日志，总结异常"
+- "每天早上检查服务器状态并发到微信" → cron + command, command="ai @weixin-ai-bot 检查系统状态，如有异常通知我"
+- "5分钟后帮我分析日志但不用回消息" → once + command, command="ai 分析最近的系统日志，总结异常"
 - "每小时清理过期上传" → cron + builtin, operation="clean-uploads"
 - "5分钟后执行备份脚本" → once + shell, run_at="+5m"
 - "每天把 photos 复制到备份节点" → cron + builtin, operation="copy"`, map[string]interface{}{
@@ -1511,7 +1513,7 @@ Cron 表达式为 6 字段格式：秒 分 时 日 月 周
 			},
 			"command": map[string]interface{}{
 				"type":        "string",
-				"description": "shell 或 command 类型的命令内容。job_type=shell 时为 Linux 命令；job_type=command 时为 WebOS 命令如 'notify 你好'、'ai 检查服务器状态'、'notify @telegram 提醒消息'（无需 / 前缀）",
+				"description": "shell 或 command 类型的命令内容。job_type=shell 时为 Linux 命令；job_type=command 时为 WebOS 命令，如 'notify 你好'、'ai @weixin-ai-bot 检查服务器状态'、'ai 分析日志并写入文件'、'notify @telegram 提醒消息'（无需 / 前缀）",
 			},
 			"operation": map[string]interface{}{
 				"type":        "string",
@@ -1730,9 +1732,6 @@ func (r *ToolRegistry) registerSystemManage() {
 		return result.Text, nil
 	})
 }
-
-
-
 
 func (r *ToolRegistry) registerStringSearch() {
 	r.register("string_search", `在文件或目录中搜索文本内容（类似 grep）。支持正则表达式，返回匹配的文件名、行号和上下文。

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -70,7 +71,24 @@ func (b *BroadcastSink) sendTo(id string, fn func(ChatSink)) bool {
 	sink, ok := b.sinks[id]
 	b.mu.RUnlock()
 	if !ok {
-		return false
+		prefix := id + "#"
+		matched := false
+		for sinkID, sub := range b.snapshot() {
+			if !strings.HasPrefix(sinkID, prefix) {
+				continue
+			}
+			matched = true
+			func(targetID string, target ChatSink) {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[BroadcastSink] sink %s panicked: %v, removing", targetID, r)
+						b.Remove(targetID)
+					}
+				}()
+				fn(target)
+			}(sinkID, sub)
+		}
+		return matched
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -170,7 +188,7 @@ func (e *AIExecutor) executeCommand(convID, cmdName, cmdArgs, sinkID string) {
 	})
 
 	ce := service.GetCommandExecutor()
-	result := ce.ExecuteCommand(convID, cmdName, cmdArgs)
+	result := ce.ExecuteCommandForClient(convID, cmdName, cmdArgs, sinkID)
 
 	sendToClient("chat.command_progress", map[string]interface{}{
 		"command": cmdName, "state": "done",

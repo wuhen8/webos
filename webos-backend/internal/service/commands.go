@@ -64,7 +64,7 @@ func init() {
 		{Name: "job enable", Description: "启用指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
 		{Name: "job disable", Description: "禁用指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
 		{Name: "job delete", Description: "删除指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
-		{Name: "ai", Description: "AI 自驱动入口：给 AI 发消息触发思考和工具调用，可用于定时任务实现自动巡检、主动提醒等", Category: "chat", CategoryLabel: "💬 对话", CategoryOrder: 10, Args: "<消息内容>"},
+		{Name: "ai", Description: "AI 自驱动入口：/ai @客户端ID <消息> 可将 AI 回复定向发到指定客户端；不写 @客户端ID 时仅执行，不回传到任何客户端，适合定时任务和外部 CLI", Category: "chat", CategoryLabel: "💬 对话", CategoryOrder: 10, Args: "[@客户端ID] <消息内容>"},
 		{Name: "guard", Description: "IP 访问审批：管理 IP 白名单，支持批量操作（空格分隔多个 IP 或 ID）", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "[status|on|off|list|approve <IP或ID ...>|reject <IP或ID ...>|remove <IP或ID ...>|cidr ...]"},
 	}
 }
@@ -146,7 +146,7 @@ type CommandExecutor struct {
 	OnGetConfig   func() (text string, err error)
 	OnCompress    func(convID string) (text string, err error)
 	OnGetStatus   func() (text string, err error)
-	OnAISend      func(convID, message string) (accepted bool, reason string) // 给 AI 发消息
+	OnAISend      func(convID, message, clientID string) (accepted bool, reason string) // 给 AI 发消息
 
 	// System dependencies
 	NotifySink   NotifySink
@@ -165,6 +165,12 @@ func GetCommandExecutor() *CommandExecutor {
 
 // ExecuteCommand runs a slash command and returns the result.
 func (ce *CommandExecutor) ExecuteCommand(convID, cmdName, cmdArgs string) CommandResult {
+	return ce.ExecuteCommandForClient(convID, cmdName, cmdArgs, "")
+}
+
+// ExecuteCommandForClient runs a slash command with an optional client identity.
+// clientID is only used by commands that need to route follow-up events back to a caller, such as /ai.
+func (ce *CommandExecutor) ExecuteCommandForClient(convID, cmdName, cmdArgs, clientID string) CommandResult {
 	if convID == "" && ce.ConvSwitcher != nil {
 		convID = ce.ConvSwitcher.GetActiveConvID()
 	}
@@ -198,7 +204,7 @@ func (ce *CommandExecutor) ExecuteCommand(convID, cmdName, cmdArgs string) Comma
 	case "notify":
 		return ce.cmdNotify(cmdArgs)
 	case "ai":
-		return ce.cmdAI(convID, cmdArgs)
+		return ce.cmdAI(convID, cmdArgs, clientID)
 	case "jobs":
 		return ce.cmdJobs()
 	case "job":
@@ -536,18 +542,33 @@ func (ce *CommandExecutor) cmdConvRename(newTitle string) CommandResult {
 	return CommandResult{Text: fmt.Sprintf("已将对话 `%s` 重命名为: %s", convID, newTitle)}
 }
 
-func (ce *CommandExecutor) cmdAI(convID, args string) CommandResult {
+func (ce *CommandExecutor) cmdAI(convID, args, clientID string) CommandResult {
+	args = strings.TrimSpace(args)
 	if args == "" {
-		return CommandResult{Text: "用法: /ai <消息内容>", IsError: true}
+		return CommandResult{Text: "用法: /ai [@sinkId] <消息内容>", IsError: true}
 	}
 	if ce.OnAISend == nil {
 		return CommandResult{Text: "AI 未初始化。", IsError: true}
 	}
-	accepted, reason := ce.OnAISend(convID, args)
+
+	targetClientID := ""
+	if strings.HasPrefix(args, "@") {
+		parts := strings.SplitN(args, " ", 2)
+		targetClientID = strings.TrimPrefix(parts[0], "@")
+		if targetClientID == "" || len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
+			return CommandResult{Text: "用法: /ai [@sinkId] <消息内容>", IsError: true}
+		}
+		args = strings.TrimSpace(parts[1])
+	}
+
+	accepted, reason := ce.OnAISend(convID, args, targetClientID)
 	if !accepted {
 		return CommandResult{Text: fmt.Sprintf("消息发送失败: %s", reason), IsError: true}
 	}
-	return CommandResult{Text: fmt.Sprintf("已发送给 AI: %s", args)}
+	if targetClientID != "" {
+		return CommandResult{Text: fmt.Sprintf("已发送给 AI（目标 `%s`）: %s", targetClientID, args)}
+	}
+	return CommandResult{Text: fmt.Sprintf("已发送给 AI（无回传目标）: %s", args)}
 }
 
 func (ce *CommandExecutor) cmdNotify(args string) CommandResult {
@@ -853,7 +874,6 @@ func (ce *CommandExecutor) cmdGuardCIDR(args string) CommandResult {
 		}
 	}
 }
-
 
 func (ce *CommandExecutor) cmdJob(args string) CommandResult {
 	parts := strings.SplitN(args, " ", 2)

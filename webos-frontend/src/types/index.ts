@@ -148,6 +148,8 @@ export interface MusicTrack {
   src: string
   filePath: string
   nodeId: string
+  sourceType?: 'file' | 'folder'
+  sourceFolderKey?: string
 }
 
 // 进程状态

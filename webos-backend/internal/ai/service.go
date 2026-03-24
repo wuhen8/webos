@@ -387,10 +387,24 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID stri
 	// Build context with compression if needed
 	systemPrompt := buildSystemPrompt(skills)
 
-	// Inject client context hint into system prompt if available
+	// Inject client context into system prompt so the model can reason about
+	// routing targets such as `/ai @sinkId ...` and format constraints.
 	if clientID != "" {
-		if cc := GetClientContext(clientID); cc != nil && cc.SystemHint != "" {
-			systemPrompt += "\n\n## 当前客户端\n" + cc.SystemHint
+		if cc := GetClientContext(clientID); cc != nil {
+			var clientInfo strings.Builder
+			clientInfo.WriteString("\n\n## 当前客户端\n")
+			clientInfo.WriteString(fmt.Sprintf("- client_id: %s\n", cc.ID))
+			if cc.Platform != "" {
+				clientInfo.WriteString(fmt.Sprintf("- platform: %s\n", cc.Platform))
+			}
+			if cc.DisplayName != "" {
+				clientInfo.WriteString(fmt.Sprintf("- display_name: %s\n", cc.DisplayName))
+			}
+			if cc.SystemHint != "" {
+				clientInfo.WriteString("\n")
+				clientInfo.WriteString(cc.SystemHint)
+			}
+			systemPrompt += clientInfo.String()
 		}
 	}
 

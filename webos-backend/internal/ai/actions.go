@@ -41,11 +41,10 @@ type TaskInfo struct {
 	Progress     *float64 `json:"progress,omitempty"`
 	ItemCurrent  int64    `json:"itemCurrent,omitempty"`
 	ItemTotal    int64    `json:"itemTotal,omitempty"`
-	BytesCurrent int64   `json:"bytesCurrent,omitempty"`
+	BytesCurrent int64    `json:"bytesCurrent,omitempty"`
 	BytesTotal   int64    `json:"bytesTotal,omitempty"`
 	Duration     string   `json:"duration,omitempty"`
 }
-
 
 // CompressResult holds the outcome of a context compression.
 type CompressResult struct {
@@ -139,6 +138,7 @@ func ActionSubmitBackgroundTask(title, command string) string {
 		return "执行成功", nil
 	}, service.WithOutputMode(service.TaskOutputLog))
 }
+
 // ---------------------------------------------------------------------------
 // Context compression
 // ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ export const manifest: AppConfig = {
       src: '',
       filePath: file.path,
       nodeId,
+      sourceType: 'file',
     }
 
     // Check for existing music player window
@@ -84,6 +85,8 @@ export const manifest: AppConfig = {
         activeMusicTrackIndex: 0,
         shuffleMode: false,
         repeatMode: 'none',
+        musicFolders: [],
+        musicFoldersHydrated: false,
       },
     })
     return { ok: true }
@@ -98,6 +101,7 @@ export const manifest: AppConfig = {
         src: '',
         filePath: dt.url,
         nodeId: dt.nodeId || 'local_1',
+        sourceType: 'file',
       })
     }
     return {
@@ -105,6 +109,8 @@ export const manifest: AppConfig = {
       activeMusicTrackIndex: 0,
       shuffleMode: false,
       repeatMode: 'none',
+      musicFolders: [],
+      musicFoldersHydrated: false,
     }
   },
 }

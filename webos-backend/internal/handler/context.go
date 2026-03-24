@@ -25,6 +25,7 @@ var dockerSvc = service.GetDockerService()
 // WSConn holds all state associated with a single WebSocket connection.
 type WSConn struct {
 	ConnID    string
+	Username  string
 	Done      chan struct{}
 	WriteJSON func(v interface{}) error
 
@@ -269,8 +270,11 @@ func InitAI() {
 	ce := service.GetCommandExecutor()
 	ce.NotifySink = aiExecutor.GetBroadcastSink()
 	ce.ConvSwitcher = &executorConvSwitcher{executor: aiExecutor}
-	ce.OnAISend = func(convID, message string) (bool, string) {
-		r := aiExecutor.Enqueue(convID, message, "system")
+	ce.OnAISend = func(convID, message, clientID string) (bool, string) {
+		if clientID == "" {
+			clientID = "system"
+		}
+		r := aiExecutor.Enqueue(convID, message, clientID)
 		return r.Accepted, r.Reason
 	}
 }

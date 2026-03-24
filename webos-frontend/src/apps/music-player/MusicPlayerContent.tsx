@@ -1,10 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Music, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Repeat1, Shuffle, X, ListMusic, FolderPlus, Loader2 } from 'lucide-react'
+import { Music, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Repeat1, Shuffle, X, ListMusic, FolderPlus, Loader2, RefreshCw, Folder, Trash2 } from 'lucide-react'
 import { useCurrentProcess } from '@/hooks/useCurrentProcess'
 import { useMusicPlayerStore } from './store'
 import { globalAudioRef, globalPlayingRef } from './GlobalMusicPlayer'
 import FolderPicker from './FolderPicker'
 import type { MusicTrack } from '@/types'
+
+interface PersistedMusicFolder {
+  nodeId: string
+  path: string
+  addedAt: number
+}
 
 interface MusicPlayerContentProps {
   windowId: string
@@ -21,6 +27,7 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
 
   const { procState: d } = useCurrentProcess(windowId)
   const tracks = (d.musicTracks || []) as MusicTrack[]
+  const musicFolders = (Array.isArray(d.musicFolders) ? d.musicFolders : []) as PersistedMusicFolder[]
   const activeIndex = (d.activeMusicTrackIndex as number) ?? 0
   const shuffleMode = (d.shuffleMode as boolean) ?? false
   const repeatMode = (d.repeatMode as string) ?? 'none'
@@ -35,6 +42,9 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
     setShuffleMode,
     setRepeatMode,
     addFolder,
+    removeFolder,
+    hydrateFolders,
+    refreshFolders,
   } = useMusicPlayerStore()
 
   // Sync with global audio state
@@ -78,6 +88,10 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
     }
   }, [volume, isMuted])
 
+  useEffect(() => {
+    void hydrateFolders(windowId)
+  }, [hydrateFolders, windowId])
+
   const togglePlay = useCallback(() => {
     const audio = globalAudioRef.current
     if (!audio || !activeTrack) return
@@ -116,6 +130,23 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
     await addFolder(windowId, 'local_1', path)
   }, [addFolder, windowId])
 
+  const getFolderLabel = (path: string) => {
+    const normalized = path.replace(/\/$/, '')
+    return normalized.split('/').filter(Boolean).pop() || path
+  }
+
+  const emptyState = tracks.length === 0
+    ? (musicFolders.length === 0
+        ? {
+            title: '还没有音乐内容',
+            description: '点击右上角添加目录，自动扫描并建立播放列表',
+          }
+        : {
+            title: '暂无可播放歌曲',
+            description: '已保存目录中没有音频文件，或文件格式暂不支持，可尝试刷新目录或添加其他目录',
+          })
+    : null
+
   return (
     <div className="h-full w-full flex flex-col bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 select-none relative">
       {/* Player area */}
@@ -134,8 +165,8 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
         {/* Title */}
         <div className="text-center mb-4 px-4 max-w-full">
           <h2 className="text-white text-base font-semibold truncate">{displayTitle}</h2>
-          {tracks.length === 0 && (
-            <p className="text-slate-400 text-sm mt-1">通过文件管理器打开音频文件</p>
+          {tracks.length === 0 && emptyState && (
+            <p className="text-slate-400 text-sm mt-1">{emptyState.title}</p>
           )}
         </div>
 
@@ -232,6 +263,14 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
           <span>播放列表 ({tracks.length})</span>
           <div className="flex-1" />
           <button
+            onClick={() => void refreshFolders(windowId)}
+            disabled={scanning}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+            title="刷新目录"
+          >
+            {scanning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          </button>
+          <button
             onClick={() => setShowFolderPicker(true)}
             disabled={scanning}
             className="flex items-center gap-1 px-1.5 py-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors disabled:opacity-50"
@@ -241,10 +280,48 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
           </button>
         </div>
 
+        <div className="px-4 pb-2">
+          <div className="rounded-lg border border-slate-700/50 bg-slate-900/40 overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 text-slate-400 text-xs border-b border-slate-700/50">
+              <Folder className="w-3.5 h-3.5 text-amber-400" />
+              <span>已保存目录 ({musicFolders.length})</span>
+            </div>
+            {musicFolders.length === 0 ? (
+              <div className="px-3 py-3 text-[11px] text-slate-500">
+                还没有保存目录，点击右上角添加目录开始扫描音乐
+              </div>
+            ) : (
+              <div className="max-h-28 overflow-y-auto">
+                {musicFolders.map((folder) => (
+                  <div
+                    key={`${folder.nodeId}:${folder.path}`}
+                    className="group flex items-center gap-2 px-3 py-2 border-t border-slate-800/60 first:border-t-0"
+                  >
+                    <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs text-slate-200">{getFolderLabel(folder.path)}</div>
+                      <div className="truncate text-[11px] text-slate-500">{folder.path}</div>
+                    </div>
+                    <button
+                      onClick={() => removeFolder(windowId, folder.nodeId, folder.path)}
+                      disabled={scanning}
+                      className="p-1 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-50 shrink-0"
+                      title="删除目录"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto px-2 pb-2">
           {tracks.length === 0 ? (
-            <div className="text-slate-600 text-xs text-center py-4">
-              播放列表为空，从文件管理器打开音频文件添加
+            <div className="text-center py-6 px-4">
+              <div className="text-slate-400 text-sm">{emptyState?.title}</div>
+              <div className="text-slate-600 text-xs mt-2 leading-5">{emptyState?.description}</div>
             </div>
           ) : (
             tracks.map((track, idx) => (
