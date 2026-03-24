@@ -375,12 +375,12 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID stri
 	s.ensureSkills(skillsDir, convID)
 	skills := s.skills
 
-	// Process image references in user messages before sending to LLM
-	for i, msg := range history {
-		if msg.Role == "user" {
-			if text, ok := msg.Content.(string); ok {
-				history[i].Content = s.processImageRefs(text)
-			}
+	// Only the freshly submitted user message should be upgraded to multimodal input.
+	// Historical image references stay as plain text so old images are not re-read and
+	// re-sent to the model on every subsequent turn.
+	if n := len(history); n > 0 && history[n-1].Role == "user" {
+		if text, ok := history[n-1].Content.(string); ok {
+			history[n-1].Content = s.processImageRefs(text)
 		}
 	}
 

@@ -143,6 +143,8 @@ function PlayerContent({
     }
   }, [errorState?.error])
 
+  const controlsSafeAreaClass = 'bottom-24'
+
   return (
     <>
       <CustomVideoSkin
@@ -155,11 +157,14 @@ function PlayerContent({
       {/* Playlist panel - independent of player controls */}
       {showPlaylist && (
         <>
-          <div className="absolute inset-0 z-40" onClick={onClosePlaylist} />
+          <div
+            className={`absolute inset-x-0 top-0 ${controlsSafeAreaClass} z-40`}
+            onClick={onClosePlaylist}
+          />
 
-          <div className="absolute right-0 top-0 bottom-0 w-64 z-50 flex flex-col
+          <div className={`absolute right-0 top-0 ${controlsSafeAreaClass} w-64 z-50 flex flex-col
             bg-black/60 backdrop-blur-2xl backdrop-saturate-150
-            shadow-2xl shadow-black/40">
+            shadow-2xl shadow-black/40 rounded-l-2xl overflow-hidden`}>
 
             <div className="flex items-center justify-between px-4 py-3">
               <span className="text-white/90 text-sm font-medium tracking-wide">
