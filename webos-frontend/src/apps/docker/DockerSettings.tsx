@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import FmEdit from "@/components/FmEdit"
 import { useSettingsStore, useUIStore } from "@/stores"
 import { dockerService } from "@/lib/services"
@@ -35,6 +36,7 @@ const STORAGE_DRIVERS = ["overlay2", "btrfs", "zfs", "devicemapper"]
 const CGROUP_DRIVERS = ["systemd", "cgroupfs"]
 
 export default function DockerSettings() {
+  const { t } = useTranslation()
   const { toast } = useToast()
   const dockerDaemonConfigRead = dockerService.daemonConfigRead
   const dockerDaemonConfigWrite = dockerService.daemonConfigWrite
@@ -185,7 +187,7 @@ export default function DockerSettings() {
         }
       })
       .catch((err) => {
-        toast({ title: "加载失败", description: err?.message || "无法读取 daemon.json", variant: "destructive" })
+        toast({ title: t('apps.docker.settings.feedback.loadFailed'), description: err?.message || t('apps.docker.settings.feedback.readDaemonFailed'), variant: "destructive" })
       })
       .finally(() => setLoading(false))
   }, [])
@@ -204,7 +206,7 @@ export default function DockerSettings() {
       setFullConfig(cfg)
       configToForm(cfg)
     } catch {
-      toast({ title: "JSON 格式错误", description: "无法解析 JSON，请检查格式", variant: "destructive" })
+      toast({ title: t('apps.docker.settings.feedback.invalidJson'), description: t('apps.docker.settings.feedback.parseJsonFailed'), variant: "destructive" })
       return
     }
     setViewMode("form")
@@ -232,16 +234,16 @@ export default function DockerSettings() {
           setJsonContent(JSON.stringify(cfg, null, 2))
         }
       } catch {}
-      toast({ title: "保存成功", description: "daemon.json 已更新" })
+      toast({ title: t('apps.docker.settings.feedback.saveSuccess'), description: t('apps.docker.settings.feedback.daemonUpdated') })
       // Ask to restart
       showConfirm({
-        title: "重启 Docker",
-        description: "配置已保存，是否立即重启 Docker 使配置生效？",
-        confirmText: "重启",
+        title: t('apps.docker.settings.confirm.restartTitle'),
+        description: t('apps.docker.settings.confirm.restartDescription'),
+        confirmText: t('apps.docker.settings.confirm.restartAction'),
         onConfirm: () => handleRestart(),
       })
     } catch (err: any) {
-      toast({ title: "保存失败", description: err?.message || "写入失败", variant: "destructive" })
+      toast({ title: t('apps.docker.settings.feedback.saveFailed'), description: err?.message || t('apps.docker.settings.feedback.writeFailed'), variant: "destructive" })
     } finally {
       setSaving(false)
     }
@@ -252,9 +254,9 @@ export default function DockerSettings() {
     setRestarting(true)
     try {
       await dockerDaemonRestart()
-      toast({ title: "重启成功", description: "Docker 服务已重启" })
+      toast({ title: t('apps.docker.settings.feedback.restartSuccess'), description: t('apps.docker.settings.feedback.dockerRestarted') })
     } catch (err: any) {
-      toast({ title: "重启失败", description: err?.message || "重启失败", variant: "destructive" })
+      toast({ title: t('apps.docker.settings.feedback.restartFailed'), description: err?.message || t('apps.docker.settings.feedback.restartFailed'), variant: "destructive" })
     } finally {
       setRestarting(false)
     }
@@ -281,7 +283,7 @@ export default function DockerSettings() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center text-slate-400 gap-2">
-        <Loader2 className="w-4 h-4 animate-spin" /> 加载配置...
+        <Loader2 className="w-4 h-4 animate-spin" /> {t('apps.docker.settings.loading')}
       </div>
     )
   }
@@ -299,7 +301,7 @@ export default function DockerSettings() {
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            <FileText className="w-3 h-3" /> 表单
+            <FileText className="w-3 h-3" /> {t('apps.docker.settings.view.form')}
           </button>
           <button
             onClick={viewMode === "form" ? switchToJson : undefined}
@@ -318,14 +320,14 @@ export default function DockerSettings() {
             disabled={restarting}
             className="flex items-center gap-1 px-2.5 py-1.5 text-[0.6875rem] font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors disabled:opacity-50"
           >
-            <RotateCw className={`w-3 h-3 ${restarting ? "animate-spin" : ""}`} /> 重启 Docker
+            <RotateCw className={`w-3 h-3 ${restarting ? "animate-spin" : ""}`} /> {t('apps.docker.settings.actions.restartDocker')}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
             className="flex items-center gap-1 px-2.5 py-1.5 text-[0.6875rem] font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors disabled:opacity-50"
           >
-            <Save className="w-3 h-3" /> {saving ? "保存中..." : "保存配置"}
+            <Save className="w-3 h-3" /> {saving ? t('apps.docker.settings.actions.saving') : t('apps.docker.settings.actions.saveConfig')}
           </button>
         </div>
       </div>
@@ -336,12 +338,12 @@ export default function DockerSettings() {
           {/* Registry Mirrors */}
           <div className={sectionClass}>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-[0.75rem] font-semibold text-slate-700">镜像加速源</label>
+              <label className="text-[0.75rem] font-semibold text-slate-700">{t('apps.docker.settings.registryMirrors.title')}</label>
               <button onClick={() => addItem(setRegistryMirrors)} className="text-[0.625rem] text-blue-500 hover:text-blue-600">
-                <Plus className="w-3 h-3 inline" /> 添加
+                <Plus className="w-3 h-3 inline" /> {t('apps.docker.settings.common.add')}
               </button>
             </div>
-            <p className="text-[0.625rem] text-slate-400 mb-2">配置 Docker 镜像拉取加速地址 (registry-mirrors)</p>
+            <p className="text-[0.625rem] text-slate-400 mb-2">{t('apps.docker.settings.registryMirrors.description')}</p>
             {registryMirrors.map((m, i) => (
               <div key={i} className="flex items-center gap-2 mb-1.5">
                 <input
@@ -357,14 +359,14 @@ export default function DockerSettings() {
               </div>
             ))}
             {registryMirrors.length === 0 && (
-              <div className="text-[0.625rem] text-slate-300">未配置加速源</div>
+              <div className="text-[0.625rem] text-slate-300">{t('apps.docker.settings.registryMirrors.empty')}</div>
             )}
           </div>
 
           {/* Data Root */}
           <div className={sectionClass}>
-            <label className={labelClass}>数据存储目录 (data-root)</label>
-            <p className="text-[0.625rem] text-slate-400 mb-2">Docker 数据存储路径，默认 /var/lib/docker</p>
+            <label className={labelClass}>{t('apps.docker.settings.dataRoot.title')}</label>
+            <p className="text-[0.625rem] text-slate-400 mb-2">{t('apps.docker.settings.dataRoot.description')}</p>
             <input
               type="text"
               value={dataRoot}
@@ -377,12 +379,12 @@ export default function DockerSettings() {
           {/* DNS */}
           <div className={sectionClass}>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-[0.75rem] font-semibold text-slate-700">DNS 服务器</label>
+              <label className="text-[0.75rem] font-semibold text-slate-700">{t('apps.docker.settings.dns.title')}</label>
               <button onClick={() => addItem(setDns)} className="text-[0.625rem] text-blue-500 hover:text-blue-600">
-                <Plus className="w-3 h-3 inline" /> 添加
+                <Plus className="w-3 h-3 inline" /> {t('apps.docker.settings.common.add')}
               </button>
             </div>
-            <p className="text-[0.625rem] text-slate-400 mb-2">容器使用的 DNS 服务器地址</p>
+            <p className="text-[0.625rem] text-slate-400 mb-2">{t('apps.docker.settings.dns.description')}</p>
             {dns.map((d, i) => (
               <div key={i} className="flex items-center gap-2 mb-1.5">
                 <input
@@ -398,19 +400,19 @@ export default function DockerSettings() {
               </div>
             ))}
             {dns.length === 0 && (
-              <div className="text-[0.625rem] text-slate-300">未配置 DNS</div>
+              <div className="text-[0.625rem] text-slate-300">{t('apps.docker.settings.dns.empty')}</div>
             )}
           </div>
 
           {/* Insecure Registries */}
           <div className={sectionClass}>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-[0.75rem] font-semibold text-slate-700">非安全仓库</label>
+              <label className="text-[0.75rem] font-semibold text-slate-700">{t('apps.docker.settings.insecureRegistries.title')}</label>
               <button onClick={() => addItem(setInsecureRegistries)} className="text-[0.625rem] text-blue-500 hover:text-blue-600">
-                <Plus className="w-3 h-3 inline" /> 添加
+                <Plus className="w-3 h-3 inline" /> {t('apps.docker.settings.common.add')}
               </button>
             </div>
-            <p className="text-[0.625rem] text-slate-400 mb-2">允许使用 HTTP 协议的镜像仓库 (insecure-registries)</p>
+            <p className="text-[0.625rem] text-slate-400 mb-2">{t('apps.docker.settings.insecureRegistries.description')}</p>
             {insecureRegistries.map((r, i) => (
               <div key={i} className="flex items-center gap-2 mb-1.5">
                 <input
@@ -426,7 +428,7 @@ export default function DockerSettings() {
               </div>
             ))}
             {insecureRegistries.length === 0 && (
-              <div className="text-[0.625rem] text-slate-300">未配置非安全仓库</div>
+              <div className="text-[0.625rem] text-slate-300">{t('apps.docker.settings.insecureRegistries.empty')}</div>
             )}
           </div>
 
@@ -434,8 +436,8 @@ export default function DockerSettings() {
           <div className={sectionClass}>
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-[0.75rem] font-semibold text-slate-700">IPv6</label>
-                <p className="text-[0.625rem] text-slate-400 mt-0.5">启用 Docker 容器的 IPv6 网络支持</p>
+                <label className="text-[0.75rem] font-semibold text-slate-700">{t('apps.docker.settings.ipv6.title')}</label>
+                <p className="text-[0.625rem] text-slate-400 mt-0.5">{t('apps.docker.settings.ipv6.description')}</p>
               </div>
               <button
                 onClick={() => setIpv6Enabled(!ipv6Enabled)}
@@ -446,7 +448,7 @@ export default function DockerSettings() {
             </div>
             {ipv6Enabled && (
               <div className="mt-3">
-                <label className={labelClass}>IPv6 子网 (fixed-cidr-v6)</label>
+                <label className={labelClass}>{t('apps.docker.settings.ipv6.subnet')}</label>
                 <input
                   type="text"
                   value={fixedCidrV6}
@@ -460,10 +462,10 @@ export default function DockerSettings() {
 
           {/* Log Driver & Options */}
           <div className={sectionClass}>
-            <label className="text-[0.75rem] font-semibold text-slate-700 mb-2 block">日志配置</label>
+            <label className="text-[0.75rem] font-semibold text-slate-700 mb-2 block">{t('apps.docker.settings.logConfig.title')}</label>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className={labelClass}>日志驱动 (log-driver)</label>
+                <label className={labelClass}>{t('apps.docker.settings.logConfig.driver')}</label>
                 <select
                   value={logDriver}
                   onChange={(e) => setLogDriver(e.target.value)}
@@ -477,7 +479,7 @@ export default function DockerSettings() {
               {logDriver === "json-file" && (
                 <>
                   <div>
-                    <label className={labelClass}>单文件大小上限 (max-size)</label>
+                    <label className={labelClass}>{t('apps.docker.settings.logConfig.maxSize')}</label>
                     <input
                       type="text"
                       value={logMaxSize}
@@ -487,7 +489,7 @@ export default function DockerSettings() {
                     />
                   </div>
                   <div>
-                    <label className={labelClass}>最大文件数 (max-file)</label>
+                    <label className={labelClass}>{t('apps.docker.settings.logConfig.maxFile')}</label>
                     <input
                       type="text"
                       value={logMaxFile}
@@ -503,14 +505,14 @@ export default function DockerSettings() {
 
           {/* Storage Driver */}
           <div className={sectionClass}>
-            <label className={labelClass}>存储驱动 (storage-driver)</label>
-            <p className="text-[0.625rem] text-slate-400 mb-2">Docker 使用的存储驱动，留空使用默认值</p>
+            <label className={labelClass}>{t('apps.docker.settings.storageDriver.title')}</label>
+            <p className="text-[0.625rem] text-slate-400 mb-2">{t('apps.docker.settings.storageDriver.description')}</p>
             <select
               value={storageDriver}
               onChange={(e) => setStorageDriver(e.target.value)}
               className={inputClass}
             >
-              <option value="">默认</option>
+              <option value="">{t('apps.docker.settings.common.default')}</option>
               {STORAGE_DRIVERS.map((d) => (
                 <option key={d} value={d}>{d}</option>
               ))}
@@ -519,14 +521,14 @@ export default function DockerSettings() {
 
           {/* Cgroup Driver */}
           <div className={sectionClass}>
-            <label className={labelClass}>Cgroup 驱动 (exec-opts: native.cgroupdriver)</label>
-            <p className="text-[0.625rem] text-slate-400 mb-2">容器的 cgroup 驱动，Kubernetes 环境通常需要设为 systemd</p>
+            <label className={labelClass}>{t('apps.docker.settings.cgroupDriver.title')}</label>
+            <p className="text-[0.625rem] text-slate-400 mb-2">{t('apps.docker.settings.cgroupDriver.description')}</p>
             <select
               value={cgroupDriver}
               onChange={(e) => setCgroupDriver(e.target.value)}
               className={inputClass}
             >
-              <option value="">默认</option>
+              <option value="">{t('apps.docker.settings.common.default')}</option>
               {CGROUP_DRIVERS.map((d) => (
                 <option key={d} value={d}>{d}</option>
               ))}
@@ -537,8 +539,8 @@ export default function DockerSettings() {
           <div className={sectionClass}>
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-[0.75rem] font-semibold text-slate-700">Live Restore</label>
-                <p className="text-[0.625rem] text-slate-400 mt-0.5">允许在 Docker 守护进程发生意外停机或崩溃时保留正在运行的容器状态</p>
+                <label className="text-[0.75rem] font-semibold text-slate-700">{t('apps.docker.settings.liveRestore.title')}</label>
+                <p className="text-[0.625rem] text-slate-400 mt-0.5">{t('apps.docker.settings.liveRestore.description')}</p>
               </div>
               <button
                 onClick={() => setLiveRestore(!liveRestore)}
@@ -553,8 +555,8 @@ export default function DockerSettings() {
           <div className={sectionClass}>
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-[0.75rem] font-semibold text-slate-700">iptables</label>
-                <p className="text-[0.625rem] text-slate-400 mt-0.5">Docker 对 iptables 规则的自动配置</p>
+                <label className="text-[0.75rem] font-semibold text-slate-700">{t('apps.docker.settings.iptables.title')}</label>
+                <p className="text-[0.625rem] text-slate-400 mt-0.5">{t('apps.docker.settings.iptables.description')}</p>
               </div>
               <button
                 onClick={() => setIptablesEnabled(!iptablesEnabled)}
@@ -568,12 +570,12 @@ export default function DockerSettings() {
           {/* Socket Path (hosts) */}
           <div className={sectionClass}>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-[0.75rem] font-semibold text-slate-700">Socket 路径</label>
+              <label className="text-[0.75rem] font-semibold text-slate-700">{t('apps.docker.settings.socketHosts.title')}</label>
               <button onClick={() => addItem(setDockerHosts)} className="text-[0.625rem] text-blue-500 hover:text-blue-600">
-                <Plus className="w-3 h-3 inline" /> 添加
+                <Plus className="w-3 h-3 inline" /> {t('apps.docker.settings.common.add')}
               </button>
             </div>
-            <p className="text-[0.625rem] text-slate-400 mb-2">Docker 守护进程监听的地址，配置后需同步修改 systemd 的 -H fd:// 参数</p>
+            <p className="text-[0.625rem] text-slate-400 mb-2">{t('apps.docker.settings.socketHosts.description')}</p>
             {dockerHosts.map((h, i) => (
               <div key={i} className="flex items-center gap-2 mb-1.5">
                 <input
@@ -589,14 +591,14 @@ export default function DockerSettings() {
               </div>
             ))}
             {dockerHosts.length === 0 && (
-              <div className="text-[0.625rem] text-slate-300">未设置</div>
+              <div className="text-[0.625rem] text-slate-300">{t('apps.docker.settings.socketHosts.empty')}</div>
             )}
           </div>
 
           {/* Compose Base Dir - moved from system settings */}
           <div className={sectionClass}>
-            <label className={labelClass}>Compose 项目目录</label>
-            <p className="text-[0.625rem] text-slate-400 mb-2">由数据目录 (WEBOS_DATA_DIR) 自动派生，不可单独修改</p>
+            <label className={labelClass}>{t('apps.docker.settings.composeBaseDir.title')}</label>
+            <p className="text-[0.625rem] text-slate-400 mb-2">{t('apps.docker.settings.composeBaseDir.description')}</p>
             <input
               type="text"
               value={composeBaseDir}
@@ -611,7 +613,7 @@ export default function DockerSettings() {
       {viewMode === "json" && (
         <div className="flex-1 overflow-hidden flex flex-col">
           <div className="text-[0.625rem] text-slate-400 mb-1.5">
-            直接编辑 daemon.json，切换回表单视图时会自动同步
+            {t('apps.docker.settings.jsonHint')}
           </div>
           <div className="flex-1 rounded-lg overflow-hidden border border-slate-200">
             <FmEdit

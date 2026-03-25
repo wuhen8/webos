@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useTranslation } from 'react-i18next'
 import { RefreshCw, Save, Loader2, Check, FileText, Code2 } from "lucide-react"
 import { exec, fsService } from "@/lib/services"
 import { SettingsIcon } from "./SettingsIcon"
@@ -15,7 +16,11 @@ const sharingLabels: Record<SharingProtocol, string> = {
   smb: "SMB / Samba", webdav: "WebDAV", ftp: "FTP", nfs: "NFS", dlna: "DLNA",
 }
 const sharingDescs: Record<SharingProtocol, string> = {
-  smb: 'Windows 文件共享协议', webdav: 'HTTP 文件访问协议', ftp: '文件传输协议', nfs: 'Unix/Linux 网络文件系统', dlna: '数字媒体共享协议',
+  smb: 'apps.settings.sharing.protocols.smb.desc',
+  webdav: 'apps.settings.sharing.protocols.webdav.desc',
+  ftp: 'apps.settings.sharing.protocols.ftp.desc',
+  nfs: 'apps.settings.sharing.protocols.nfs.desc',
+  dlna: 'apps.settings.sharing.protocols.dlna.desc',
 }
 const configPaths: Record<SharingProtocol, string> = {
   smb: "/etc/samba/smb.conf", webdav: "/etc/webdav/config.yml", ftp: "/etc/vsftpd.conf", nfs: "/etc/exports", dlna: "/etc/minidlna.conf",
@@ -140,6 +145,7 @@ const appliers: Record<SharingProtocol, (raw: string, cfg: any) => string> = {
 
 // ---- Component ----
 export default function SharingTab() {
+  const { t } = useTranslation()
   const [activeProto, setActiveProto] = useState<SharingProtocol>('smb')
   const [viewMode, setViewMode] = useState<'form' | 'raw'>('form')
   const [sharingLoading, setSharingLoading] = useState<Record<string, boolean>>({})
@@ -226,7 +232,7 @@ export default function SharingTab() {
         <div className="w-14 h-14 rounded-2xl bg-teal-500 flex items-center justify-center shadow-lg mb-2">
           <SettingsIcon type="sharing" className="w-8 h-8 text-white" />
         </div>
-        <h1 className="text-lg font-semibold text-gray-900">文件共享</h1>
+        <h1 className="text-lg font-semibold text-gray-900">{t('apps.settings.sharing.title')}</h1>
       </div>
 
       {/* Main card */}
@@ -259,10 +265,10 @@ export default function SharingTab() {
             </button>
             <div>
               <span className="text-[0.8125rem] text-gray-900 font-medium">{sharingLabels[activeProto]}</span>
-              <span className="text-[0.6875rem] text-gray-400 ml-2">{sharingDescs[activeProto]}</span>
+              <span className="text-[0.6875rem] text-gray-400 ml-2">{t(sharingDescs[activeProto])}</span>
             </div>
             {sharingStatus[activeProto] && (
-              <span className="text-[0.625rem] px-1.5 py-0.5 rounded-full bg-green-100 text-green-600 font-medium">运行中</span>
+              <span className="text-[0.625rem] px-1.5 py-0.5 rounded-full bg-green-100 text-green-600 font-medium">{t('apps.settings.sharing.running')}</span>
             )}
           </div>
           <div className="flex items-center gap-1.5">
@@ -275,20 +281,20 @@ export default function SharingTab() {
                 className={`flex items-center gap-1 px-2 py-1 text-[0.625rem] font-medium rounded transition-colors ${
                   viewMode === 'form' ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"
                 }`}>
-                <FileText className="w-3 h-3" /> 表单
+                <FileText className="w-3 h-3" /> {t('apps.settings.firewall.viewMode.form')}
               </button>
               <button onClick={viewMode === 'form' ? switchToRaw : undefined}
                 className={`flex items-center gap-1 px-2 py-1 text-[0.625rem] font-medium rounded transition-colors ${
                   viewMode === 'raw' ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"
                 }`}>
-                <Code2 className="w-3 h-3" /> 编辑
+                <Code2 className="w-3 h-3" /> {t('apps.settings.firewall.viewMode.edit')}
               </button>
             </div>
             {/* Save */}
             <button onClick={saveConfig} disabled={saving}
               className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[0.6875rem] font-medium text-white bg-teal-500 hover:bg-teal-600 disabled:opacity-50 transition-colors">
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : saved ? <Check className="w-3 h-3" /> : <Save className="w-3 h-3" />}
-              {saving ? '保存中' : saved ? '已保存' : '保存'}
+              {saving ? t('apps.settings.sharing.saving') : saved ? t('apps.settings.sharing.saved') : t('apps.settings.sharing.save')}
             </button>
           </div>
         </div>
@@ -308,95 +314,95 @@ export default function SharingTab() {
             <div className="p-4 space-y-3">
               {activeProto === 'smb' && (<>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">工作组</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.smb.workgroup')}</label>
                   <input value={formConfig.smb.workgroup} onChange={e => setFormConfig(c => ({ ...c, smb: { ...c.smb, workgroup: e.target.value } }))} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">服务描述</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.smb.serviceDescription')}</label>
                   <input value={formConfig.smb.serverString} onChange={e => setFormConfig(c => ({ ...c, smb: { ...c.smb, serverString: e.target.value } }))} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">共享路径</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.smb.sharePath')}</label>
                   <input value={formConfig.smb.sharePath} onChange={e => setFormConfig(c => ({ ...c, smb: { ...c.smb, sharePath: e.target.value } }))} className={inputClass} />
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={formConfig.smb.allowGuest} onChange={e => setFormConfig(c => ({ ...c, smb: { ...c.smb, allowGuest: e.target.checked } }))} className="rounded" />
-                  <label className="text-[0.8125rem] text-gray-600">允许匿名访问</label>
+                  <label className="text-[0.8125rem] text-gray-600">{t('apps.settings.firewall.smb.allowGuest')}</label>
                 </div>
               </>)}
 
               {activeProto === 'webdav' && (<>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">监听端口</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.webdav.listenPort')}</label>
                   <input value={formConfig.webdav.port} onChange={e => setFormConfig(c => ({ ...c, webdav: { ...c.webdav, port: e.target.value } }))} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">共享路径</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.webdav.sharePath')}</label>
                   <input value={formConfig.webdav.sharePath} onChange={e => setFormConfig(c => ({ ...c, webdav: { ...c.webdav, sharePath: e.target.value } }))} className={inputClass} />
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={formConfig.webdav.authRequired} onChange={e => setFormConfig(c => ({ ...c, webdav: { ...c.webdav, authRequired: e.target.checked } }))} className="rounded" />
-                  <label className="text-[0.8125rem] text-gray-600">需要身份验证</label>
+                  <label className="text-[0.8125rem] text-gray-600">{t('apps.settings.firewall.webdav.authRequired')}</label>
                 </div>
               </>)}
 
               {activeProto === 'ftp' && (<>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">监听端口</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.ftp.listenPort')}</label>
                   <input value={formConfig.ftp.port} onChange={e => setFormConfig(c => ({ ...c, ftp: { ...c.ftp, port: e.target.value } }))} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">共享路径</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.ftp.sharePath')}</label>
                   <input value={formConfig.ftp.sharePath} onChange={e => setFormConfig(c => ({ ...c, ftp: { ...c.ftp, sharePath: e.target.value } }))} className={inputClass} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[0.75rem] text-gray-500 mb-1">被动模式起始端口</label>
+                    <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.ftp.passiveMinPort')}</label>
                     <input value={formConfig.ftp.passiveMinPort} onChange={e => setFormConfig(c => ({ ...c, ftp: { ...c.ftp, passiveMinPort: e.target.value } }))} className={inputClass} />
                   </div>
                   <div>
-                    <label className="block text-[0.75rem] text-gray-500 mb-1">被动模式结束端口</label>
+                    <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.ftp.passiveMaxPort')}</label>
                     <input value={formConfig.ftp.passiveMaxPort} onChange={e => setFormConfig(c => ({ ...c, ftp: { ...c.ftp, passiveMaxPort: e.target.value } }))} className={inputClass} />
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={formConfig.ftp.anonymousEnable} onChange={e => setFormConfig(c => ({ ...c, ftp: { ...c.ftp, anonymousEnable: e.target.checked } }))} className="rounded" />
-                  <label className="text-[0.8125rem] text-gray-600">允许匿名登录</label>
+                  <label className="text-[0.8125rem] text-gray-600">{t('apps.settings.firewall.ftp.allowAnonymous')}</label>
                 </div>
               </>)}
 
               {activeProto === 'nfs' && (<>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">导出路径</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.nfs.exportPath')}</label>
                   <input value={formConfig.nfs.exportPath} onChange={e => setFormConfig(c => ({ ...c, nfs: { ...c.nfs, exportPath: e.target.value } }))} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">允许访问的主机</label>
-                  <input value={formConfig.nfs.allowedHosts} onChange={e => setFormConfig(c => ({ ...c, nfs: { ...c.nfs, allowedHosts: e.target.value } }))} placeholder="如 192.168.0.0/16 或 *" className={inputClass} />
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.nfs.allowedHosts')}</label>
+                  <input value={formConfig.nfs.allowedHosts} onChange={e => setFormConfig(c => ({ ...c, nfs: { ...c.nfs, allowedHosts: e.target.value } }))} placeholder={t('apps.settings.firewall.nfs.allowedHostsPlaceholder')} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">导出选项</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.nfs.exportOptions')}</label>
                   <input value={formConfig.nfs.options} onChange={e => setFormConfig(c => ({ ...c, nfs: { ...c.nfs, options: e.target.value } }))} className={inputClass} />
                 </div>
               </>)}
 
               {activeProto === 'dlna' && (<>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">设备名称</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.dlna.deviceName')}</label>
                   <input value={formConfig.dlna.friendlyName} onChange={e => setFormConfig(c => ({ ...c, dlna: { ...c.dlna, friendlyName: e.target.value } }))} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">媒体目录</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('apps.settings.firewall.dlna.mediaDirectory')}</label>
                   <input value={formConfig.dlna.mediaDir} onChange={e => setFormConfig(c => ({ ...c, dlna: { ...c.dlna, mediaDir: e.target.value } }))} className={inputClass} />
                 </div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={formConfig.dlna.inotify} onChange={e => setFormConfig(c => ({ ...c, dlna: { ...c.dlna, inotify: e.target.checked } }))} className="rounded" />
-                  <label className="text-[0.8125rem] text-gray-600">自动监控文件变化 (inotify)</label>
+                  <label className="text-[0.8125rem] text-gray-600">{t('apps.settings.firewall.dlna.autoWatch')}</label>
                 </div>
               </>)}
 
               <p className="text-[0.6875rem] text-gray-400 pt-2">
-                表单仅修改常用字段，不会覆盖其他配置。切换「编辑」可查看完整配置文件。
+                {t('apps.settings.firewall.viewMode.formHint')}
               </p>
             </div>
           )}

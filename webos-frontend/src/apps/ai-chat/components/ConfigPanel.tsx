@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Settings2, X, Plus, Trash2, Loader2, Check } from 'lucide-react'
 import { request } from '@/stores/webSocketStore'
 
@@ -49,6 +50,7 @@ function Field({ label, value, onChange, placeholder, type = 'text' }: {
 }
 
 export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void }) {
+  const { t } = useTranslation()
   const [cfg, setCfg] = useState<AIMultiConfig>(emptyMultiConfig)
   const [activeTab, setActiveTab] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -131,14 +133,14 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
     }
   }
 
-  if (!loaded) return <div className="p-4 text-center text-sm text-slate-400">加载中...</div>
+  if (!loaded) return <div className="p-4 text-center text-sm text-slate-400">{t('apps.aiChat.configPanel.loading')}</div>
 
   return (
     <div className="absolute inset-0 z-10 bg-white/95 backdrop-blur-sm flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
           <Settings2 className="h-4 w-4" />
-          AI 配置
+          {t('apps.aiChat.configPanel.title')}
         </div>
         <button onClick={() => onClose()} className="p-1 rounded hover:bg-slate-100">
           <X className="h-4 w-4 text-slate-400" />
@@ -156,7 +158,7 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
                 }`}
                 onClick={() => setActiveTab(i)}
               >
-                <span className="truncate flex-1">{p.name || '未命名'}</span>
+                <span className="truncate flex-1">{p.name || t('apps.aiChat.configPanel.unnamed')}</span>
                 {cfg.providers.length > 1 && (
                   <button
                     className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-100 transition-opacity"
@@ -170,7 +172,7 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
           </div>
           <div className="p-2 border-t border-slate-200">
             <button onClick={addProvider} className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-violet-600 hover:bg-violet-50 border border-violet-200">
-              <Plus className="h-3 w-3" /> 添加供应商
+              <Plus className="h-3 w-3" /> {t('apps.aiChat.configPanel.addProvider')}
             </button>
           </div>
         </div>
@@ -179,11 +181,11 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
         <div className="flex-1 overflow-auto p-4 space-y-3">
           {provider && (
             <>
-              <Field label="供应商名称" value={provider.name} onChange={v => updateProvider({ name: v })} placeholder="DeepSeek" />
-              <Field label="API 地址" value={provider.baseUrl} onChange={v => updateProvider({ baseUrl: v })} placeholder="https://api.deepseek.com" />
-              <Field label="API Key" value={provider.apiKey} onChange={v => updateProvider({ apiKey: v })} placeholder="sk-..." type="password" />
+              <Field label={t('apps.aiChat.configPanel.providerName')} value={provider.name} onChange={v => updateProvider({ name: v })} placeholder="DeepSeek" />
+              <Field label={t('apps.aiChat.configPanel.apiUrl')} value={provider.baseUrl} onChange={v => updateProvider({ baseUrl: v })} placeholder="https://api.deepseek.com" />
+              <Field label={t('apps.aiChat.configPanel.apiKey')} value={provider.apiKey} onChange={v => updateProvider({ apiKey: v })} placeholder={t('apps.aiChat.configPanel.apiKeyPlaceholder')} type="password" />
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">API 类型</label>
+                <label className="block text-xs font-medium text-slate-500 mb-1">{t('apps.aiChat.configPanel.apiType')}</label>
                 <div className="flex gap-2">
                   {(['openai', 'anthropic', 'responses'] as const).map(fmt => (
                     <button
@@ -195,20 +197,20 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
                           : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
                       }`}
                     >
-                      {fmt === 'openai' ? 'OpenAI 兼容' : fmt === 'anthropic' ? 'Anthropic' : 'Responses API'}
+                      {fmt === 'openai' ? t('apps.aiChat.configPanel.openaiCompatible') : fmt === 'anthropic' ? t('apps.aiChat.configPanel.anthropic') : t('apps.aiChat.configPanel.responsesApi')}
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1">模型列表</label>
+                <label className="block text-xs font-medium text-slate-500 mb-1">{t('apps.aiChat.configPanel.modelList')}</label>
                 <div className="space-y-1.5">
                   {provider.models.map((m, mi) => (
                     <div key={mi} className="flex items-center gap-1.5">
                       <input
                         value={m}
                         onChange={e => updateModel(mi, e.target.value)}
-                        placeholder="model-name"
+                        placeholder={t('apps.aiChat.configPanel.modelNamePlaceholder')}
                         className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
                       />
                       {provider.models.length > 1 && (
@@ -219,18 +221,18 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
                     </div>
                   ))}
                   <button onClick={addModel} className="flex items-center gap-1 text-xs text-violet-500 hover:text-violet-700 mt-1">
-                    <Plus className="h-3 w-3" /> 添加模型
+                    <Plus className="h-3 w-3" /> {t('apps.aiChat.configPanel.addModel')}
                   </button>
                 </div>
               </div>
               <hr className="border-slate-200" />
-              <div className="text-xs font-medium text-slate-600 mb-2">供应商配置</div>
-              <Field label="代理地址（可选）" value={provider.proxy || ''} onChange={v => updateProvider({ proxy: v })} placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080" />
-              <Field label="最大输出 Tokens" value={String(provider.maxTokens || 4096)} onChange={v => updateProvider({ maxTokens: parseInt(v) || 4096 })} placeholder="4096" />
-              <Field label="最大输入 Tokens" value={String(provider.maxInputTokens || 128000)} onChange={v => updateProvider({ maxInputTokens: parseInt(v) || 128000 })} placeholder="128000" />
-              <Field label="最大工具调用轮次" value={String(provider.maxToolRounds || 25)} onChange={v => updateProvider({ maxToolRounds: parseInt(v) || 25 })} placeholder="25" />
-              <Field label="每分钟请求数 (RPM)" value={String(provider.rpm || 10)} onChange={v => updateProvider({ rpm: parseInt(v) || 10 })} placeholder="10" />
-              <Field label="保留最近消息数" value={String(provider.recentMessages || 5)} onChange={v => updateProvider({ recentMessages: parseInt(v) || 5 })} placeholder="5" />
+              <div className="text-xs font-medium text-slate-600 mb-2">{t('apps.aiChat.configPanel.providerConfig')}</div>
+              <Field label={t('apps.aiChat.configPanel.proxyOptional')} value={provider.proxy || ''} onChange={v => updateProvider({ proxy: v })} placeholder="http://127.0.0.1:7890 or socks5://127.0.0.1:1080" />
+              <Field label={t('apps.aiChat.configPanel.maxOutputTokens')} value={String(provider.maxTokens || 4096)} onChange={v => updateProvider({ maxTokens: parseInt(v) || 4096 })} placeholder="4096" />
+              <Field label={t('apps.aiChat.configPanel.maxInputTokens')} value={String(provider.maxInputTokens || 128000)} onChange={v => updateProvider({ maxInputTokens: parseInt(v) || 128000 })} placeholder="128000" />
+              <Field label={t('apps.aiChat.configPanel.maxToolRounds')} value={String(provider.maxToolRounds || 25)} onChange={v => updateProvider({ maxToolRounds: parseInt(v) || 25 })} placeholder="25" />
+              <Field label={t('apps.aiChat.configPanel.rpm')} value={String(provider.rpm || 10)} onChange={v => updateProvider({ rpm: parseInt(v) || 10 })} placeholder="10" />
+              <Field label={t('apps.aiChat.configPanel.recentMessages')} value={String(provider.recentMessages || 5)} onChange={v => updateProvider({ recentMessages: parseInt(v) || 5 })} placeholder="5" />
             </>
           )}
         </div>
@@ -242,7 +244,7 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
           className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-violet-500 text-white text-sm font-medium hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-          保存
+          {t('apps.aiChat.configPanel.save')}
         </button>
       </div>
     </div>

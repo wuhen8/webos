@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useTranslation } from 'react-i18next'
 import {
   Search,
   Download,
@@ -78,6 +79,7 @@ interface InstalledApp {
 type NavSection = 'discover' | 'installed' | 'upload' | 'skills'
 
 export default function AppStoreContent() {
+  const { t } = useTranslation()
   const [nav, setNav] = useState<NavSection>('discover')
   const [catalog, setCatalog] = useState<CatalogApp[]>([])
   const [installed, setInstalled] = useState<InstalledApp[]>([])
@@ -99,11 +101,11 @@ export default function AppStoreContent() {
       const apps = await appStoreService.getCatalog(refresh)
       setCatalog(apps || [])
     } catch (e: any) {
-      toast({ title: '加载失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.loadFailed'), description: e.message, variant: 'destructive' })
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   const loadInstalled = useCallback(async () => {
     try {
@@ -166,10 +168,10 @@ export default function AppStoreContent() {
     setInstalling((prev) => new Set(prev).add(app.id))
     try {
       await appStoreService.install(app.id, config)
-      toast({ title: '安装中', description: `${app.name} 正在安装...` })
+      toast({ title: t('apps.appStore.feedback.installing'), description: t('apps.appStore.feedback.installingDescription', { name: app.name }) })
       setSelectedApp(null)
     } catch (e: any) {
-      toast({ title: '安装失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.installFailed'), description: e.message, variant: 'destructive' })
       setInstalling((prev) => { const s = new Set(prev); s.delete(app.id); return s })
     }
   }
@@ -177,9 +179,9 @@ export default function AppStoreContent() {
   const handleUninstall = async (appId: string) => {
     try {
       await appStoreService.uninstall(appId)
-      toast({ title: '卸载中', description: '正在卸载应用...' })
+      toast({ title: t('apps.appStore.feedback.uninstalling'), description: t('apps.appStore.feedback.uninstallingDescription') })
     } catch (e: any) {
-      toast({ title: '卸载失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.uninstallFailed'), description: e.message, variant: 'destructive' })
     }
   }
 
@@ -188,7 +190,7 @@ export default function AppStoreContent() {
       await appStoreService.start(appId)
       loadInstalled()
     } catch (e: any) {
-      toast({ title: '启动失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.startFailed'), description: e.message, variant: 'destructive' })
     }
   }
 
@@ -197,16 +199,16 @@ export default function AppStoreContent() {
       await appStoreService.stop(appId)
       loadInstalled()
     } catch (e: any) {
-      toast({ title: '停止失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.stopFailed'), description: e.message, variant: 'destructive' })
     }
   }
 
   const handleUpdate = async (appId: string) => {
     try {
       await appStoreService.update(appId)
-      toast({ title: '更新中', description: '正在更新应用...' })
+      toast({ title: t('apps.appStore.feedback.updating'), description: t('apps.appStore.feedback.updatingDescription') })
     } catch (e: any) {
-      toast({ title: '更新失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.updateFailed'), description: e.message, variant: 'destructive' })
     }
   }
 
@@ -240,11 +242,11 @@ export default function AppStoreContent() {
     setSavingConfig(true)
     try {
       await appStoreService.updateConfig(appId, editConfigValues)
-      toast({ title: '已保存', description: '配置已更新' })
+      toast({ title: t('apps.appStore.feedback.saved'), description: t('apps.appStore.feedback.configUpdated') })
       setEditingConfigApp(null)
       loadInstalled()
     } catch (e: any) {
-      toast({ title: '保存失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.saveFailed'), description: e.message, variant: 'destructive' })
     } finally {
       setSavingConfig(false)
     }
@@ -263,11 +265,17 @@ export default function AppStoreContent() {
     setSelectedApp(app)
   }
 
+  const appTypeLabel = (type: string) => {
+    if (type === 'docker') return 'Docker'
+    if (type === 'shell') return 'Shell'
+    return t('apps.appStore.common.sideloadApp')
+  }
+
   const navItems = [
-    { id: 'discover' as NavSection, label: '发现', icon: PackageOpen, color: 'bg-violet-500' },
+    { id: 'discover' as NavSection, label: t('apps.appStore.nav.discover'), icon: PackageOpen, color: 'bg-violet-500' },
     { id: 'skills' as NavSection, label: 'Skills', icon: Zap, color: 'bg-amber-500' },
-    { id: 'installed' as NavSection, label: '已安装', icon: Download, color: 'bg-emerald-500' },
-    { id: 'upload' as NavSection, label: '上传应用', icon: Upload, color: 'bg-blue-500' },
+    { id: 'installed' as NavSection, label: t('apps.appStore.nav.installed'), icon: Download, color: 'bg-emerald-500' },
+    { id: 'upload' as NavSection, label: t('apps.appStore.nav.upload'), icon: Upload, color: 'bg-blue-500' },
   ]
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < 640)
@@ -277,8 +285,8 @@ export default function AppStoreContent() {
       {/* Sidebar */}
       <div className={`${sidebarCollapsed ? 'w-10' : 'w-[12.5rem]'} bg-[#f5f5f7]/80 backdrop-blur-2xl overflow-y-auto flex flex-col border-r border-black/[0.06] transition-all duration-200 shrink-0`}>
         <div className={`${sidebarCollapsed ? 'px-2' : 'px-3'} pt-3 pb-2 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
-          {!sidebarCollapsed && <div className="text-[0.6875rem] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">应用商店</div>}
-          <button onClick={() => setSidebarCollapsed(v => !v)} className="p-0.5 rounded hover:bg-black/[0.06] text-gray-500 transition-colors" title={sidebarCollapsed ? '展开侧栏' : '折叠侧栏'}>
+          {!sidebarCollapsed && <div className="text-[0.6875rem] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">{t('apps.appStore.name')}</div>}
+          <button onClick={() => setSidebarCollapsed(v => !v)} className="p-0.5 rounded hover:bg-black/[0.06] text-gray-500 transition-colors" title={sidebarCollapsed ? t('settings.sidebar.expand') : t('settings.sidebar.collapse')}>
             {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
         </div>
@@ -319,7 +327,7 @@ export default function AppStoreContent() {
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="搜索应用..."
+                  placeholder={t('apps.appStore.discover.searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full h-8 pl-8 pr-3 rounded-lg bg-white/80 border border-black/[0.06] text-[0.8125rem] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
@@ -331,7 +339,7 @@ export default function AppStoreContent() {
                   onChange={(e) => setCategoryFilter(e.target.value)}
                   className="h-8 px-3 rounded-lg bg-white/80 border border-black/[0.06] text-[0.8125rem] text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
                 >
-                  <option value="">全部分类</option>
+                  <option value="">{t('apps.appStore.discover.allCategories')}</option>
                   {categories.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               )}
@@ -346,13 +354,13 @@ export default function AppStoreContent() {
             {loading && (
               <div className="text-center py-16">
                 <Loader2 className="w-8 h-8 mx-auto mb-3 text-gray-400 animate-spin" />
-                <p className="text-[0.8125rem] text-gray-400">加载中...</p>
+                <p className="text-[0.8125rem] text-gray-400">{t('apps.appStore.common.loading')}</p>
               </div>
             )}
 
             {!loading && filteredCatalog.length === 0 && catalog.length > 0 && (
               <div className="text-center py-16 text-gray-400">
-                <p className="text-[0.8125rem]">没有匹配的应用</p>
+                <p className="text-[0.8125rem]">{t('apps.appStore.discover.noMatches')}</p>
               </div>
             )}
 
@@ -385,21 +393,21 @@ export default function AppStoreContent() {
                       </div>
                       <p className="text-[0.6875rem] text-gray-500 mt-2 line-clamp-2 leading-relaxed">{app.description}</p>
                       <div className="flex items-center justify-between mt-3">
-                        <span className="text-[0.625rem] text-gray-400">v{app.version} · {app.type === 'docker' ? 'Docker' : app.type === 'wasm' ? '侧载应用' : app.type === 'static' ? '侧载应用' : app.type === 'sideload' ? '侧载应用' : 'Shell'}{app.author ? ` · ${app.author}` : ''}</span>
+                        <span className="text-[0.625rem] text-gray-400">v{app.version} · {appTypeLabel(app.type)}{app.author ? ` · ${app.author}` : ''}</span>
                         {isInstalling ? (
                           <span className="text-[0.6875rem] text-blue-500 font-medium flex items-center gap-1">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> 安装中
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('apps.appStore.common.installing')}
                           </span>
                         ) : isError ? (
-                          <span className="text-[0.6875rem] text-red-500 font-medium">安装失败</span>
+                          <span className="text-[0.6875rem] text-red-500 font-medium">{t('apps.appStore.common.installFailed')}</span>
                         ) : isRunning || installedApp?.status === 'stopped' ? (
-                          <span className="text-[0.6875rem] text-emerald-500 font-medium">已安装</span>
+                          <span className="text-[0.6875rem] text-emerald-500 font-medium">{t('apps.appStore.common.installed')}</span>
                         ) : (
                           <button
                             onClick={(e) => { e.stopPropagation(); selectApp(app) }}
                             className="text-[0.6875rem] text-blue-500 font-medium hover:text-blue-600"
                           >
-                            安装
+                            {t('apps.appStore.common.install')}
                           </button>
                         )}
                       </div>
@@ -419,7 +427,7 @@ export default function AppStoreContent() {
               className="flex items-center gap-1 text-[0.8125rem] text-blue-500 hover:text-blue-600 mb-4"
             >
               <ChevronLeft className="w-4 h-4" />
-              返回
+              {t('apps.appStore.common.back')}
             </button>
 
             <div className="bg-white/80 rounded-xl border border-black/[0.06] p-6">
@@ -437,7 +445,7 @@ export default function AppStoreContent() {
                   <div className="flex items-center gap-3 mt-2">
                     <span className="text-[0.6875rem] text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{selectedApp.category}</span>
                     <span className="text-[0.6875rem] text-gray-400">v{selectedApp.version}</span>
-                    <span className="text-[0.6875rem] text-gray-400">{selectedApp.type === 'docker' ? 'Docker' : selectedApp.type === 'sideload' ? '侧载应用' : selectedApp.type === 'static' ? '侧载应用' : selectedApp.type === 'wasm' ? '侧载应用' : 'Shell'}</span>
+                    <span className="text-[0.6875rem] text-gray-400">{appTypeLabel(selectedApp.type)}</span>
                     {selectedApp.author && <span className="text-[0.6875rem] text-gray-400">{selectedApp.author}</span>}
                   </div>
                 </div>
@@ -448,8 +456,8 @@ export default function AppStoreContent() {
                 <div className="mb-5">
                   <div className="flex items-center justify-between py-2">
                     <div>
-                      <h3 className="text-[0.8125rem] font-medium text-gray-700">外部访问</h3>
-                      <p className="text-[0.6875rem] text-gray-400 mt-0.5">开启后将映射端口到宿主机，可从外部网络访问</p>
+                      <h3 className="text-[0.8125rem] font-medium text-gray-700">{t('apps.appStore.details.externalAccess')}</h3>
+                      <p className="text-[0.6875rem] text-gray-400 mt-0.5">{t('apps.appStore.details.externalAccessHint')}</p>
                     </div>
                     <button
                       type="button"
@@ -467,7 +475,7 @@ export default function AppStoreContent() {
               {/* Config form (not for static apps) */}
               {selectedApp.configSchema && selectedApp.configSchema.length > 0 && (
                 <div className="mb-5">
-                  <h3 className="text-[0.8125rem] font-medium text-gray-700 mb-3">配置</h3>
+                  <h3 className="text-[0.8125rem] font-medium text-gray-700 mb-3">{t('apps.appStore.details.configuration')}</h3>
                   <div className="space-y-3">
                     {selectedApp.configSchema
                       .filter((field) => {
@@ -505,25 +513,25 @@ export default function AppStoreContent() {
                 if (isInstalling) {
                   return (
                     <div className="flex items-center gap-2 text-[0.8125rem] text-blue-500 font-medium">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> 安装中...
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('apps.appStore.common.installingWithEllipsis')}
                     </div>
                   )
                 }
                 if (isError) {
                   return (
                     <div className="flex items-center gap-3">
-                      <span className="text-[0.8125rem] text-red-500 font-medium">安装失败</span>
+                      <span className="text-[0.8125rem] text-red-500 font-medium">{t('apps.appStore.common.installFailed')}</span>
                       <button
                         onClick={() => { handleUninstall(selectedApp.id); setSelectedApp(null) }}
                         className="h-8 px-4 rounded-lg bg-red-50 text-red-600 text-[0.8125rem] font-medium hover:bg-red-100 transition-colors flex items-center gap-2"
                       >
-                        <Trash2 className="w-3.5 h-3.5" /> 卸载
+                        <Trash2 className="w-3.5 h-3.5" /> {t('apps.appStore.common.uninstall')}
                       </button>
                       <button
                         onClick={() => handleInstall(selectedApp)}
                         className="h-8 px-4 rounded-lg bg-blue-500 text-white text-[0.8125rem] font-medium hover:bg-blue-600 transition-colors flex items-center gap-2"
                       >
-                        <RefreshCw className="w-3.5 h-3.5" /> 重试
+                        <RefreshCw className="w-3.5 h-3.5" /> {t('apps.appStore.common.retry')}
                       </button>
                     </div>
                   )
@@ -531,12 +539,12 @@ export default function AppStoreContent() {
                 if (isInstalled) {
                   return (
                     <div className="flex items-center gap-3">
-                      <span className="text-[0.8125rem] text-emerald-500 font-medium">已安装</span>
+                      <span className="text-[0.8125rem] text-emerald-500 font-medium">{t('apps.appStore.common.installed')}</span>
                       <button
                         onClick={() => { handleUninstall(selectedApp.id); setSelectedApp(null) }}
                         className="h-8 px-4 rounded-lg bg-red-50 text-red-600 text-[0.8125rem] font-medium hover:bg-red-100 transition-colors flex items-center gap-2"
                       >
-                        <Trash2 className="w-3.5 h-3.5" /> 卸载
+                        <Trash2 className="w-3.5 h-3.5" /> {t('apps.appStore.common.uninstall')}
                       </button>
                     </div>
                   )
@@ -546,7 +554,7 @@ export default function AppStoreContent() {
                     onClick={() => handleInstall(selectedApp)}
                     className="h-8 px-5 rounded-lg bg-blue-500 text-white text-[0.8125rem] font-medium hover:bg-blue-600 transition-colors flex items-center gap-2"
                   >
-                    <Download className="w-3.5 h-3.5" /> 安装
+                    <Download className="w-3.5 h-3.5" /> {t('apps.appStore.common.install')}
                   </button>
                 )
               })()}
@@ -558,7 +566,7 @@ export default function AppStoreContent() {
         {nav === 'installed' && (
           <div className="p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-[0.9375rem] font-semibold text-gray-900">已安装应用</h2>
+              <h2 className="text-[0.9375rem] font-semibold text-gray-900">{t('apps.appStore.installed.title')}</h2>
               <button
                 onClick={() => { loadInstalled(); syncInstalledApps() }}
                 className="h-7 w-7 rounded-lg bg-white/80 border border-black/[0.06] flex items-center justify-center hover:bg-white transition-colors"
@@ -570,7 +578,7 @@ export default function AppStoreContent() {
             {installed.length === 0 && (
               <div className="text-center py-16 text-gray-400">
                 <PackageOpen className="w-12 h-12 mx-auto mb-3 opacity-40" />
-                <p className="text-[0.8125rem]">还没有安装任何应用</p>
+                <p className="text-[0.8125rem]">{t('apps.appStore.installed.empty')}</p>
               </div>
             )}
 
@@ -591,10 +599,10 @@ export default function AppStoreContent() {
                         <StatusBadge status={app.status} />
                       </div>
                       <div className="text-[0.6875rem] text-gray-400 mt-0.5">
-                        {app.manifest.version ? `v${app.manifest.version} · ` : ''}{app.appType === 'docker' ? 'Docker' : app.appType === 'sideload' ? '侧载应用' : 'Shell'}
+                        {app.manifest.version ? `v${app.manifest.version} · ` : ''}{appTypeLabel(app.appType)}
                         {app.manifest.accessUrl && app.appType === 'docker' && (
                           <> · <a href={`http://${window.location.hostname}:${app.manifest.accessUrl}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 inline-flex items-center gap-0.5">
-                            访问 <ExternalLink className="w-2.5 h-2.5" />
+                            {t('apps.appStore.installed.openAccess')} <ExternalLink className="w-2.5 h-2.5" />
                           </a></>
                         )}
                       </div>
@@ -605,7 +613,7 @@ export default function AppStoreContent() {
                           onClick={() => handleStop(app.id)}
                           className="h-7 px-2.5 rounded-md bg-gray-100 text-[0.75rem] text-gray-600 hover:bg-gray-200 transition-colors flex items-center gap-1"
                         >
-                          <Square className="w-3 h-3" /> 停止
+                          <Square className="w-3 h-3" /> {t('apps.appStore.installed.stop')}
                         </button>
                       )}
                       {app.status === 'stopped' && (app.appType === 'docker' || (app.appType === 'sideload' && app.manifest.wasmModule)) && (
@@ -613,7 +621,7 @@ export default function AppStoreContent() {
                           onClick={() => handleStart(app.id)}
                           className="h-7 px-2.5 rounded-md bg-emerald-50 text-[0.75rem] text-emerald-600 hover:bg-emerald-100 transition-colors flex items-center gap-1"
                         >
-                          <Play className="w-3 h-3" /> 启动
+                          <Play className="w-3 h-3" /> {t('apps.appStore.installed.start')}
                         </button>
                       )}
                       {(app.appType === 'docker' || app.appType === 'sideload') && (
@@ -621,14 +629,14 @@ export default function AppStoreContent() {
                           onClick={() => handleUpdate(app.id)}
                           className="h-7 px-2.5 rounded-md bg-blue-50 text-[0.75rem] text-blue-600 hover:bg-blue-100 transition-colors flex items-center gap-1"
                         >
-                          <RefreshCw className="w-3 h-3" /> 更新
+                          <RefreshCw className="w-3 h-3" /> {t('apps.appStore.installed.update')}
                         </button>
                       )}
                       <button
                         onClick={() => handleUninstall(app.id)}
                         className="h-7 px-2.5 rounded-md bg-red-50 text-[0.75rem] text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1"
                       >
-                        <Trash2 className="w-3 h-3" /> 卸载
+                        <Trash2 className="w-3 h-3" /> {t('apps.appStore.common.uninstall')}
                       </button>
                       {getAppConfigSchema(app).length > 0 ? (
                         <button
@@ -673,7 +681,7 @@ export default function AppStoreContent() {
                             className="h-7 px-3 rounded-md bg-blue-500 text-[0.75rem] text-white hover:bg-blue-600 transition-colors flex items-center gap-1 disabled:opacity-50"
                           >
                             {savingConfig ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                            保存
+                            {t('apps.appStore.installed.save')}
                           </button>
                         </div>
                       </div>
@@ -718,6 +726,7 @@ interface InstalledSkill {
 }
 
 function SkillsSection() {
+  const { t } = useTranslation()
   const [catalog, setCatalog] = useState<CatalogSkill[]>([])
   const [installed, setInstalled] = useState<InstalledSkill[]>([])
   const [loading, setLoading] = useState(false)
@@ -735,11 +744,11 @@ function SkillsSection() {
       setCatalog(skills || [])
       setInstalled(inst || [])
     } catch (e: any) {
-      toast({ title: '加载失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.loadFailed'), description: e.message, variant: 'destructive' })
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -755,11 +764,11 @@ function SkillsSection() {
     setOperating((prev) => new Set(prev).add(skill.id))
     try {
       await appStoreService.installSkill(skill.id, skill.zipUrl)
-      toast({ title: '安装成功', description: `${skill.name} 已安装` })
+      toast({ title: t('apps.appStore.feedback.installSucceeded'), description: t('apps.appStore.feedback.skillInstalled', { name: skill.name }) })
       const inst = await appStoreService.getInstalledSkills()
       setInstalled(inst || [])
     } catch (e: any) {
-      toast({ title: '安装失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.installFailed'), description: e.message, variant: 'destructive' })
     } finally {
       setOperating((prev) => { const s = new Set(prev); s.delete(skill.id); return s })
     }
@@ -769,12 +778,12 @@ function SkillsSection() {
     setOperating((prev) => new Set(prev).add(skillId))
     try {
       await appStoreService.uninstallSkill(skillId)
-      toast({ title: '已卸载', description: 'Skill 已卸载' })
+      toast({ title: t('apps.appStore.feedback.uninstalled'), description: t('apps.appStore.feedback.skillUninstalled') })
       const inst = await appStoreService.getInstalledSkills()
       setInstalled(inst || [])
       if (selectedSkill?.id === skillId) setSelectedSkill(null)
     } catch (e: any) {
-      toast({ title: '卸载失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.uninstallFailed'), description: e.message, variant: 'destructive' })
     } finally {
       setOperating((prev) => { const s = new Set(prev); s.delete(skillId); return s })
     }
@@ -790,7 +799,7 @@ function SkillsSection() {
           className="flex items-center gap-1 text-[0.8125rem] text-blue-500 hover:text-blue-600 mb-4"
         >
           <ChevronLeft className="w-4 h-4" />
-          返回
+          {t('apps.appStore.common.back')}
         </button>
         <div className="bg-white/80 rounded-xl border border-black/[0.06] p-6">
           <div className="flex items-start gap-4 mb-5">
@@ -813,16 +822,16 @@ function SkillsSection() {
           <div className="flex items-center gap-3">
             {busy ? (
               <div className="flex items-center gap-2 text-[0.8125rem] text-blue-500 font-medium">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> 处理中...
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('apps.appStore.common.processingWithEllipsis')}
               </div>
             ) : inst ? (
               <>
-                <span className="text-[0.8125rem] text-emerald-500 font-medium">已安装</span>
+                <span className="text-[0.8125rem] text-emerald-500 font-medium">{t('apps.appStore.common.installed')}</span>
                 <button
                   onClick={() => handleUninstall(selectedSkill.id)}
                   className="h-8 px-4 rounded-lg bg-red-50 text-red-600 text-[0.8125rem] font-medium hover:bg-red-100 transition-colors flex items-center gap-2"
                 >
-                  <Trash2 className="w-3.5 h-3.5" /> 卸载
+                  <Trash2 className="w-3.5 h-3.5" /> {t('apps.appStore.common.uninstall')}
                 </button>
               </>
             ) : (
@@ -830,7 +839,7 @@ function SkillsSection() {
                 onClick={() => handleInstall(selectedSkill)}
                 className="h-8 px-5 rounded-lg bg-blue-500 text-white text-[0.8125rem] font-medium hover:bg-blue-600 transition-colors flex items-center gap-2"
               >
-                <Download className="w-3.5 h-3.5" /> 安装
+                <Download className="w-3.5 h-3.5" /> {t('apps.appStore.common.install')}
               </button>
             )}
           </div>
@@ -846,7 +855,7 @@ function SkillsSection() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
           <input
             type="text"
-            placeholder="搜索 Skills..."
+            placeholder={t('apps.appStore.skills.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full h-8 pl-8 pr-3 rounded-lg bg-white/80 border border-black/[0.06] text-[0.8125rem] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500/40"
@@ -863,20 +872,20 @@ function SkillsSection() {
       {loading && (
         <div className="text-center py-16">
           <Loader2 className="w-8 h-8 mx-auto mb-3 text-gray-400 animate-spin" />
-          <p className="text-[0.8125rem] text-gray-400">加载中...</p>
+          <p className="text-[0.8125rem] text-gray-400">{t('apps.appStore.common.loading')}</p>
         </div>
       )}
 
       {!loading && filtered.length === 0 && catalog.length > 0 && (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-[0.8125rem]">没有匹配的 Skill</p>
+          <p className="text-[0.8125rem]">{t('apps.appStore.skills.noMatches')}</p>
         </div>
       )}
 
       {!loading && catalog.length === 0 && (
         <div className="text-center py-16 text-gray-400">
           <Zap className="w-12 h-12 mx-auto mb-3 opacity-40" />
-          <p className="text-[0.8125rem]">暂无可用的 Skills</p>
+          <p className="text-[0.8125rem]">{t('apps.appStore.skills.empty')}</p>
         </div>
       )}
 
@@ -909,16 +918,16 @@ function SkillsSection() {
                   <span className="text-[0.625rem] text-gray-400">v{skill.version}</span>
                   {busy ? (
                     <span className="text-[0.6875rem] text-blue-500 font-medium flex items-center gap-1">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> 处理中
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('apps.appStore.common.processing')}
                     </span>
                   ) : inst ? (
-                    <span className="text-[0.6875rem] text-emerald-500 font-medium">已安装</span>
+                    <span className="text-[0.6875rem] text-emerald-500 font-medium">{t('apps.appStore.common.installed')}</span>
                   ) : (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleInstall(skill) }}
                       className="text-[0.6875rem] text-blue-500 font-medium hover:text-blue-600"
                     >
-                      安装
+                      {t('apps.appStore.common.install')}
                     </button>
                   )}
                 </div>
@@ -932,17 +941,18 @@ function SkillsSection() {
 }
 
 function UploadSection({ onUploaded }: { onUploaded: () => void }) {
+  const { t } = useTranslation()
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const uploadFile = async (file: File) => {
     if (!file.name.endsWith('.zip')) {
-      toast({ title: '格式错误', description: '请上传 .zip 文件', variant: 'destructive' })
+      toast({ title: t('apps.appStore.upload.invalidFormat'), description: t('apps.appStore.upload.invalidFormatDescription'), variant: 'destructive' })
       return
     }
     if (file.size > 100 * 1024 * 1024) {
-      toast({ title: '文件过大', description: '文件大小不能超过 100MB', variant: 'destructive' })
+      toast({ title: t('apps.appStore.upload.fileTooLarge'), description: t('apps.appStore.upload.fileTooLargeDescription'), variant: 'destructive' })
       return
     }
 
@@ -958,12 +968,12 @@ function UploadSection({ onUploaded }: { onUploaded: () => void }) {
       })
       const data = await resp.json()
       if (!resp.ok) {
-        throw new Error(data.error || '上传失败')
+        throw new Error(data.error || t('apps.appStore.upload.uploadFailed'))
       }
-      toast({ title: '安装成功', description: `${data.app?.name || '应用'} 已安装` })
+      toast({ title: t('apps.appStore.feedback.installSucceeded'), description: t('apps.appStore.feedback.appInstalled', { name: data.app?.name || t('apps.appStore.common.app') }) })
       onUploaded()
     } catch (e: any) {
-      toast({ title: '安装失败', description: e.message, variant: 'destructive' })
+      toast({ title: t('apps.appStore.feedback.installFailed'), description: e.message, variant: 'destructive' })
     } finally {
       setUploading(false)
     }
@@ -978,7 +988,7 @@ function UploadSection({ onUploaded }: { onUploaded: () => void }) {
 
   return (
     <div className="p-6">
-      <h2 className="text-[0.9375rem] font-semibold text-gray-900 mb-5">上传静态应用</h2>
+      <h2 className="text-[0.9375rem] font-semibold text-gray-900 mb-5">{t('apps.appStore.upload.title')}</h2>
       <div
         className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
           dragOver ? 'border-blue-400 bg-blue-50/50' : 'border-black/[0.08] bg-white/50'
@@ -990,18 +1000,18 @@ function UploadSection({ onUploaded }: { onUploaded: () => void }) {
         {uploading ? (
           <div>
             <Loader2 className="w-10 h-10 mx-auto mb-3 text-blue-500 animate-spin" />
-            <p className="text-[0.8125rem] text-gray-500">正在上传安装...</p>
+            <p className="text-[0.8125rem] text-gray-500">{t('apps.appStore.upload.uploading')}</p>
           </div>
         ) : (
           <div>
             <Upload className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-            <p className="text-[0.8125rem] text-gray-600 mb-1">拖拽 .zip 文件到此处</p>
-            <p className="text-[0.6875rem] text-gray-400 mb-4">或点击选择文件（最大 100MB）</p>
+            <p className="text-[0.8125rem] text-gray-600 mb-1">{t('apps.appStore.upload.dropZip')}</p>
+            <p className="text-[0.6875rem] text-gray-400 mb-4">{t('apps.appStore.upload.selectFileHint')}</p>
             <button
               onClick={() => fileInputRef.current?.click()}
               className="h-8 px-5 rounded-lg bg-blue-500 text-white text-[0.8125rem] font-medium hover:bg-blue-600 transition-colors"
             >
-              选择文件
+              {t('apps.appStore.upload.selectFile')}
             </button>
             <input
               ref={fileInputRef}
@@ -1018,12 +1028,12 @@ function UploadSection({ onUploaded }: { onUploaded: () => void }) {
         )}
       </div>
       <div className="mt-5 bg-white/80 rounded-xl border border-black/[0.06] p-4">
-        <h3 className="text-[0.8125rem] font-medium text-gray-700 mb-2">Zip 包要求</h3>
+        <h3 className="text-[0.8125rem] font-medium text-gray-700 mb-2">{t('apps.appStore.upload.requirementsTitle')}</h3>
         <ul className="text-[0.6875rem] text-gray-500 space-y-1 list-disc list-inside">
-          <li>必须包含 <code className="bg-gray-100 px-1 rounded">manifest.json</code> 和 <code className="bg-gray-100 px-1 rounded">index.html</code></li>
-          <li>manifest.json 需包含 id、name 字段</li>
-          <li>可在 index.html 中引用 <code className="bg-gray-100 px-1 rounded">/webos-sdk.js</code> 调用系统能力</li>
-          <li>应用 ID 只允许字母、数字、连字符和下划线</li>
+          <li>{t('apps.appStore.upload.requirementManifestAndIndex')} <code className="bg-gray-100 px-1 rounded">manifest.json</code> {t('apps.appStore.upload.requirementAnd')} <code className="bg-gray-100 px-1 rounded">index.html</code></li>
+          <li>{t('apps.appStore.upload.requirementManifestFields')}</li>
+          <li>{t('apps.appStore.upload.requirementSdkPrefix')} <code className="bg-gray-100 px-1 rounded">/webos-sdk.js</code> {t('apps.appStore.upload.requirementSdkSuffix')}</li>
+          <li>{t('apps.appStore.upload.requirementAppId')}</li>
         </ul>
       </div>
     </div>
@@ -1031,6 +1041,7 @@ function UploadSection({ onUploaded }: { onUploaded: () => void }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation()
   const styles: Record<string, string> = {
     running: 'bg-emerald-100 text-emerald-700',
     stopped: 'bg-gray-100 text-gray-500',
@@ -1038,10 +1049,10 @@ function StatusBadge({ status }: { status: string }) {
     error: 'bg-red-100 text-red-600',
   }
   const labels: Record<string, string> = {
-    running: '运行中',
-    stopped: '已停止',
-    installing: '安装中',
-    error: '异常',
+    running: t('apps.appStore.status.running'),
+    stopped: t('apps.appStore.status.stopped'),
+    installing: t('apps.appStore.status.installing'),
+    error: t('apps.appStore.status.error'),
   }
   return (
     <span className={`text-[0.625rem] px-1.5 py-0.5 rounded-full font-medium ${styles[status] || styles.error}`}>

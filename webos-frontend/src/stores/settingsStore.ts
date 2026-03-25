@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import i18n, { DEFAULT_LOCALE, type SupportedLocale } from '@/i18n'
 import { request as wsRequest } from '@/stores/webSocketStore'
 
 const LS_KEY = 'fm_preferences_v1'
@@ -9,6 +10,7 @@ interface SavedFields {
   fontSize: number
   editorTheme: 'vs' | 'vs-dark'
   fileDefaultApps: Record<string, string>
+  locale: SupportedLocale
 }
 
 interface SettingsState extends SavedFields {
@@ -20,6 +22,7 @@ interface SettingsState extends SavedFields {
   setWallpaperUrl: (v: string | null) => void
   setFontSize: (v: number) => void
   setEditorTheme: (v: 'vs' | 'vs-dark') => void
+  setLocale: (v: SupportedLocale) => void
   setFileDefaultApp: (ext: string, appId: string) => void
   removeFileDefaultApp: (ext: string) => void
   resetSettings: () => void
@@ -32,11 +35,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   wallpaperUrl: null,
   fontSize: 14,
   editorTheme: 'vs-dark',
+  locale: DEFAULT_LOCALE,
   dataDir: '',
   fileDefaultApps: {},
   _settingsLoaded: false,
   _skipAutoSave: true,
-  _lastSaved: { dockSize: 56, wallpaperUrl: null, fontSize: 14, editorTheme: 'vs-dark', fileDefaultApps: {} },
+  _lastSaved: { dockSize: 56, wallpaperUrl: null, fontSize: 14, editorTheme: 'vs-dark', fileDefaultApps: {}, locale: DEFAULT_LOCALE },
 
   setDockSize: (v) => {
     set({ dockSize: v })
@@ -55,6 +59,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ editorTheme: v })
     queueAutoSave()
   },
+  setLocale: (v) => {
+    void i18n.changeLanguage(v)
+    set({ locale: v })
+    queueAutoSave()
+  },
   setFileDefaultApp: (ext, appId) => {
     const fileDefaultApps = { ...get().fileDefaultApps, [ext.toLowerCase()]: appId }
     set({ fileDefaultApps })
@@ -68,7 +77,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   resetSettings: () => {
-    const defaults = { dockSize: 56, wallpaperUrl: null as string | null, fontSize: 14, editorTheme: 'vs-dark' as const, fileDefaultApps: {} as Record<string, string> }
+    const defaults = { dockSize: 56, wallpaperUrl: null as string | null, fontSize: 14, editorTheme: 'vs-dark' as const, fileDefaultApps: {} as Record<string, string>, locale: DEFAULT_LOCALE }
+    void i18n.changeLanguage(DEFAULT_LOCALE)
     set(defaults)
     document.documentElement.style.fontSize = '14px'
     try {
@@ -101,14 +111,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         const initFont = typeof data.fontSize === 'number' ? data.fontSize : 14
         const initWall = data.wallpaperUrl || null
         const initTheme = data.editorTheme || 'vs-dark'
+        const initLocale = data.locale === 'en-US' ? 'en-US' : DEFAULT_LOCALE
         const initFileDefApps = (data.fileDefaultApps && typeof data.fileDefaultApps === 'object') ? data.fileDefaultApps : {}
+        void i18n.changeLanguage(initLocale)
         set({
           dockSize: initDock,
           fontSize: initFont,
           wallpaperUrl: initWall,
           editorTheme: initTheme,
+          locale: initLocale,
           fileDefaultApps: initFileDefApps,
-          _lastSaved: { dockSize: initDock, wallpaperUrl: initWall, fontSize: initFont, editorTheme: initTheme, fileDefaultApps: initFileDefApps },
+          _lastSaved: { dockSize: initDock, wallpaperUrl: initWall, fontSize: initFont, editorTheme: initTheme, fileDefaultApps: initFileDefApps, locale: initLocale },
         })
         document.documentElement.style.fontSize = `${initFont}px`
       } catch {}
@@ -128,19 +141,22 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           const initFont = typeof data.fontSize === 'number' ? data.fontSize : 14
           const initWall = data.wallpaperUrl || null
           const initTheme = data.editorTheme || 'vs-dark'
+          const initLocale = data.locale === 'en-US' ? 'en-US' : DEFAULT_LOCALE
           const initFileDefApps = (data.fileDefaultApps && typeof data.fileDefaultApps === 'object') ? data.fileDefaultApps : {}
+          void i18n.changeLanguage(initLocale)
           set({
             dockSize: initDock,
             fontSize: initFont,
             wallpaperUrl: initWall,
             editorTheme: initTheme,
+            locale: initLocale,
             dataDir: data.dataDir || '',
             fileDefaultApps: initFileDefApps,
-            _lastSaved: { dockSize: initDock, wallpaperUrl: initWall, fontSize: initFont, editorTheme: initTheme, fileDefaultApps: initFileDefApps },
+            _lastSaved: { dockSize: initDock, wallpaperUrl: initWall, fontSize: initFont, editorTheme: initTheme, fileDefaultApps: initFileDefApps, locale: initLocale },
           })
           document.documentElement.style.fontSize = `${initFont}px`
           try {
-            localStorage.setItem(LS_KEY, JSON.stringify({ dockSize: initDock, wallpaperUrl: initWall, fontSize: initFont, editorTheme: initTheme, fileDefaultApps: initFileDefApps }))
+            localStorage.setItem(LS_KEY, JSON.stringify({ dockSize: initDock, wallpaperUrl: initWall, fontSize: initFont, editorTheme: initTheme, fileDefaultApps: initFileDefApps, locale: initLocale }))
           } catch {}
         } catch {
           // WS not connected yet — reset flag so it retries when WS connects
@@ -156,16 +172,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   saveSettings: () => {
-    const { dockSize, wallpaperUrl, fontSize, editorTheme, fileDefaultApps, _lastSaved } = get()
+    const { dockSize, wallpaperUrl, fontSize, editorTheme, fileDefaultApps, locale, _lastSaved } = get()
     if (
       _lastSaved.dockSize === dockSize &&
       _lastSaved.wallpaperUrl === wallpaperUrl &&
       _lastSaved.fontSize === fontSize &&
       _lastSaved.editorTheme === editorTheme &&
+      _lastSaved.locale === locale &&
       JSON.stringify(_lastSaved.fileDefaultApps) === JSON.stringify(fileDefaultApps)
     ) return
 
-    const prefs = { dockSize, wallpaperUrl, fontSize, editorTheme, fileDefaultApps }
+    const prefs = { dockSize, wallpaperUrl, fontSize, editorTheme, fileDefaultApps, locale }
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(prefs))
     } catch {}

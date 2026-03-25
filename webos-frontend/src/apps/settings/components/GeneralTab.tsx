@@ -1,9 +1,11 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import { Folder, FileText, Settings } from "lucide-react"
 import { useSettingsStore } from "@/stores"
 import { SettingsIcon } from "./SettingsIcon"
 
 export default function GeneralTab({ activeCategory }: { activeCategory: string }) {
+  const { t } = useTranslation()
   const dockSize = useSettingsStore((s) => s.dockSize)
   const setDockSize = useSettingsStore((s) => s.setDockSize)
   const wallpaperUrl = useSettingsStore((s) => s.wallpaperUrl)
@@ -11,6 +13,8 @@ export default function GeneralTab({ activeCategory }: { activeCategory: string 
   const fontSize = useSettingsStore((s) => s.fontSize)
   const setFontSize = useSettingsStore((s) => s.setFontSize)
   const resetSettings = useSettingsStore((s) => s.resetSettings)
+  const locale = useSettingsStore((s) => s.locale)
+  const setLocale = useSettingsStore((s) => s.setLocale)
 
   // 设置项列表组件
   const SettingsRow = ({ icon, iconBg, label, children, onClick, hasArrow = false }: {
@@ -40,34 +44,52 @@ export default function GeneralTab({ activeCategory }: { activeCategory: string 
             <div className="w-16 h-16 rounded-2xl bg-gray-500 flex items-center justify-center shadow-lg mb-3">
               <SettingsIcon type="general" className="w-10 h-10 text-white" />
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">通用</h1>
-            <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">管理系统的整体设置和偏好设置</p>
+            <h1 className="text-xl font-semibold text-gray-900">{t('settings.general.title')}</h1>
+            <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">{t('settings.general.subtitle')}</p>
           </div>
 
           <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
             <SettingsRow
               icon={<SettingsIcon type="about" className="w-4 h-4 text-white" />}
               iconBg="bg-gray-500"
-              label="关于本机"
+              label={t('settings.general.aboutThisMachine')}
               hasArrow
             />
             <div className="h-px bg-gray-200 ml-12" />
             <SettingsRow
               icon={<SettingsIcon type="storage" className="w-4 h-4 text-white" />}
               iconBg="bg-gray-500"
-              label="储存空间"
+              label={t('settings.general.storage')}
               hasArrow
             />
           </div>
 
           <div className="bg-[#f5f5f7] rounded-xl overflow-hidden mt-6">
+            <SettingsRow
+              icon={<Settings className="w-4 h-4 text-white" />}
+              iconBg="bg-blue-500"
+              label={t('settings.general.language')}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[0.75rem] text-gray-500 hidden sm:inline">{t('settings.general.languageHint')}</span>
+                <select
+                  value={locale}
+                  onChange={(e) => setLocale(e.target.value as 'zh-CN' | 'en-US')}
+                  className="px-2 py-1 text-[0.75rem] bg-white border border-gray-200 rounded-md text-gray-700 outline-none"
+                >
+                  <option value="zh-CN">{t('settings.general.chinese')}</option>
+                  <option value="en-US">{t('settings.general.english')}</option>
+                </select>
+              </div>
+            </SettingsRow>
+            <div className="h-px bg-gray-200 ml-12" />
             <div className="flex items-center justify-between px-3 py-2.5">
-              <span className="text-[0.8125rem] text-gray-900">恢复默认设置</span>
+              <span className="text-[0.8125rem] text-gray-900">{t('settings.general.resetTitle')}</span>
               <button
                 onClick={resetSettings}
                 className="px-3 py-1 text-[0.8125rem] bg-white hover:bg-gray-100 text-gray-700 rounded-md border border-gray-200 transition-colors"
               >
-                恢复默认
+                {t('settings.general.resetButton')}
               </button>
             </div>
           </div>
@@ -81,18 +103,18 @@ export default function GeneralTab({ activeCategory }: { activeCategory: string 
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-400 via-purple-400 to-blue-400 flex items-center justify-center shadow-lg mb-3">
               <SettingsIcon type="appearance" className="w-10 h-10 text-white" />
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">外观</h1>
-            <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">自定义系统外观和显示设置</p>
+            <h1 className="text-xl font-semibold text-gray-900">{t('settings.appearance.title')}</h1>
+            <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">{t('settings.appearance.subtitle')}</p>
           </div>
 
           <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
             <div className="px-4 py-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[0.8125rem] text-gray-900">界面缩放</span>
+                <span className="text-[0.8125rem] text-gray-900">{t('settings.appearance.scale')}</span>
                 <span className="text-[0.8125rem] text-gray-500">{Math.round(fontSize / 16 * 100)}%</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-[0.6875rem] text-gray-400">小</span>
+                <span className="text-[0.6875rem] text-gray-400">{t('settings.common.small')}</span>
                 <input
                   type="range"
                   min={12}
@@ -102,9 +124,9 @@ export default function GeneralTab({ activeCategory }: { activeCategory: string 
                   onChange={(e) => setFontSize(Number(e.target.value))}
                   className="flex-1 h-1 bg-gray-300 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-gray-300"
                 />
-                <span className="text-[0.6875rem] text-gray-400">大</span>
+                <span className="text-[0.6875rem] text-gray-400">{t('settings.common.large')}</span>
               </div>
-              <p className="text-[0.6875rem] text-gray-400 mt-2">通过修改根字号等比缩放整个界面（基准 16px = 100%）</p>
+              <p className="text-[0.6875rem] text-gray-400 mt-2">{t('settings.appearance.scaleHint')}</p>
             </div>
           </div>
         </div>
@@ -117,8 +139,8 @@ export default function GeneralTab({ activeCategory }: { activeCategory: string 
             <div className="w-16 h-16 rounded-2xl bg-cyan-500 flex items-center justify-center shadow-lg mb-3">
               <SettingsIcon type="wallpaper" className="w-10 h-10 text-white" />
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">墙纸</h1>
-            <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">选择桌面背景图片</p>
+            <h1 className="text-xl font-semibold text-gray-900">{t('settings.wallpaper.title')}</h1>
+            <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">{t('settings.wallpaper.subtitle')}</p>
           </div>
 
           <div className="bg-[#f5f5f7] rounded-xl overflow-hidden p-4">
@@ -128,7 +150,7 @@ export default function GeneralTab({ activeCategory }: { activeCategory: string 
                 : 'bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200'
             }`}>
               {wallpaperUrl && !wallpaperUrl.startsWith('gradient:') ? (
-                <img src={wallpaperUrl} className="w-full h-full object-cover" alt="当前墙纸" />
+                <img src={wallpaperUrl} className="w-full h-full object-cover" alt={t('settings.wallpaper.currentAlt')} />
               ) : null}
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 px-3 py-1.5 bg-white/30 backdrop-blur-xl rounded-2xl">
                 <div className="w-6 h-6 bg-white/50 rounded-lg"></div>
@@ -154,21 +176,21 @@ export default function GeneralTab({ activeCategory }: { activeCategory: string 
                 }}
                 className="flex-1 py-2 text-[0.8125rem] bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors font-medium"
               >
-                选择图片
+                {t('settings.wallpaper.chooseImage')}
               </button>
               {wallpaperUrl && (
                 <button
                   onClick={() => setWallpaperUrl(null)}
                   className="px-4 py-2 text-[0.8125rem] bg-white hover:bg-gray-100 text-gray-700 rounded-lg border border-gray-200 transition-colors"
                 >
-                  使用默认
+                  {t('settings.wallpaper.useDefault')}
                 </button>
               )}
             </div>
           </div>
 
           <div className="bg-[#f5f5f7] rounded-xl overflow-hidden p-4 mt-4">
-            <h3 className="text-[0.8125rem] font-medium text-gray-900 mb-3">默认背景</h3>
+            <h3 className="text-[0.8125rem] font-medium text-gray-900 mb-3">{t('settings.wallpaper.defaultBackgrounds')}</h3>
             <div className="flex flex-wrap gap-3">
               {[
                 { id: 'default', gradient: 'from-indigo-200 via-purple-200 to-pink-200' },
@@ -213,18 +235,18 @@ export default function GeneralTab({ activeCategory }: { activeCategory: string 
             <div className="w-16 h-16 rounded-2xl bg-black flex items-center justify-center shadow-lg mb-3">
               <SettingsIcon type="dock" className="w-10 h-10 text-white" />
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">桌面与程序坞</h1>
-            <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">自定义程序坞的外观和行为</p>
+            <h1 className="text-xl font-semibold text-gray-900">{t('settings.dock.title')}</h1>
+            <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">{t('settings.dock.subtitle')}</p>
           </div>
 
           <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
             <div className="px-4 py-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[0.8125rem] text-gray-900">大小</span>
+                <span className="text-[0.8125rem] text-gray-900">{t('settings.dock.size')}</span>
                 <span className="text-[0.8125rem] text-gray-500">{dockSize}px</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-[0.6875rem] text-gray-400">小</span>
+                <span className="text-[0.6875rem] text-gray-400">{t('settings.common.small')}</span>
                 <input
                   type="range"
                   min={44}
@@ -234,13 +256,13 @@ export default function GeneralTab({ activeCategory }: { activeCategory: string 
                   onChange={(e) => setDockSize(Number(e.target.value))}
                   className="flex-1 h-1 bg-gray-300 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-gray-300"
                 />
-                <span className="text-[0.6875rem] text-gray-400">大</span>
+                <span className="text-[0.6875rem] text-gray-400">{t('settings.common.large')}</span>
               </div>
             </div>
           </div>
 
           <div className="mt-6 bg-[#f5f5f7] rounded-xl p-4">
-            <div className="text-[0.6875rem] text-gray-500 mb-3 text-center">预览</div>
+            <div className="text-[0.6875rem] text-gray-500 mb-3 text-center">{t('settings.dock.preview')}</div>
             <div className="flex justify-center">
               <div className="inline-flex items-end gap-1.5 px-4 py-2 bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 shadow-lg">
                 {[

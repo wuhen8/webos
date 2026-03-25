@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { useTranslation } from 'react-i18next'
 import type { Widget } from '@/stores/widgetStore'
 import { useWidgetStore } from '@/stores/widgetStore'
 import { useUIStore } from '@/stores'
@@ -13,6 +14,7 @@ interface WidgetContainerProps {
 }
 
 export function WidgetContainer({ widget }: WidgetContainerProps) {
+  const { t } = useTranslation()
   const removeWidget = useWidgetStore((s) => s.removeWidget)
   const updateWidget = useWidgetStore((s) => s.updateWidget)
   const resizeWidget = useWidgetStore((s) => s.resizeWidget)
@@ -107,7 +109,7 @@ export function WidgetContainer({ widget }: WidgetContainerProps) {
         items: [
           {
             id: 'widget-remove',
-            label: '移除小组件',
+            label: t('widgets.actions.remove'),
             icon: 'Trash2',
             action: 'widget.remove',
             variant: 'danger',

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Music, Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Repeat1, Shuffle, X, ListMusic, FolderPlus, Loader2, RefreshCw, Folder, Trash2 } from 'lucide-react'
 import { useCurrentProcess } from '@/hooks/useCurrentProcess'
 import { useMusicPlayerStore } from './store'
@@ -17,6 +18,7 @@ interface MusicPlayerContentProps {
 }
 
 export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps) {
+  const { t } = useTranslation()
   const [isPlaying, setIsPlaying] = useState(globalPlayingRef.current)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -54,7 +56,7 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
 
     const onTimeUpdate = () => setCurrentTime(audio.currentTime)
     const onDurationChange = () => setDuration(audio.duration || 0)
-    const onError = () => setError('无法播放此音频文件')
+    const onError = () => setError(t('apps.musicPlayer.errors.unplayable'))
     const onCanPlay = () => setError(null)
 
     audio.addEventListener('timeupdate', onTimeUpdate)
@@ -98,7 +100,7 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
     if (isPlaying) {
       audio.pause()
     } else {
-      audio.play().catch(() => setError('播放失败'))
+      audio.play().catch(() => setError(t('apps.musicPlayer.errors.playFailed')))
     }
   }, [isPlaying, activeTrack])
 
@@ -123,7 +125,7 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
     return `${m}:${s.toString().padStart(2, '0')}`
   }
 
-  const displayTitle = activeTrack?.title || '音乐播放器'
+  const displayTitle = activeTrack?.title || t('apps.musicPlayer.name')
 
   const handleFolderSelect = useCallback(async (path: string) => {
     setShowFolderPicker(false)
@@ -138,12 +140,12 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
   const emptyState = tracks.length === 0
     ? (musicFolders.length === 0
         ? {
-            title: '还没有音乐内容',
-            description: '点击右上角添加目录，自动扫描并建立播放列表',
+            title: t('apps.musicPlayer.empty.noContent.title'),
+            description: t('apps.musicPlayer.empty.noContent.description'),
           }
         : {
-            title: '暂无可播放歌曲',
-            description: '已保存目录中没有音频文件，或文件格式暂不支持，可尝试刷新目录或添加其他目录',
+            title: t('apps.musicPlayer.empty.noTracks.title'),
+            description: t('apps.musicPlayer.empty.noTracks.description'),
           })
     : null
 
@@ -198,7 +200,11 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
           <button
             onClick={cycleRepeatMode}
             className={`p-2 rounded-full transition-colors relative ${repeatMode !== 'none' ? 'text-violet-400' : 'text-slate-500 hover:text-white'}`}
-            title={repeatMode === 'none' ? '无循环' : repeatMode === 'all' ? '列表循环' : '单曲循环'}
+            title={repeatMode === 'none'
+              ? t('apps.musicPlayer.repeat.none')
+              : repeatMode === 'all'
+                ? t('apps.musicPlayer.repeat.all')
+                : t('apps.musicPlayer.repeat.one')}
           >
             {repeatMode === 'one' ? <Repeat1 className="w-4 h-4" /> : <Repeat className="w-4 h-4" />}
           </button>
@@ -225,7 +231,7 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
           <button
             onClick={() => setShuffleMode(windowId, !shuffleMode)}
             className={`p-2 rounded-full transition-colors ${shuffleMode ? 'text-violet-400' : 'text-slate-500 hover:text-white'}`}
-            title={shuffleMode ? '随机播放开' : '随机播放关'}
+            title={shuffleMode ? t('apps.musicPlayer.shuffle.on') : t('apps.musicPlayer.shuffle.off')}
           >
             <Shuffle className="w-4 h-4" />
           </button>
@@ -260,13 +266,13 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
       <div className="flex-1 min-h-0 flex flex-col border-t border-slate-700/50 mt-1">
         <div className="flex items-center gap-2 px-4 py-2 text-slate-400 text-xs shrink-0">
           <ListMusic className="w-3.5 h-3.5" />
-          <span>播放列表 ({tracks.length})</span>
+          <span>{t('apps.musicPlayer.playlist.title', { count: tracks.length })}</span>
           <div className="flex-1" />
           <button
             onClick={() => void refreshFolders(windowId)}
             disabled={scanning}
             className="flex items-center gap-1 px-1.5 py-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors disabled:opacity-50"
-            title="刷新目录"
+            title={t('apps.musicPlayer.actions.refreshFolders')}
           >
             {scanning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
           </button>
@@ -274,7 +280,7 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
             onClick={() => setShowFolderPicker(true)}
             disabled={scanning}
             className="flex items-center gap-1 px-1.5 py-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors disabled:opacity-50"
-            title="添加目录"
+            title={t('apps.musicPlayer.actions.addFolder')}
           >
             {scanning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderPlus className="w-3.5 h-3.5" />}
           </button>
@@ -284,11 +290,11 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
           <div className="rounded-lg border border-slate-700/50 bg-slate-900/40 overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 text-slate-400 text-xs border-b border-slate-700/50">
               <Folder className="w-3.5 h-3.5 text-amber-400" />
-              <span>已保存目录 ({musicFolders.length})</span>
+              <span>{t('apps.musicPlayer.savedFolders.title', { count: musicFolders.length })}</span>
             </div>
             {musicFolders.length === 0 ? (
               <div className="px-3 py-3 text-[11px] text-slate-500">
-                还没有保存目录，点击右上角添加目录开始扫描音乐
+                {t('apps.musicPlayer.savedFolders.empty')}
               </div>
             ) : (
               <div className="max-h-28 overflow-y-auto">
@@ -306,7 +312,7 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
                       onClick={() => removeFolder(windowId, folder.nodeId, folder.path)}
                       disabled={scanning}
                       className="p-1 text-slate-500 hover:text-red-400 transition-colors disabled:opacity-50 shrink-0"
-                      title="删除目录"
+                      title={t('apps.musicPlayer.actions.removeFolder')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -370,7 +376,7 @@ export default function MusicPlayerContent({ windowId }: MusicPlayerContentProps
       {scanning && (
         <div className="absolute inset-0 z-40 bg-slate-900/80 flex flex-col items-center justify-center gap-2">
           <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
-          <span className="text-slate-300 text-sm">正在扫描音乐文件...</span>
+          <span className="text-slate-300 text-sm">{t('apps.musicPlayer.scanning')}</span>
         </div>
       )}
     </div>

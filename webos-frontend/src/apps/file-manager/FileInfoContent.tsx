@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import type { FileInfo } from '@/types'
 import { fsApi } from '@/lib/storageApi'
@@ -6,18 +7,19 @@ import { formatFileSize, getFileIconConfig } from '@/utils'
 import { useCurrentProcess } from '@/hooks/useCurrentProcess'
 import { registerMessageHandler } from '@/stores/webSocketStore'
 
-function formatFullTime(timeStr: string): string {
-  if (!timeStr) return '-'
+function formatFullTime(timeStr: string, fallback: string): string {
+  if (!timeStr) return fallback
   try {
     const d = new Date(timeStr)
     const pad = (n: number) => String(n).padStart(2, '0')
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
   } catch {
-    return '-'
+    return fallback
   }
 }
 
 export default function FileInfoContent({ windowId }: { windowId: string }) {
+  const { t } = useTranslation()
   const { procState } = useCurrentProcess(windowId)
   const appData = procState as { nodeId?: string; path?: string; fileName?: string }
 
@@ -37,7 +39,7 @@ export default function FileInfoContent({ windowId }: { windowId: string }) {
         setInfo(data)
         if (data.isDir) setDirSizeLoading(true)
       })
-      .catch((e: any) => setError(e?.message || '获取文件信息失败'))
+      .catch((e: any) => setError(e?.message || t('apps.fileManager.info.loadFailed')))
       .finally(() => setLoading(false))
     // Cancel dir size calculation on unmount
     const nodeId = appData.nodeId
@@ -81,19 +83,26 @@ export default function FileInfoContent({ windowId }: { windowId: string }) {
 
   const iconConfig = getFileIconConfig(info)
   const Icon = iconConfig.icon
+  const fileType = info.isDir
+    ? t('apps.fileManager.info.types.folder')
+    : (info.extension
+        ? t('apps.fileManager.info.types.extensionFile', { extension: info.extension.toUpperCase().replace('.', '') })
+        : t('apps.fileManager.info.types.file'))
 
   const sizeValue = info.isDir
-    ? (dirSize ? formatFileSize(dirSize.size) + (dirSize.size > 0 ? ` (${dirSize.size.toLocaleString()} 字节)` : '') : null)
-    : formatFileSize(info.size) + (info.size > 0 ? ` (${info.size.toLocaleString()} 字节)` : '')
+    ? (dirSize
+        ? formatFileSize(dirSize.size) + (dirSize.size > 0 ? ` (${t('apps.fileManager.info.bytes', { count: dirSize.size.toLocaleString() })})` : '')
+        : null)
+    : formatFileSize(info.size) + (info.size > 0 ? ` (${t('apps.fileManager.info.bytes', { count: info.size.toLocaleString() })})` : '')
 
   const rows: { label: string; value: string | null; loading?: boolean }[] = [
-    { label: '名称', value: info.name },
-    { label: '路径', value: info.path },
-    { label: '类型', value: info.isDir ? '文件夹' : (info.extension ? info.extension.toUpperCase().replace('.', '') + ' 文件' : '文件') },
-    { label: '大小', value: sizeValue, loading: info.isDir && dirSizeLoading },
-    ...(info.isDir ? [{ label: '包含', value: dirSize ? `${dirSize.itemCount} 个项目` : null, loading: dirSizeLoading }] : []),
-    { label: '修改时间', value: formatFullTime(info.modifiedTime) },
-    ...(!info.isDir && info.extension ? [{ label: '扩展名', value: info.extension }] : []),
+    { label: t('apps.fileManager.info.labels.name'), value: info.name },
+    { label: t('apps.fileManager.info.labels.path'), value: info.path },
+    { label: t('apps.fileManager.info.labels.type'), value: fileType },
+    { label: t('apps.fileManager.info.labels.size'), value: sizeValue, loading: info.isDir && dirSizeLoading },
+    ...(info.isDir ? [{ label: t('apps.fileManager.info.labels.contains'), value: dirSize ? t('apps.fileManager.info.itemCount', { count: dirSize.itemCount }) : null, loading: dirSizeLoading }] : []),
+    { label: t('apps.fileManager.info.labels.modifiedTime'), value: formatFullTime(info.modifiedTime, t('apps.fileManager.info.unknown')) },
+    ...(!info.isDir && info.extension ? [{ label: t('apps.fileManager.info.labels.extension'), value: info.extension }] : []),
   ]
 
   return (
@@ -105,7 +114,7 @@ export default function FileInfoContent({ windowId }: { windowId: string }) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-gray-900 truncate">{info.name}</p>
           <p className="text-xs text-gray-500">
-            {info.isDir ? '文件夹' : (info.extension ? info.extension.toUpperCase().replace('.', '') + ' 文件' : '文件')}
+            {fileType}
           </p>
         </div>
       </div>
@@ -117,10 +126,10 @@ export default function FileInfoContent({ windowId }: { windowId: string }) {
             {row.loading ? (
               <span className="text-xs text-gray-400 flex items-center gap-1">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                计算中...
+                {t('apps.fileManager.info.calculating')}
               </span>
             ) : (
-              <span className="text-xs text-gray-800 break-all flex-1">{row.value ?? '-'}</span>
+              <span className="text-xs text-gray-800 break-all flex-1">{row.value ?? t('apps.fileManager.info.unknown')}</span>
             )}
           </div>
         ))}

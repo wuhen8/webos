@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Folder, ChevronRight, ArrowLeft, Loader2, Check } from 'lucide-react'
 import { fsApi } from '@/lib/storageApi'
 import type { FileInfo } from '@/types'
@@ -10,6 +11,7 @@ interface FolderPickerProps {
 }
 
 export default function FolderPicker({ nodeId, onSelect, onClose }: FolderPickerProps) {
+  const { t } = useTranslation()
   const [currentPath, setCurrentPath] = useState('~')
   const [folders, setFolders] = useState<FileInfo[]>([])
   const [loading, setLoading] = useState(false)
@@ -72,7 +74,7 @@ export default function FolderPicker({ nodeId, onSelect, onClose }: FolderPicker
             <Loader2 className="w-5 h-5 animate-spin" />
           </div>
         ) : folders.length === 0 ? (
-          <div className="text-slate-600 text-xs text-center py-6">此目录下没有子文件夹</div>
+          <div className="text-slate-600 text-xs text-center py-6">{t('apps.musicPlayer.folderPicker.empty')}</div>
         ) : (
           folders.map(f => (
             <div
@@ -94,14 +96,14 @@ export default function FolderPicker({ nodeId, onSelect, onClose }: FolderPicker
           onClick={onClose}
           className="flex-1 px-3 py-1.5 text-xs rounded-md bg-slate-700 text-slate-300 hover:bg-slate-600"
         >
-          取消
+          {t('apps.musicPlayer.folderPicker.cancel')}
         </button>
         <button
           onClick={() => onSelect(currentPath)}
           className="flex-1 px-3 py-1.5 text-xs rounded-md bg-violet-600 text-white hover:bg-violet-500 flex items-center justify-center gap-1"
         >
           <Check className="w-3.5 h-3.5" />
-          选择此目录
+          {t('apps.musicPlayer.folderPicker.selectCurrent')}
         </button>
       </div>
     </div>

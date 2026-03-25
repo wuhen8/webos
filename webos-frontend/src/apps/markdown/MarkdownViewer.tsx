@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -16,6 +17,7 @@ interface MarkdownViewerProps {
 }
 
 export default function MarkdownViewer({ windowId }: MarkdownViewerProps) {
+  const { t } = useTranslation()
   const { win, procState: d } = useCurrentProcess(windowId)
   const staticContent = (d.content as string) || ''
   const filePath = (d.filePath as string) || ''
@@ -72,7 +74,7 @@ export default function MarkdownViewer({ windowId }: MarkdownViewerProps) {
             hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
         >
           <Edit3 className="h-3.5 w-3.5" />
-          <span>编辑</span>
+          <span>{t('apps.markdown.viewer.edit')}</span>
         </button>
       </div>
 

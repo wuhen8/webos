@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import i18n from '@/i18n'
 import { useWindowStore } from '@/stores/windowStore'
 import { useProcessStore } from '@/stores/processStore'
 import { createTabManager } from '@/hooks/useTabManager'
@@ -7,7 +8,7 @@ import type { FileManagerTab, ClipboardState } from '@/types'
 const tabMgr = createTabManager({
   tabsKey: 'fmTabs',
   activeIndexKey: 'activeFmTabIndex',
-  getTitle: (tabs, activeIndex) => tabs[activeIndex]?.title || '文件管理器',
+  getTitle: (tabs, activeIndex) => tabs[activeIndex]?.title || i18n.t('apps.fileManager.name'),
 })
 
 interface FileManagerStore {

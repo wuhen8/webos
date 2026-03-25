@@ -14,8 +14,8 @@ export interface BackgroundTask {
   bytesCurrent?: number
   bytesTotal?: number
   cancellable?: boolean
-  outputMode?: 'progress' | 'log'  // 输出模式
-  logs?: string[]                   // 日志行（仅 log 模式）
+  outputMode?: 'progress' | 'log'  // Output mode
+  logs?: string[]                   // Log lines (log mode only)
 }
 
 interface TaskState {

@@ -10,11 +10,12 @@ import { createTabManager } from '@/hooks/useTabManager'
 import type { FileInfo, EditorTab } from '@/types'
 import { createElement } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import i18n from '@/i18n'
 
 const editorTabMgr = createTabManager({
   tabsKey: 'tabs',
   activeIndexKey: 'activeTabIndex',
-  getTitle: (tabs) => tabs.length > 1 ? `${tabs.length} 个文件` : (tabs[0]?.file?.name || '编辑器'),
+  getTitle: (tabs) => tabs.length > 1 ? i18n.t('apps.editor.store.titleMultiple', { count: tabs.length }) : (tabs[0]?.file?.name || i18n.t('apps.editor.store.titleSingle')),
   onSwitch: (tab) => tab ? { file: tab.file, content: tab.content } : {},
 })
 
@@ -46,9 +47,9 @@ export const useEditorStore = create<EditorStore>(() => ({
   addNewEditorTab: (windowId) => {
     const ps = getProcessStateForWindow(windowId)
     if (!ps) return
-    const defaultPath = `~/未命名.txt`
+    const defaultPath = i18n.t('apps.editor.store.untitledPath')
     const newFile: FileInfo = {
-      name: '未命名.txt',
+      name: i18n.t('apps.editor.store.untitledName'),
       path: defaultPath,
       isDir: false,
       size: 0,
@@ -61,15 +62,15 @@ export const useEditorStore = create<EditorStore>(() => ({
       const tabs = [...((prev.tabs || []) as EditorTab[]), newTab]
       return { ...prev, tabs, activeTabIndex: tabs.length - 1, file: newFile, content: '', isModified: false }
     })
-    useWindowStore.getState().updateWindowTitle(windowId, `${((ps.state.tabs || []) as EditorTab[]).length + 1} 个文件`)
+    useWindowStore.getState().updateWindowTitle(windowId, i18n.t('apps.editor.store.titleMultiple', { count: ((ps.state.tabs || []) as EditorTab[]).length + 1 }))
   },
 
   openNewEditor: () => {
     const state = useWindowStore.getState()
     const existingEditorWindow = state.windows.find(w => w.type === 'editor')
-    const defaultPath = `~/未命名.txt`
+    const defaultPath = i18n.t('apps.editor.store.untitledPath')
     const newFile: FileInfo = {
-      name: '未命名.txt',
+      name: i18n.t('apps.editor.store.untitledName'),
       path: defaultPath,
       isDir: false,
       size: 0,
@@ -88,12 +89,12 @@ export const useEditorStore = create<EditorStore>(() => ({
         ...d, tabs, activeTabIndex: tabs.length - 1, file: newFile, content: '', isModified: false,
       }))
 
-      useWindowStore.getState().updateWindowTitle(existingEditorWindow.id, `${tabs.length} 个文件`)
+      useWindowStore.getState().updateWindowTitle(existingEditorWindow.id, i18n.t('apps.editor.store.titleMultiple', { count: tabs.length }))
       useWindowStore.getState().activateWindow(existingEditorWindow.id)
     } else {
       useWindowStore.getState().createWindow({
         type: 'editor',
-        title: '未命名.txt',
+        title: i18n.t('apps.editor.store.untitledName'),
         appData: {
           file: newFile, content: '', isModified: false,
           tabs: [newTab], activeTabIndex: 0,
@@ -115,9 +116,9 @@ export const useEditorStore = create<EditorStore>(() => ({
     const tab = tabs[tabIndex]
     if (tab?.isModified) {
       useUIStore.getState().showConfirm({
-        title: '未保存的修改',
-        description: `文件 "${tab.file.name}" 有未保存的修改，确定要关闭吗？`,
-        confirmText: '不保存并关闭',
+        title: i18n.t('apps.editor.store.unsavedChangesTitle'),
+        description: i18n.t('apps.editor.store.unsavedChangesDescription', { name: tab.file.name }),
+        confirmText: i18n.t('apps.editor.store.closeWithoutSaving'),
         variant: 'destructive',
         icon: createElement(AlertTriangle, { className: 'h-5 w-5 text-amber-500' }),
         onConfirm: () => useEditorStore.getState().doCloseEditorTab(windowId, tabIndex),
@@ -153,7 +154,7 @@ export const useEditorStore = create<EditorStore>(() => ({
     const currentTab = (d.tabs as EditorTab[])?.[((d.activeTabIndex as number) || 0)]
     let savePath = fullPath || file.path
     const pathParts = savePath.split('/')
-    const saveFileName = pathParts.pop() || '未命名.txt'
+    const saveFileName = pathParts.pop() || i18n.t('apps.editor.store.untitledName')
     const actualPath = savePath.startsWith('~') ? savePath.replace('~', '') : savePath
     const nodeId = currentTab?.file?.nodeId || file?.nodeId || 'local_1'
 
@@ -180,7 +181,7 @@ export const useEditorStore = create<EditorStore>(() => ({
         }
       })
       useWindowStore.getState().updateWindowTitle(id,
-        ((d.tabs as EditorTab[])?.length || 0) > 1 ? `${(d.tabs as EditorTab[]).length} 个文件` : saveFileName
+        ((d.tabs as EditorTab[])?.length || 0) > 1 ? i18n.t('apps.editor.store.titleMultiple', { count: (d.tabs as EditorTab[]).length }) : saveFileName
       )
       return true
     } catch {
@@ -192,7 +193,7 @@ export const useEditorStore = create<EditorStore>(() => ({
     const ps = getProcessStateForWindow(windowId)
     if (!ps) return
     const pathParts = fullPath.split('/')
-    const fileName = pathParts.pop() || '未命名.txt'
+    const fileName = pathParts.pop() || i18n.t('apps.editor.store.untitledName')
 
     useProcessStore.getState().setProcessState(ps.pid, (prev) => {
       const tabs = [...((prev.tabs || []) as EditorTab[])]
@@ -213,14 +214,14 @@ export const useEditorStore = create<EditorStore>(() => ({
   },
 
   formatEditor: async () => {
-    return { ok: false, message: '基础编辑器不支持格式化' }
+    return { ok: false, message: i18n.t('apps.editor.store.unsupportedFormat') }
   },
 
   toggleWordWrap: (id) => {
     const current = wrapStateRef[id] ?? true
     const next = !current
     wrapStateRef[id] = next
-    return { ok: true, message: next ? '已开启自动换行' : '已关闭自动换行' }
+    return { ok: true, message: next ? i18n.t('apps.editor.store.wordWrapOn') : i18n.t('apps.editor.store.wordWrapOff') }
   },
 
   findOrCreateEditorWindow: async (file, options) => {
@@ -249,6 +250,6 @@ export const useEditorStore = create<EditorStore>(() => ({
       const ctx = useWindowStore.getState().buildOpenFileContext()
       return editorConfig.openFile(file, ctx)
     }
-    return { ok: false, message: '应用不支持打开文件' }
+    return { ok: false, message: i18n.t('apps.editor.store.openUnsupported') }
   },
 }))

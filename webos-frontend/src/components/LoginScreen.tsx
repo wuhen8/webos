@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { User, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +12,7 @@ interface LoginScreenProps {
 }
 
 export default function LoginScreen({ onCancel }: LoginScreenProps) {
+  const { t } = useTranslation()
   const authPhase = useAuthStore((s) => s.authPhase)
   const login = useAuthStore((s) => s.login)
   const [passwordInput, setPasswordInput] = useState("")
@@ -37,7 +39,7 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
       setServerError("")
     }).catch(() => {
       setNeedSetup(false)
-      setServerError("无法连接到服务器")
+      setServerError(t('login.serverUnreachable'))
     })
   }
 
@@ -64,11 +66,11 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
   const handleSetupPassword = async () => {
     setSetupError("")
     if (!passwordInput.trim()) {
-      setSetupError("请输入密码")
+      setSetupError(t('login.passwordRequired'))
       return
     }
     if (passwordInput !== confirmPassword) {
-      setSetupError("两次输入的密码不一致")
+      setSetupError(t('login.passwordMismatch'))
       return
     }
     const success = await useAuthStore.getState().setupPassword(passwordInput)
@@ -76,7 +78,7 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
       setPasswordInput("")
       setConfirmPassword("")
     } else {
-      setSetupError("设置密码失败")
+      setSetupError(t('login.setupFailed'))
     }
   }
 
@@ -96,7 +98,7 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
   return (
     <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center" onContextMenu={(e) => e.preventDefault()}>
       {(authPhase === 'checking' || needSetup === null) ? (
-        <div className="text-white text-sm">正在验证登录状态...</div>
+        <div className="text-white text-sm">{t('login.checkingStatus')}</div>
       ) : needSetup ? (
         <div className="bg-white/90 rounded-2xl p-6 border border-white/40 w-80 relative">
           {onCancel && (
@@ -111,20 +113,20 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
             <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center shadow-lg mb-3">
               <User className="w-10 h-10 text-white" />
             </div>
-            <div className="text-slate-800 text-lg font-medium">设置密码</div>
-            <div className="text-slate-500 text-xs mt-1">首次使用，请设置登录密码</div>
+            <div className="text-slate-800 text-lg font-medium">{t('login.setupTitle')}</div>
+            <div className="text-slate-500 text-xs mt-1">{t('login.setupSubtitle')}</div>
           </div>
           <div className="space-y-3">
             {serverInput}
             <Input
               type="password"
-              placeholder="输入密码"
+              placeholder={t('login.enterPassword')}
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
             />
             <Input
               type="password"
-              placeholder="确认密码"
+              placeholder={t('login.confirmPassword')}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSetupPassword()}
@@ -137,7 +139,7 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
               className="rounded-xl bg-white/20 border-white/30 w-full"
               onClick={handleSetupPassword}
             >
-              设置密码并登录
+              {t('login.setupPasswordAndLogin')}
             </Button>
           </div>
         </div>
@@ -155,13 +157,13 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
             <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center shadow-lg mb-3">
               <User className="w-10 h-10 text-white" />
             </div>
-            <div className="text-slate-800 text-lg font-medium">用户</div>
+            <div className="text-slate-800 text-lg font-medium">{t('login.user')}</div>
           </div>
           <div className="space-y-3">
             {serverInput}
             <Input
               type="password"
-              placeholder="输入密码登录"
+              placeholder={t('login.enterPasswordToLogin')}
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
@@ -171,7 +173,7 @@ export default function LoginScreen({ onCancel }: LoginScreenProps) {
               className="rounded-xl bg-white/20 border-white/30 w-full"
               onClick={handleLogin}
             >
-              登录
+              {t('login.login')}
             </Button>
           </div>
         </div>

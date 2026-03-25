@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react"
+import { useTranslation } from 'react-i18next'
 import { useToast } from "@/hooks/use-toast"
 import { useSystemWebSocket } from "@/hooks/useSystemWebSocket"
 import { exec } from "@/lib/services"
@@ -29,6 +30,7 @@ import { ServicePanel } from "./ServicePanel"
 import { WasmPanel } from "./WasmPanel"
 
 function TaskManagerContent() {
+  const { t } = useTranslation()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<TabType>("overview")
   const [overview, setOverview] = useState<SystemOverview | null>(null)
@@ -55,7 +57,7 @@ function TaskManagerContent() {
       const list = await wsRequest('wasm.list', {})
       setWasmProcs(list || [])
     } catch {
-      // 静默
+      // Silent
     }
   }, [])
 
@@ -114,7 +116,7 @@ function TaskManagerContent() {
     onServices: handleServices,
   })
 
-  // Wasm tab: 用 request/response 轮询
+  // Wasm tab: poll via request/response
   useEffect(() => {
     if (activeTab !== "wasm" || !autoRefresh) return
     fetchWasmProcs()
@@ -123,8 +125,8 @@ function TaskManagerContent() {
   }, [activeTab, autoRefresh, refreshInterval, fetchWasmProcs])
 
   const sendSignal = (pid: number, signal: string) => {
-    exec(`kill -${signal} ${pid}`, { background: true, title: `发送 ${signal} 信号到进程 ${pid}`, refreshChannels: ['sub.processes'] })
-    toast({ title: "已提交", description: `正在向进程 ${pid} 发送 ${signal} 信号` })
+    exec(`kill -${signal} ${pid}`, { background: true, title: t('apps.taskManager.processes.signal.execTitle', { signal, pid }), refreshChannels: ['sub.processes'] })
+    toast({ title: t('common.submitted'), description: t('apps.taskManager.processes.signal.submitted', { signal, pid }) })
   }
 
   const handleProcessContextMenu = (e: React.MouseEvent, pid: number) => {
@@ -163,12 +165,16 @@ function TaskManagerContent() {
     const cmd = actionMap[action]
     if (!cmd) return
     const labelMap: Record<string, string> = {
-      start: '启动', stop: '停止', restart: '重启',
-      reload: '重载', enable: '启用开机自启', disable: '禁用开机自启',
+      start: t('apps.taskManager.serviceMenu.start'),
+      stop: t('apps.taskManager.serviceMenu.stop'),
+      restart: t('apps.taskManager.serviceMenu.restart'),
+      reload: t('apps.taskManager.serviceMenu.reload'),
+      enable: t('apps.taskManager.serviceMenu.enable'),
+      disable: t('apps.taskManager.serviceMenu.disable'),
     }
     const label = labelMap[cmd]
-    exec(`systemctl ${cmd} ${serviceName}`, { background: true, title: `${label}服务 ${serviceName}`, refreshChannels: ['sub.services'] })
-    toast({ title: "已提交", description: `${label}服务 ${serviceName} 操作已提交到后台` })
+    exec(`systemctl ${cmd} ${serviceName}`, { background: true, title: t('apps.taskManager.services.execTitle', { action: label, serviceName }), refreshChannels: ['sub.services'] })
+    toast({ title: t('common.submitted'), description: t('apps.taskManager.services.submitted', { action: label, serviceName }) })
   }
 
   const handleServiceContextMenu = (e: React.MouseEvent, serviceName: string) => {
@@ -189,8 +195,11 @@ function TaskManagerContent() {
 
   const handleWasmAction = async (appId: string, action: string) => {
     const labelMap: Record<string, string> = {
-      start: '启动', stop: '停止', restart: '重启',
-      enableAutostart: '启用开机自启', disableAutostart: '禁用开机自启',
+      start: t('apps.taskManager.wasmMenu.start'),
+      stop: t('apps.taskManager.wasmMenu.stop'),
+      restart: t('apps.taskManager.wasmMenu.restart'),
+      enableAutostart: t('apps.taskManager.wasmMenu.enableAutostart'),
+      disableAutostart: t('apps.taskManager.wasmMenu.disableAutostart'),
     }
     const label = labelMap[action] || action
     try {
@@ -205,10 +214,10 @@ function TaskManagerContent() {
       } else if (action === 'disableAutostart') {
         await appStoreService.setAutostart(appId, false)
       }
-      toast({ title: "成功", description: `${label} ${appId}` })
+      toast({ title: t('common.success'), description: t('apps.taskManager.wasm.actionSuccess', { action: label, appId }) })
       setTimeout(fetchWasmProcs, 300)
     } catch (e: any) {
-      toast({ title: "失败", description: e?.message || `${label}失败`, variant: "destructive" })
+      toast({ title: t('common.error'), description: e?.message || t('apps.taskManager.wasm.actionFailed', { action: label }), variant: "destructive" })
     }
   }
 
@@ -313,25 +322,25 @@ function TaskManagerContent() {
           <button className={tabClass("overview")} onClick={() => setActiveTab("overview")}>
             <span className="flex items-center gap-1.5">
               <Activity className="w-3.5 h-3.5" />
-              系统概览
+              {t('apps.taskManager.tabs.overview')}
             </span>
           </button>
           <button className={tabClass("processes")} onClick={() => setActiveTab("processes")}>
             <span className="flex items-center gap-1.5">
               <Server className="w-3.5 h-3.5" />
-              进程 {processTotal > 0 && <span className="text-[0.625rem] opacity-60">({processTotal})</span>}
+              {t('apps.taskManager.tabs.processes')} {processTotal > 0 && <span className="text-[0.625rem] opacity-60">({processTotal})</span>}
             </span>
           </button>
           <button className={tabClass("services")} onClick={() => setActiveTab("services")}>
             <span className="flex items-center gap-1.5">
               <Cog className="w-3.5 h-3.5" />
-              服务 {serviceTotal > 0 && <span className="text-[0.625rem] opacity-60">({serviceTotal})</span>}
+              {t('apps.taskManager.tabs.services')} {serviceTotal > 0 && <span className="text-[0.625rem] opacity-60">({serviceTotal})</span>}
             </span>
           </button>
           <button className={tabClass("tasks")} onClick={() => setActiveTab("tasks")}>
             <span className="flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5" />
-              任务 {taskTotal > 0 && <span className="text-[0.625rem] opacity-60">({taskTotal})</span>}
+              {t('apps.taskManager.tabs.tasks')} {taskTotal > 0 && <span className="text-[0.625rem] opacity-60">({taskTotal})</span>}
             </span>
           </button>
           <button className={tabClass("wasm")} onClick={() => setActiveTab("wasm")}>
@@ -359,7 +368,7 @@ function TaskManagerContent() {
                 ? connected ? "text-green-600 bg-green-50" : "text-amber-500 bg-amber-50"
                 : "text-slate-400 hover:text-slate-600"
             }`}
-            title={autoRefresh ? (connected ? "已连接，推送中" : "连接中...") : "已暂停"}
+            title={autoRefresh ? (connected ? t('apps.taskManager.connection.connected') : t('apps.taskManager.connection.connecting')) : t('apps.taskManager.connection.paused')}
           >
             {connected ? (
               <Wifi className="w-3.5 h-3.5" />

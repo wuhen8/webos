@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react"
 import type { ServiceConfig, PortMapping, VolumeMount, EnvVar } from "./composeUtils"
 
@@ -17,6 +18,7 @@ interface ServiceFormProps {
 }
 
 export function ServiceForm({ svc, sIdx, serviceCount, serviceNames, updateService, removeService }: ServiceFormProps) {
+  const { t } = useTranslation()
   const addPort = () => updateService(sIdx, { ports: [...svc.ports, { host: "", container: "", protocol: "tcp" }] })
   const updatePort = (pIdx: number, patch: Partial<PortMapping>) => updateService(sIdx, { ports: svc.ports.map((p, i) => (i === pIdx ? { ...p, ...patch } : p)) })
   const removePort = (pIdx: number) => updateService(sIdx, { ports: svc.ports.filter((_, i) => i !== pIdx) })
@@ -38,7 +40,7 @@ export function ServiceForm({ svc, sIdx, serviceCount, serviceNames, updateServi
       >
         <div className="flex items-center gap-2">
           {svc.collapsed ? <ChevronRight className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
-          <span className="text-[0.75rem] font-medium text-slate-700">{svc.name || `服务 ${sIdx + 1}`}</span>
+          <span className="text-[0.75rem] font-medium text-slate-700">{svc.name || t('apps.docker.creator.service.untitled', { index: sIdx + 1 })}</span>
           {svc.image && <span className="text-[0.625rem] text-slate-400 ml-1">{svc.image}</span>}
         </div>
         {serviceCount > 1 && (
@@ -54,7 +56,7 @@ export function ServiceForm({ svc, sIdx, serviceCount, serviceNames, updateServi
           {/* Basic fields */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>服务名 <span className="text-red-400">*</span></label>
+              <label className={labelClass}>{t('apps.docker.creator.service.name')} <span className="text-red-400">*</span></label>
               <input type="text" value={svc.name} onChange={(e) => {
                 const newName = e.target.value
                 const patch: Partial<ServiceConfig> = { name: newName }
@@ -62,21 +64,21 @@ export function ServiceForm({ svc, sIdx, serviceCount, serviceNames, updateServi
                   patch.containerName = newName
                 }
                 updateService(sIdx, patch)
-              }} placeholder="web" className={inputClass} />
+              }} placeholder={t('apps.docker.creator.service.namePlaceholder')} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>镜像 <span className="text-red-400">*</span></label>
-              <input type="text" value={svc.image} onChange={(e) => updateService(sIdx, { image: e.target.value })} placeholder="nginx:latest" className={inputClass} />
+              <label className={labelClass}>{t('apps.docker.creator.service.image')} <span className="text-red-400">*</span></label>
+              <input type="text" value={svc.image} onChange={(e) => updateService(sIdx, { image: e.target.value })} placeholder={t('apps.docker.creator.service.imagePlaceholder')} className={inputClass} />
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className={labelClass}>容器名</label>
-              <input type="text" value={svc.containerName} onChange={(e) => updateService(sIdx, { containerName: e.target.value })} placeholder="可选" className={inputClass} />
+              <label className={labelClass}>{t('apps.docker.creator.service.containerName')}</label>
+              <input type="text" value={svc.containerName} onChange={(e) => updateService(sIdx, { containerName: e.target.value })} placeholder={t('apps.docker.creator.service.optional')} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>重启策略</label>
+              <label className={labelClass}>{t('apps.docker.creator.service.restartPolicy')}</label>
               <select value={svc.restart} onChange={(e) => updateService(sIdx, { restart: e.target.value })} className={inputClass}>
                 <option value="no">no</option>
                 <option value="always">always</option>
@@ -85,22 +87,22 @@ export function ServiceForm({ svc, sIdx, serviceCount, serviceNames, updateServi
               </select>
             </div>
             <div>
-              <label className={labelClass}>命令覆盖</label>
-              <input type="text" value={svc.command} onChange={(e) => updateService(sIdx, { command: e.target.value })} placeholder="可选" className={inputClass} />
+              <label className={labelClass}>{t('apps.docker.creator.service.command')}</label>
+              <input type="text" value={svc.command} onChange={(e) => updateService(sIdx, { command: e.target.value })} placeholder={t('apps.docker.creator.service.optional')} className={inputClass} />
             </div>
           </div>
 
           {/* Ports */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className={labelClass}>端口映射</span>
-              <button onClick={addPort} className="text-[0.625rem] text-blue-500 hover:text-blue-600">+ 添加</button>
+              <span className={labelClass}>{t('apps.docker.creator.service.ports')}</span>
+              <button onClick={addPort} className="text-[0.625rem] text-blue-500 hover:text-blue-600">+ {t('apps.docker.creator.service.add')}</button>
             </div>
             {svc.ports.map((p, pIdx) => (
               <div key={pIdx} className="flex items-center gap-2 mb-1.5">
-                <input type="text" value={p.host} onChange={(e) => updatePort(pIdx, { host: e.target.value })} placeholder="主机端口" className={`${smallInputClass} w-24`} />
+                <input type="text" value={p.host} onChange={(e) => updatePort(pIdx, { host: e.target.value })} placeholder={t('apps.docker.creator.service.hostPort')} className={`${smallInputClass} w-24`} />
                 <span className="text-[0.625rem] text-slate-400">:</span>
-                <input type="text" value={p.container} onChange={(e) => updatePort(pIdx, { container: e.target.value })} placeholder="容器端口" className={`${smallInputClass} w-24`} />
+                <input type="text" value={p.container} onChange={(e) => updatePort(pIdx, { container: e.target.value })} placeholder={t('apps.docker.creator.service.containerPort')} className={`${smallInputClass} w-24`} />
                 <select value={p.protocol} onChange={(e) => updatePort(pIdx, { protocol: e.target.value })} className={`${smallInputClass} w-16`}>
                   <option value="tcp">tcp</option>
                   <option value="udp">udp</option>
@@ -113,25 +115,25 @@ export function ServiceForm({ svc, sIdx, serviceCount, serviceNames, updateServi
           {/* Volumes */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className={labelClass}>卷挂载</span>
-              <button onClick={addVolume} className="text-[0.625rem] text-blue-500 hover:text-blue-600">+ 添加</button>
+              <span className={labelClass}>{t('apps.docker.creator.service.volumes')}</span>
+              <button onClick={addVolume} className="text-[0.625rem] text-blue-500 hover:text-blue-600">+ {t('apps.docker.creator.service.add')}</button>
             </div>
             {svc.volumes.map((v, vIdx) => {
               const isPath = (s: string) => /^[/~.]/.test(s)
               const mismatch = v.host && (
-                (v.type === "volume" && isPath(v.host)) ? "看起来像路径，是否应选「目录」？" :
-                (v.type === "bind" && v.host && !isPath(v.host)) ? "看起来像卷名，是否应选「卷」？" : ""
+                (v.type === "volume" && isPath(v.host)) ? t('apps.docker.creator.service.volumeTypePathHint') :
+                (v.type === "bind" && v.host && !isPath(v.host)) ? t('apps.docker.creator.service.volumeTypeNameHint') : ""
               )
               return (
                 <div key={vIdx} className="mb-1.5">
                   <div className="flex items-center gap-2">
                     <select value={v.type || "bind"} onChange={(e) => updateVolume(vIdx, { type: e.target.value as "bind" | "volume" })} className={`${smallInputClass} w-[4.5rem]`}>
-                      <option value="bind">目录</option>
-                      <option value="volume">卷</option>
+                      <option value="bind">{t('apps.docker.creator.service.mountTypes.bind')}</option>
+                      <option value="volume">{t('apps.docker.creator.service.mountTypes.volume')}</option>
                     </select>
-                    <input type="text" value={v.host} onChange={(e) => updateVolume(vIdx, { host: e.target.value })} placeholder={v.type === "volume" ? "卷名" : "主机路径"} className={`${smallInputClass} flex-1 ${mismatch ? "border-amber-300" : ""}`} />
+                    <input type="text" value={v.host} onChange={(e) => updateVolume(vIdx, { host: e.target.value })} placeholder={v.type === "volume" ? t('apps.docker.creator.service.volumeName') : t('apps.docker.creator.service.hostPath')} className={`${smallInputClass} flex-1 ${mismatch ? "border-amber-300" : ""}`} />
                     <span className="text-[0.625rem] text-slate-400">:</span>
-                    <input type="text" value={v.container} onChange={(e) => updateVolume(vIdx, { container: e.target.value })} placeholder="容器路径" className={`${smallInputClass} flex-1`} />
+                    <input type="text" value={v.container} onChange={(e) => updateVolume(vIdx, { container: e.target.value })} placeholder={t('apps.docker.creator.service.containerPath')} className={`${smallInputClass} flex-1`} />
                     <select value={v.mode} onChange={(e) => updateVolume(vIdx, { mode: e.target.value })} className={`${smallInputClass} w-14`}>
                       <option value="rw">rw</option>
                       <option value="ro">ro</option>
@@ -147,14 +149,14 @@ export function ServiceForm({ svc, sIdx, serviceCount, serviceNames, updateServi
           {/* Environment */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className={labelClass}>环境变量</span>
-              <button onClick={addEnv} className="text-[0.625rem] text-blue-500 hover:text-blue-600">+ 添加</button>
+              <span className={labelClass}>{t('apps.docker.creator.service.environment')}</span>
+              <button onClick={addEnv} className="text-[0.625rem] text-blue-500 hover:text-blue-600">+ {t('apps.docker.creator.service.add')}</button>
             </div>
             {svc.environment.map((e, eIdx) => (
               <div key={eIdx} className="flex items-center gap-2 mb-1.5">
-                <input type="text" value={e.key} onChange={(ev) => updateEnv(eIdx, { key: ev.target.value })} placeholder="KEY" className={`${smallInputClass} w-36`} />
+                <input type="text" value={e.key} onChange={(ev) => updateEnv(eIdx, { key: ev.target.value })} placeholder={t('apps.docker.creator.service.envKeyPlaceholder')} className={`${smallInputClass} w-36`} />
                 <span className="text-[0.625rem] text-slate-400">=</span>
-                <input type="text" value={e.value} onChange={(ev) => updateEnv(eIdx, { value: ev.target.value })} placeholder="value" className={`${smallInputClass} flex-1`} />
+                <input type="text" value={e.value} onChange={(ev) => updateEnv(eIdx, { value: ev.target.value })} placeholder={t('apps.docker.creator.service.envValuePlaceholder')} className={`${smallInputClass} flex-1`} />
                 <button onClick={() => removeEnv(eIdx)} className="p-0.5 text-slate-300 hover:text-red-500"><Trash2 className="w-3 h-3" /></button>
               </div>
             ))}
@@ -163,16 +165,16 @@ export function ServiceForm({ svc, sIdx, serviceCount, serviceNames, updateServi
           {/* Networks & Depends On */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>网络（逗号分隔）</label>
+              <label className={labelClass}>{t('apps.docker.creator.service.networks')}</label>
               <input type="text" value={svc.networks.join(", ")}
                 onChange={(e) => updateService(sIdx, { networks: e.target.value.split(",").map((n) => n.trim()).filter(Boolean) })}
-                placeholder="default, backend" className={inputClass} />
+                placeholder={t('apps.docker.creator.service.networksPlaceholder')} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>依赖服务（逗号分隔）</label>
+              <label className={labelClass}>{t('apps.docker.creator.service.dependsOn')}</label>
               <input type="text" value={svc.dependsOn.join(", ")}
                 onChange={(e) => updateService(sIdx, { dependsOn: e.target.value.split(",").map((n) => n.trim()).filter((n) => n && serviceNames.includes(n) && n !== svc.name) })}
-                placeholder={serviceNames.filter((n) => n !== svc.name).join(", ") || "无其他服务"} className={inputClass} />
+                placeholder={serviceNames.filter((n) => n !== svc.name).join(", ") || t('apps.docker.creator.service.noOtherServices')} className={inputClass} />
             </div>
           </div>
         </div>

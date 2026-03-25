@@ -3,6 +3,7 @@ import { useWindowStore } from '@/stores'
 import { useAuthStore } from '@/stores'
 import { useUIStore } from '@/stores'
 import { useEditorStore } from '@/apps/editor/store'
+import i18n from '@/i18n'
 import { exec } from '@/lib/services'
 
 // ── 自动收集所有 apps/*/actions.ts ──
@@ -45,9 +46,9 @@ const builtinActions: Record<string, MenuActionHandler> = {
   },
   'system.shutdown': () => {
     useUIStore.getState().showConfirm({
-      title: '确定要关机吗？',
-      description: '系统将立即关机，所有未保存的工作将丢失。',
-      confirmText: '关机',
+      title: i18n.t('actions.shutdown.title'),
+      description: i18n.t('actions.shutdown.description'),
+      confirmText: i18n.t('actions.shutdown.confirm'),
       variant: 'destructive',
       onConfirm: () => {
         exec('shutdown -h now')
@@ -56,9 +57,9 @@ const builtinActions: Record<string, MenuActionHandler> = {
   },
   'system.restart': () => {
     useUIStore.getState().showConfirm({
-      title: '确定要重新启动吗？',
-      description: '系统将立即重启，所有未保存的工作将丢失。',
-      confirmText: '重新启动',
+      title: i18n.t('actions.restart.title'),
+      description: i18n.t('actions.restart.description'),
+      confirmText: i18n.t('actions.restart.confirm'),
       variant: 'destructive',
       onConfirm: () => {
         exec('reboot')

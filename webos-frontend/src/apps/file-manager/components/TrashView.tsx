@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { Trash2, RotateCcw, XCircle, Folder, File, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { fsApi } from "@/lib/storageApi"
@@ -26,11 +27,12 @@ function formatSize(bytes: number): string {
   return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + " " + units[i]
 }
 
-function formatTime(ts: number): string {
-  return new Date(ts * 1000).toLocaleString()
+function formatTime(ts: number, locale: string): string {
+  return new Date(ts * 1000).toLocaleString(locale)
 }
 
 export function TrashView({ activeNodeId, toast }: TrashViewProps) {
+  const { t, i18n } = useTranslation()
   const [items, setItems] = useState<TrashItem[]>([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -64,30 +66,30 @@ export function TrashView({ activeNodeId, toast }: TrashViewProps) {
   const handleRestore = async (ids: string[]) => {
     try {
       await fsApi.trashRestore(activeNodeId, ids)
-      toast({ title: "已还原", description: `已还原 ${ids.length} 个项目` })
+      toast({ title: t('apps.fileManager.trash.restored'), description: t('apps.fileManager.trash.restoredCount', { count: ids.length }) })
       setSelected(new Set())
       loadTrash()
     } catch {
-      toast({ title: "还原失败", description: "还原时出错", variant: "destructive" })
+      toast({ title: t('apps.fileManager.trash.restoreFailed'), description: t('apps.fileManager.trash.restoreError'), variant: "destructive" })
     }
   }
 
   const handlePermanentDelete = (ids: string[]) => {
     const count = ids.length
     showConfirm({
-      title: "永久删除",
-      description: count === 1 ? "确定要永久删除此项目吗？此操作不可恢复。" : `确定要永久删除 ${count} 个项目吗？此操作不可恢复。`,
-      confirmText: "永久删除",
+      title: t('apps.fileManager.trash.permanentDelete'),
+      description: count === 1 ? t('apps.fileManager.trash.confirmPermanentDeleteOne') : t('apps.fileManager.trash.confirmPermanentDeleteMany', { count }),
+      confirmText: t('apps.fileManager.trash.permanentDelete'),
       variant: "destructive",
       icon: <XCircle className="h-5 w-5 text-red-600" />,
       onConfirm: async () => {
         try {
           await fsApi.trashDelete(activeNodeId, ids)
-          toast({ title: "已删除", description: `已永久删除 ${count} 个项目` })
+          toast({ title: t('apps.fileManager.trash.deleted'), description: t('apps.fileManager.trash.deletedCount', { count }) })
           setSelected(new Set())
           loadTrash()
         } catch {
-          toast({ title: "删除失败", description: "删除时出错", variant: "destructive" })
+          toast({ title: t('apps.fileManager.trash.deleteFailed'), description: t('apps.fileManager.trash.deleteError'), variant: "destructive" })
         }
       },
     })
@@ -95,19 +97,19 @@ export function TrashView({ activeNodeId, toast }: TrashViewProps) {
 
   const handleEmptyTrash = () => {
     showConfirm({
-      title: "清空回收站",
-      description: "确定要清空回收站吗？所有项目将被永久删除，此操作不可恢复。",
-      confirmText: "清空",
+      title: t('apps.fileManager.trash.emptyTrash'),
+      description: t('apps.fileManager.trash.confirmEmpty'),
+      confirmText: t('apps.fileManager.trash.empty'),
       variant: "destructive",
       icon: <Trash2 className="h-5 w-5 text-red-600" />,
       onConfirm: async () => {
         try {
           await fsApi.trashEmpty(activeNodeId)
-          toast({ title: "已清空", description: "回收站已清空" })
+          toast({ title: t('apps.fileManager.trash.emptied'), description: t('apps.fileManager.trash.emptiedDescription') })
           setSelected(new Set())
           loadTrash()
         } catch {
-          toast({ title: "清空失败", description: "清空回收站时出错", variant: "destructive" })
+          toast({ title: t('apps.fileManager.trash.emptyFailed'), description: t('apps.fileManager.trash.emptyError'), variant: "destructive" })
         }
       },
     })
@@ -131,35 +133,35 @@ export function TrashView({ activeNodeId, toast }: TrashViewProps) {
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/20 bg-white/5">
         <Trash2 className="h-4 w-4 text-slate-500" />
-        <span className="text-sm font-medium text-slate-700">回收站</span>
-        <span className="text-xs text-slate-400">{items.length} 个项目</span>
+        <span className="text-sm font-medium text-slate-700">{t('apps.fileManager.trash.title')}</span>
+        <span className="text-xs text-slate-400">{t('apps.fileManager.trash.itemCount', { count: items.length })}</span>
         <div className="flex-1" />
-        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={loadTrash} title="刷新">
+        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={loadTrash} title={t('apps.fileManager.trash.refresh')}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
         </Button>
         {selectedItems.length > 0 && (
           <>
             <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => handleRestore(selectedItems.map(i => i.id))}>
-              <RotateCcw className="h-3.5 w-3.5" /> 还原 ({selectedItems.length})
+              <RotateCcw className="h-3.5 w-3.5" /> {t('apps.fileManager.trash.restore')} ({selectedItems.length})
             </Button>
             <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-red-600 hover:text-red-700" onClick={() => handlePermanentDelete(selectedItems.map(i => i.id))}>
-              <XCircle className="h-3.5 w-3.5" /> 永久删除 ({selectedItems.length})
+              <XCircle className="h-3.5 w-3.5" /> {t('apps.fileManager.trash.permanentDelete')} ({selectedItems.length})
             </Button>
           </>
         )}
         {items.length > 0 && (
           <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-red-600 hover:text-red-700" onClick={handleEmptyTrash}>
-            <Trash2 className="h-3.5 w-3.5" /> 清空回收站
+            <Trash2 className="h-3.5 w-3.5" /> {t('apps.fileManager.trash.emptyTrash')}
           </Button>
         )}
       </div>
 
       {/* Column header */}
       <div className="flex items-center px-4 py-1.5 text-xs text-slate-500 border-b border-white/10 bg-white/5">
-        <span className="flex-1">名称</span>
-        <span className="w-48 text-right">原始位置</span>
-        <span className="w-28 text-right">大小</span>
-        <span className="w-40 text-right">删除时间</span>
+        <span className="flex-1">{t('apps.fileManager.columns.name')}</span>
+        <span className="w-48 text-right">{t('apps.fileManager.trash.originalLocation')}</span>
+        <span className="w-28 text-right">{t('apps.fileManager.columns.size')}</span>
+        <span className="w-40 text-right">{t('apps.fileManager.trash.deletedTime')}</span>
       </div>
 
       {/* List */}
@@ -172,7 +174,7 @@ export function TrashView({ activeNodeId, toast }: TrashViewProps) {
         {!loading && items.length === 0 && (
           <div className="flex flex-col items-center justify-center h-32 text-slate-400">
             <Trash2 className="h-8 w-8 mb-2 opacity-30" />
-            <span className="text-sm">回收站为空</span>
+            <span className="text-sm">{t('apps.fileManager.trash.emptyState')}</span>
           </div>
         )}
         {!loading && items.map(item => (
@@ -191,7 +193,7 @@ export function TrashView({ activeNodeId, toast }: TrashViewProps) {
               {item.originalPath.substring(0, item.originalPath.lastIndexOf("/")) || "/"}
             </span>
             <span className="w-28 text-right text-xs text-slate-400">{item.isDir ? "-" : formatSize(item.size)}</span>
-            <span className="w-40 text-right text-xs text-slate-400">{formatTime(item.deletedAt)}</span>
+            <span className="w-40 text-right text-xs text-slate-400">{formatTime(item.deletedAt, i18n.resolvedLanguage || i18n.language)}</span>
           </div>
         ))}
       </div>

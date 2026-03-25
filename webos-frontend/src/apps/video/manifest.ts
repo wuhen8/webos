@@ -1,9 +1,10 @@
+import i18n from '@/i18n'
 import type { AppConfig } from '@/types'
 import { fsApi } from '@/lib/storageApi'
 
 export const manifest: AppConfig = {
   id: 'video',
-  name: '视频播放器',
+  name: 'i18n:apps.video.name',
   icon: 'Monitor',
   gradient: 'from-rose-400 to-rose-600',
   shadow: 'shadow-rose-500/30',
@@ -16,12 +17,12 @@ export const manifest: AppConfig = {
   fileAssociations: [
     {
       extensions: ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv', '.m4v', '.3gp', '.ogv', '.m3u8', '.ts'],
-      label: '视频播放器',
+      label: 'i18n:apps.video.fileAssociations.video',
       icon: 'Film',
     },
     {
       extensions: ['.vlist', '.m3u'],
-      label: '播放列表',
+      label: 'i18n:apps.video.fileAssociations.playlist',
       icon: 'ListVideo',
     },
   ],
@@ -55,7 +56,7 @@ export const manifest: AppConfig = {
             } else if (trimmed.startsWith('#')) {
               continue
             } else {
-              items.push({ label: nextLabel || `频道 ${items.length + 1}`, url: trimmed })
+              items.push({ label: nextLabel || i18n.t('apps.video.playlist.channelFallback', { count: items.length + 1 }), url: trimmed })
               nextLabel = ''
             }
           }
@@ -69,7 +70,7 @@ export const manifest: AppConfig = {
         })
         return { ok: true }
       } catch {
-        return { ok: false, message: '播放列表文件解析失败' }
+        return { ok: false, message: i18n.t('apps.video.playlist.parseFailed') }
       }
     }
 

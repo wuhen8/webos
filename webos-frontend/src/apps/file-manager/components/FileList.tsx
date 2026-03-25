@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react"
+import { useTranslation } from 'react-i18next'
 import { Upload, Folder, FileText, FolderOpen, Check, Square } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import type { FileInfo } from "@/types"
@@ -76,6 +77,7 @@ export function FileList({
   sortField, sortDirection, onSortClick,
   multiSelectMode,
 }: FileListProps) {
+  const { t } = useTranslation()
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null)
   const [isDraggingInternal, setIsDraggingInternal] = useState(false)
   const dragHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -216,7 +218,7 @@ export function FileList({
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/10 backdrop-blur-sm border-2 border-dashed border-white/40 rounded-xl pointer-events-none">
           <div className="flex flex-col items-center gap-2">
             <Upload className="h-10 w-10 text-slate-600" />
-            <p className="text-sm font-medium text-slate-700">释放文件以上传</p>
+            <p className="text-sm font-medium text-slate-700">{t('apps.fileManager.list.dropToUpload')}</p>
           </div>
         </div>
       )}
@@ -235,8 +237,8 @@ export function FileList({
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-slate-100/80">
             {isDraggingFile
-              ? (<><Upload className="h-16 w-16 mb-4 opacity-80 text-white" /><p>拖放文件到此处上传</p></>)
-              : (<><FolderOpen className="h-16 w-16 mb-4 opacity-80 text-white" /><p>文件夹为空</p></>)}
+              ? (<><Upload className="h-16 w-16 mb-4 opacity-80 text-white" /><p>{t('apps.fileManager.list.dropFilesHere')}</p></>)
+              : (<><FolderOpen className="h-16 w-16 mb-4 opacity-80 text-white" /><p>{t('apps.fileManager.list.emptyFolder')}</p></>)}
           </div>
         )
       ) : (
@@ -311,7 +313,13 @@ export function FileList({
                   )}
                 </div>
                 <div className={`flex items-center gap-6 text-sm flex-shrink-0 whitespace-nowrap ${isSelected ? 'text-slate-800' : 'text-slate-700'}`}>
-                  <span className="w-24 text-right truncate">{file.isSymlink ? '符号链接' : file.isDir ? '文件夹' : (file.extension ? file.extension.toUpperCase().replace('.', '') + ' 文件' : '文件')}</span>
+                  <span className="w-24 text-right truncate">{file.isSymlink
+                    ? t('apps.fileManager.list.symlink')
+                    : file.isDir
+                      ? t('apps.fileManager.list.folder')
+                      : (file.extension
+                          ? t('apps.fileManager.list.extensionFile', { extension: file.extension.toUpperCase().replace('.', '') })
+                          : t('apps.fileManager.list.file'))}</span>
                   <span className="w-16 text-right">{file.isDir ? '-' : formatFileSize(file.size)}</span>
                   <span className="w-40 text-right">{formatModifiedTime(file.modifiedTime)}</span>
                 </div>
@@ -344,18 +352,19 @@ function InlineCreateRow({ inlineCreate, inlineName, setInlineName, inputRef, on
   onCancel: () => void
   viewMode: ViewMode
 }) {
+  const { t } = useTranslation()
   if (viewMode === 'grid') {
     return (
       <>
         {inlineCreate === "folder" ? <Folder className="h-10 w-10 text-blue-500" /> : <FileText className="h-10 w-10 text-slate-800" />}
-        <Input ref={inputRef} value={inlineName} onChange={(e) => setInlineName(e.target.value)} onBlur={onCommit} onKeyDown={(e) => { if (e.key === "Enter") onCommit(); if (e.key === "Escape") onCancel() }} className="h-7 w-full text-xs text-center bg-white/20 backdrop-blur-sm border-white/30 rounded-md" placeholder={inlineCreate === "folder" ? "新建文件夹" : "新建文件"} />
+        <Input ref={inputRef} value={inlineName} onChange={(e) => setInlineName(e.target.value)} onBlur={onCommit} onKeyDown={(e) => { if (e.key === "Enter") onCommit(); if (e.key === "Escape") onCancel() }} className="h-7 w-full text-xs text-center bg-white/20 backdrop-blur-sm border-white/30 rounded-md" placeholder={t(inlineCreate === "folder" ? 'apps.fileManager.list.newFolderPlaceholder' : 'apps.fileManager.list.newFilePlaceholder')} />
       </>
     )
   }
   return (
     <div className="flex items-center gap-3 rounded-xl bg-white/10 border border-white/30 px-3 py-2">
       {inlineCreate === "folder" ? <Folder className="h-5 w-5 text-blue-500" /> : <FileText className="h-5 w-5 text-slate-800" />}
-      <Input ref={inputRef} value={inlineName} onChange={(e) => setInlineName(e.target.value)} onBlur={onCommit} onKeyDown={(e) => { if (e.key === "Enter") onCommit(); if (e.key === "Escape") onCancel() }} className="h-8 w-60 bg-white/20 backdrop-blur-sm border-white/30 rounded-md" placeholder={inlineCreate === "folder" ? "新建文件夹" : "新建文件"} />
+      <Input ref={inputRef} value={inlineName} onChange={(e) => setInlineName(e.target.value)} onBlur={onCommit} onKeyDown={(e) => { if (e.key === "Enter") onCommit(); if (e.key === "Escape") onCancel() }} className="h-8 w-60 bg-white/20 backdrop-blur-sm border-white/30 rounded-md" placeholder={t(inlineCreate === "folder" ? 'apps.fileManager.list.newFolderPlaceholder' : 'apps.fileManager.list.newFilePlaceholder')} />
     </div>
   )
 }

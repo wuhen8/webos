@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, memo, type ComponentProps } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Bot, Send, AlertCircle, Settings2, Zap, Copy, Check } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -16,6 +17,7 @@ import { ModelSwitcher } from './components/ModelSwitcher'
 import { Sidebar } from './components/Sidebar'
 
 function CodeBlock(props: ComponentProps<'pre'>) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const preRef = useRef<HTMLPreElement>(null)
   const handleCopy = () => {
@@ -31,7 +33,7 @@ function CodeBlock(props: ComponentProps<'pre'>) {
       <button
         onClick={handleCopy}
         className="absolute top-2 right-2 p-1 rounded bg-slate-700 text-slate-300 opacity-0 group-hover:opacity-100 hover:bg-slate-600 transition-all"
-        title="复制代码"
+        title={t('apps.aiChat.chat.copyCode')}
       >
         {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
@@ -52,34 +54,38 @@ const UserMessage = memo(({ content }: { content: string }) => (
   </div>
 ))
 
-const AssistantMessage = memo(({ content, usage }: { content: string; usage?: TokenUsage }) => (
-  <div className="flex flex-col items-start">
-    <div className="max-w-[85%] overflow-hidden px-3.5 py-2 rounded-2xl rounded-bl-md bg-slate-100 text-slate-800 text-sm prose prose-sm prose-slate [&_pre]:bg-slate-800 [&_pre]:text-slate-100 [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:text-xs [&_pre]:overflow-x-auto [&_code]:text-xs [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_table]:text-xs">
-      <ReactMarkdown remarkPlugins={remarkPluginsGfm} rehypePlugins={rehypePluginsHighlight} components={mdComponents}>
-        {content}
-      </ReactMarkdown>
-    </div>
-    {usage && (
-      <div className="flex items-center gap-2 mt-1 ml-1 text-[10px] text-slate-400">
-        <span>上下文 {usage.contextTokens.toLocaleString()} tokens ({usage.contextPercent}%)</span>
-        <span>·</span>
-        <span>回复 {usage.responseTokens.toLocaleString()} tokens</span>
-        {usage.compressed && (
-          <>
-            <span>·</span>
-            <span className="text-amber-500">已压缩</span>
-          </>
-        )}
-        {usage.contextPercent >= 80 && (
-          <>
-            <span>·</span>
-            <span className="text-orange-500">⚠ 上下文即将满载</span>
-          </>
-        )}
+const AssistantMessage = memo(({ content, usage }: { content: string; usage?: TokenUsage }) => {
+  const { t } = useTranslation()
+
+  return (
+    <div className="flex flex-col items-start">
+      <div className="max-w-[85%] overflow-hidden px-3.5 py-2 rounded-2xl rounded-bl-md bg-slate-100 text-slate-800 text-sm prose prose-sm prose-slate [&_pre]:bg-slate-800 [&_pre]:text-slate-100 [&_pre]:rounded-lg [&_pre]:p-3 [&_pre]:text-xs [&_pre]:overflow-x-auto [&_code]:text-xs [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_table]:text-xs">
+        <ReactMarkdown remarkPlugins={remarkPluginsGfm} rehypePlugins={rehypePluginsHighlight} components={mdComponents}>
+          {content}
+        </ReactMarkdown>
       </div>
-    )}
-  </div>
-))
+      {usage && (
+        <div className="flex items-center gap-2 mt-1 ml-1 text-[10px] text-slate-400">
+          <span>{t('apps.aiChat.chat.contextTokens', { count: usage.contextTokens.toLocaleString(), percent: usage.contextPercent })}</span>
+          <span>·</span>
+          <span>{t('apps.aiChat.chat.responseTokens', { count: usage.responseTokens.toLocaleString() })}</span>
+          {usage.compressed && (
+            <>
+              <span>·</span>
+              <span className="text-amber-500">{t('apps.aiChat.chat.compressed')}</span>
+            </>
+          )}
+          {usage.contextPercent >= 80 && (
+            <>
+              <span>·</span>
+              <span className="text-orange-500">{t('apps.aiChat.chat.contextNearLimit')}</span>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+})
 
 const ErrorMessage = memo(({ content }: { content: string }) => (
   <div className="flex justify-start">
@@ -90,21 +96,26 @@ const ErrorMessage = memo(({ content }: { content: string }) => (
   </div>
 ))
 
-const CommandMessage = memo(({ content }: { content: string }) => (
-  <div className="flex justify-start">
-    <div className="max-w-[85%] px-3.5 py-2 rounded-2xl rounded-bl-md bg-violet-50 border border-violet-200 text-slate-700 text-sm prose prose-sm prose-slate [&_code]:text-xs [&_code]:bg-violet-100 [&_code]:px-1 [&_code]:rounded [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5 overflow-hidden">
-      <div className="flex items-center gap-1.5 mb-1 text-violet-500 text-xs font-medium">
-        <Zap className="h-3.5 w-3.5" />
-        命令结果
+const CommandMessage = memo(({ content }: { content: string }) => {
+  const { t } = useTranslation()
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] px-3.5 py-2 rounded-2xl rounded-bl-md bg-violet-50 border border-violet-200 text-slate-700 text-sm prose prose-sm prose-slate [&_code]:text-xs [&_code]:bg-violet-100 [&_code]:px-1 [&_code]:rounded [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5 overflow-hidden">
+        <div className="flex items-center gap-1.5 mb-1 text-violet-500 text-xs font-medium">
+          <Zap className="h-3.5 w-3.5" />
+          {t('apps.aiChat.chat.commandResult')}
+        </div>
+        <ReactMarkdown remarkPlugins={remarkPluginsGfm}>
+          {content}
+        </ReactMarkdown>
       </div>
-      <ReactMarkdown remarkPlugins={remarkPluginsGfm}>
-        {content}
-      </ReactMarkdown>
     </div>
-  </div>
-))
+  )
+})
 
 export default function ChatContent() {
+  const { t } = useTranslation()
   const [messages, setMessages] = useState<MessageBlock[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -274,18 +285,18 @@ export default function ChatContent() {
     }).catch(() => {})
   }, [])
 
-  // WebSocket 重连后恢复：如果当前正在 streaming，检查后端对话是否已完成
+  // Restore after WebSocket reconnect: if streaming is still active, check whether the backend conversation already finished
   useEffect(() => {
     const unsub = registerReconnectHook(() => {
       if (!streaming) return
       const cid = convIdRef.current
       if (!cid) return
-      // 给后端一点时间完成，然后检查对话状态
+      // Give the backend a moment to finish, then check the conversation status
       setTimeout(async () => {
         try {
           const status = await request('chat.status', { conversationId: cid })
           if (status && !(status as any).active) {
-            // 后端已完成，但前端没收到 done，从 DB 恢复
+            // Backend already finished, but the frontend missed the done event, so restore from DB
             setStreaming(false)
             streamBuf.current = ''
             thinkingBuf.current = ''
@@ -331,7 +342,7 @@ export default function ChatContent() {
             }
             loadConversations()
           }
-        } catch { /* chat.status 不存在时静默忽略 */ }
+        } catch { /* ignore when chat.status is unavailable */ }
       }, 1000)
     })
     return unsub
@@ -362,7 +373,7 @@ export default function ChatContent() {
               if (!hasPending) return prev
               return prev.map(m =>
                 m.type === 'tool_call' && !m.toolResult
-                  ? { ...m, toolResult: { tool_call_id: m.toolCall!.id, content: '已中断', is_error: true }, shellOutput: undefined }
+                  ? { ...m, toolResult: { tool_call_id: m.toolCall!.id, content: t('apps.aiChat.chat.interrupted'), is_error: true }, shellOutput: undefined }
                   : m
               )
             })
@@ -647,7 +658,7 @@ export default function ChatContent() {
             // First, mark any pending tool_calls as completed
             const cleaned = prev.map(m =>
               m.type === 'tool_call' && !m.toolResult
-                ? { ...m, toolResult: { tool_call_id: m.toolCall!.id, content: '已完成', is_error: false }, shellOutput: undefined }
+                ? { ...m, toolResult: { tool_call_id: m.toolCall!.id, content: t('apps.aiChat.chat.completed'), is_error: false }, shellOutput: undefined }
                 : m
             )
             const lastAssistantIdx = cleaned.findLastIndex(m => m.type === 'assistant')
@@ -728,13 +739,13 @@ export default function ChatContent() {
           setMessages(prev => [
             ...prev.map(m =>
               m.type === 'tool_call' && !m.toolResult
-                ? { ...m, toolResult: { tool_call_id: m.toolCall!.id, content: '已中断', is_error: true }, shellOutput: undefined }
+                ? { ...m, toolResult: { tool_call_id: m.toolCall!.id, content: t('apps.aiChat.chat.interrupted'), is_error: true }, shellOutput: undefined }
                 : m
             ),
             {
               id: `err-${Date.now()}`,
               type: 'error' as const,
-              content: event.error || '未知错误',
+              content: event.error || t('apps.aiChat.chat.unknownError'),
               timestamp: Date.now(),
             },
           ])
@@ -886,7 +897,7 @@ export default function ChatContent() {
               setMessages(prev => [...prev, {
                 id: `sys-${Date.now()}`,
                 type: 'error',
-                content: '创建会话超时，请重试',
+                content: t('apps.aiChat.chat.createConversationTimeout'),
                 timestamp: Date.now(),
               }])
               finish(false)
@@ -933,7 +944,7 @@ export default function ChatContent() {
               setMessages(prev => [...prev, {
                 id: `sys-${Date.now()}`,
                 type: 'error',
-                content: '切换会话超时，请重试',
+                content: t('apps.aiChat.chat.switchConversationTimeout'),
                 timestamp: Date.now(),
               }])
               finish(false)
@@ -1099,7 +1110,7 @@ export default function ChatContent() {
       const items = Array.isArray(raw) ? raw : [raw]
       const refs = items
         .filter((f: any) => f.path && f.nodeId)
-        .map((f: any) => `[${f.isDir ? '目录' : '文件'}: ${f.nodeId}:${f.path}]`)
+        .map((f: any) => `[${f.isDir ? t('apps.aiChat.chat.dirRef') : t('apps.aiChat.chat.fileRef')}: ${f.nodeId}:${f.path}]`)
 
       if (refs.length > 0) {
         setInput(prev => {
@@ -1131,7 +1142,7 @@ export default function ChatContent() {
           <button
             onClick={() => setShowSidebar(!showSidebar)}
             className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
-            title="对话列表"
+            title={t('apps.aiChat.chat.sidebar')}
           >
             <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
@@ -1141,19 +1152,19 @@ export default function ChatContent() {
           <ModelSwitcher configVer={configVer} />
           <div className="absolute left-1/2 -translate-x-1/2">
             {(executorStatus.state === 'running' || executorStatus.state === 'tool_executing' || !!commandProgress) ? (
-              <span className="relative flex h-2.5 w-2.5" title="忙碌中">
+              <span className="relative flex h-2.5 w-2.5" title={t('apps.aiChat.chat.busy')}>
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
               </span>
             ) : (
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" title="空闲" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" title={t('apps.aiChat.chat.idle')} />
             )}
           </div>
           <div className="flex-1" />
           <button
             onClick={() => setShowConfig(true)}
             className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
-            title="AI 配置"
+            title={t('apps.aiChat.chat.config')}
           >
             <Settings2 className="h-4 w-4 text-slate-400" />
           </button>
@@ -1168,8 +1179,8 @@ export default function ChatContent() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
                 </span>
-                {executorStatus.state === 'running' ? '正在回复' : '正在执行'}「{executorStatus.runningConvTitle}」
-                {executorStatus.queueSize > 0 && ` · 队列 ${executorStatus.queueSize}`}
+                {executorStatus.state === 'running' ? t('apps.aiChat.chat.responding') : t('apps.aiChat.chat.executing')}「{executorStatus.runningConvTitle}」
+                {executorStatus.queueSize > 0 && ` · ${t('apps.aiChat.chat.queue', { count: executorStatus.queueSize })}`}
               </span>
             )}
             {commandProgress && (
@@ -1178,7 +1189,7 @@ export default function ChatContent() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
                 </span>
-                正在{commandProgress === 'compress' ? '压缩会话' : '执行命令'}
+                {t('apps.aiChat.chat.commandProgressPrefix')}{commandProgress === 'compress' ? t('apps.aiChat.chat.compressingConversation') : t('apps.aiChat.chat.executingCommand')}
               </span>
             )}
           </div>
@@ -1189,7 +1200,7 @@ export default function ChatContent() {
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-3">
               <Bot className="h-12 w-12" />
-              <p className="text-sm">发送消息开始对话</p>
+              <p className="text-sm">{t('apps.aiChat.chat.emptyState')}</p>
             </div>
           )}
 
@@ -1260,7 +1271,7 @@ export default function ChatContent() {
               onKeyDown={handleKeyDown}
               onCompositionStart={() => { composingRef.current = true }}
               onCompositionEnd={() => { composingRef.current = false }}
-              placeholder="输入消息... 输入 / 查看命令"
+              placeholder={t('apps.aiChat.chat.inputPlaceholder')}
               rows={1}
               className="flex-1 resize-none bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none max-h-32 min-h-[1.5rem]"
               style={{ height: 'auto', overflow: 'hidden' }}
@@ -1276,7 +1287,7 @@ export default function ChatContent() {
               onClick={handleSend}
               disabled={!input.trim()}
               className="p-1.5 rounded-lg bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
-              title="发送"
+              title={t('apps.aiChat.chat.send')}
             >
               <Send className="h-4 w-4" />
             </button>

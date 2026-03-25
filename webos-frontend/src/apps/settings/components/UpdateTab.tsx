@@ -1,9 +1,11 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import { RefreshCw, Download, Loader2 } from "lucide-react"
 import { request as wsRequest } from '@/stores/webSocketStore'
 import { SettingsIcon } from "./SettingsIcon"
 
 export default function UpdateTab() {
+  const { t } = useTranslation()
   const [updateInfo, setUpdateInfo] = useState<any>(null)
   const [updateChecking, setUpdateChecking] = useState(false)
   const [updateRunning, setUpdateRunning] = useState(false)
@@ -14,7 +16,7 @@ export default function UpdateTab() {
       const info = await wsRequest('system.check_update', {})
       setUpdateInfo(info)
     } catch (e: any) {
-      setUpdateInfo({ error: e.message || '检查更新失败' })
+      setUpdateInfo({ error: e.message || t('settings.update.checkFailed') })
     } finally {
       setUpdateChecking(false)
     }
@@ -35,21 +37,21 @@ export default function UpdateTab() {
         <div className="w-16 h-16 rounded-2xl bg-indigo-500 flex items-center justify-center shadow-lg mb-3">
           <SettingsIcon type="update" className="w-10 h-10 text-white" />
         </div>
-        <h1 className="text-xl font-semibold text-gray-900">程序更新</h1>
-        <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">检查并安装系统更新</p>
+        <h1 className="text-xl font-semibold text-gray-900">{t('settings.sidebar.update')}</h1>
+        <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">{t('settings.update.subtitle')}</p>
       </div>
 
       <div className="bg-[#f5f5f7] rounded-xl overflow-hidden p-5">
         {!updateInfo && !updateChecking && (
           <div className="text-center py-8">
             <Download className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-            <p className="text-[0.8125rem] text-gray-500 mb-4">点击下方按钮检查是否有新版本</p>
+            <p className="text-[0.8125rem] text-gray-500 mb-4">{t('settings.update.checkPrompt')}</p>
             <button
               onClick={checkUpdate}
               className="h-8 px-5 rounded-lg bg-indigo-500 text-white text-[0.8125rem] font-medium hover:bg-indigo-600 transition-colors inline-flex items-center gap-2"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              检查更新
+              {t('settings.update.checkNow')}
             </button>
           </div>
         )}
@@ -57,7 +59,7 @@ export default function UpdateTab() {
         {updateChecking && (
           <div className="text-center py-8">
             <Loader2 className="w-8 h-8 mx-auto mb-3 text-indigo-500 animate-spin" />
-            <p className="text-[0.8125rem] text-gray-500">正在检查更新...</p>
+            <p className="text-[0.8125rem] text-gray-500">{t('settings.update.checking')}</p>
           </div>
         )}
 
@@ -71,19 +73,19 @@ export default function UpdateTab() {
                   className="h-8 px-5 rounded-lg bg-indigo-500 text-white text-[0.8125rem] font-medium hover:bg-indigo-600 transition-colors inline-flex items-center gap-2"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  重试
+                  {t('task.actions.retry')}
                 </button>
               </div>
             ) : (
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <div className="text-[0.8125rem] text-gray-500">当前版本</div>
-                    <div className="text-[0.9375rem] font-medium text-gray-900">{updateInfo.currentVersion || '未知'}</div>
+                    <div className="text-[0.8125rem] text-gray-500">{t('settings.update.currentVersion')}</div>
+                    <div className="text-[0.9375rem] font-medium text-gray-900">{updateInfo.currentVersion || t('apps.about.unknownVersion')}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[0.8125rem] text-gray-500">最新版本</div>
-                    <div className="text-[0.9375rem] font-medium text-gray-900">{updateInfo.version || '未知'}</div>
+                    <div className="text-[0.8125rem] text-gray-500">{t('settings.update.latestVersion')}</div>
+                    <div className="text-[0.9375rem] font-medium text-gray-900">{updateInfo.version || t('apps.about.unknownVersion')}</div>
                   </div>
                 </div>
 
@@ -91,7 +93,7 @@ export default function UpdateTab() {
                   <div>
                     {updateInfo.changelog && (
                       <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
-                        <div className="text-[0.8125rem] font-medium text-gray-700 mb-1">更新日志</div>
+                        <div className="text-[0.8125rem] font-medium text-gray-700 mb-1">{t('settings.update.changelog')}</div>
                         <p className="text-[0.75rem] text-gray-500 whitespace-pre-wrap">{updateInfo.changelog}</p>
                       </div>
                     )}
@@ -102,9 +104,9 @@ export default function UpdateTab() {
                         className="h-8 px-5 rounded-lg bg-indigo-500 text-white text-[0.8125rem] font-medium hover:bg-indigo-600 disabled:bg-gray-300 transition-colors inline-flex items-center gap-2"
                       >
                         {updateRunning ? (
-                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 更新中...</>
+                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {t('settings.update.updating')}</>
                         ) : (
-                          <><Download className="w-3.5 h-3.5" /> 立即更新</>
+                          <><Download className="w-3.5 h-3.5" /> {t('settings.update.updateNow')}</>
                         )}
                       </button>
                       <button
@@ -112,19 +114,19 @@ export default function UpdateTab() {
                         className="h-8 px-4 rounded-lg bg-white border border-gray-200 text-[0.8125rem] text-gray-600 hover:bg-gray-50 transition-colors inline-flex items-center gap-2"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
-                        重新检查
+                        {t('settings.update.recheck')}
                       </button>
                     </div>
                   </div>
                 ) : (
                   <div className="text-center py-4">
-                    <p className="text-[0.8125rem] text-emerald-600 font-medium mb-3">当前已是最新版本</p>
+                    <p className="text-[0.8125rem] text-emerald-600 font-medium mb-3">{t('settings.update.upToDate')}</p>
                     <button
                       onClick={checkUpdate}
                       className="h-8 px-4 rounded-lg bg-white border border-gray-200 text-[0.8125rem] text-gray-600 hover:bg-gray-50 transition-colors inline-flex items-center gap-2"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
-                      重新检查
+                      {t('settings.update.recheck')}
                     </button>
                   </div>
                 )}

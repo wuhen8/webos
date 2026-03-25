@@ -90,16 +90,16 @@ export const SettingsIcon = ({ type, className = "" }: { type: string; className
 
 // macOS Sequoia 风格设置分类
 export const settingsCategories = [
-  { id: 'general', icon: 'general', label: '通用', color: 'bg-gray-500' },
-  { id: 'appearance', icon: 'appearance', label: '外观', color: 'bg-gradient-to-br from-pink-400 via-purple-400 to-blue-400' },
-  { id: 'wallpaper', icon: 'wallpaper', label: '墙纸', color: 'bg-cyan-500' },
-  { id: 'dock', icon: 'dock', label: '桌面与程序坞', color: 'bg-black' },
-  { id: 'storage', icon: 'storage', label: '存储节点', color: 'bg-emerald-500' },
-  { id: 'indexing', icon: 'indexing', label: '索引', color: 'bg-amber-500' },
-  { id: 'scheduled', icon: 'scheduled', label: '定时任务', color: 'bg-violet-500' },
-  { id: 'security', icon: 'security', label: '隐私与安全性', color: 'bg-blue-500' },
-  { id: 'apiTokens', icon: 'apiTokens', label: 'API 令牌', color: 'bg-rose-500' },
-  { id: 'sharing', icon: 'sharing', label: '文件共享', color: 'bg-teal-500' },
-  { id: 'firewall', icon: 'firewall', label: '防火墙', color: 'bg-orange-500' },
-  { id: 'update', icon: 'update', label: '程序更新', color: 'bg-indigo-500' },
+  { id: 'general', icon: 'general', label: 'i18n:settings.sidebar.general', color: 'bg-gray-500' },
+  { id: 'appearance', icon: 'appearance', label: 'i18n:settings.sidebar.appearance', color: 'bg-gradient-to-br from-pink-400 via-purple-400 to-blue-400' },
+  { id: 'wallpaper', icon: 'wallpaper', label: 'i18n:settings.sidebar.wallpaper', color: 'bg-cyan-500' },
+  { id: 'dock', icon: 'dock', label: 'i18n:settings.sidebar.dock', color: 'bg-black' },
+  { id: 'storage', icon: 'storage', label: 'i18n:settings.sidebar.storage', color: 'bg-emerald-500' },
+  { id: 'indexing', icon: 'indexing', label: 'i18n:settings.sidebar.indexing', color: 'bg-amber-500' },
+  { id: 'scheduled', icon: 'scheduled', label: 'i18n:settings.sidebar.scheduled', color: 'bg-violet-500' },
+  { id: 'security', icon: 'security', label: 'i18n:settings.sidebar.security', color: 'bg-blue-500' },
+  { id: 'apiTokens', icon: 'apiTokens', label: 'i18n:settings.sidebar.apiTokens', color: 'bg-rose-500' },
+  { id: 'sharing', icon: 'sharing', label: 'i18n:settings.sidebar.sharing', color: 'bg-teal-500' },
+  { id: 'firewall', icon: 'firewall', label: 'i18n:settings.sidebar.firewall', color: 'bg-orange-500' },
+  { id: 'update', icon: 'update', label: 'i18n:settings.sidebar.update', color: 'bg-indigo-500' },
 ]

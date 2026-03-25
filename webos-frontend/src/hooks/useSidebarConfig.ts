@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import i18n from '@/i18n'
 import { request as wsRequest } from '@/stores/webSocketStore'
 import { useDataStore } from '@/stores/dataStore'
 
@@ -67,7 +68,7 @@ function mapToApiItem(item: SidebarItem): any {
 const DEFAULT_ITEMS: SidebarItem[] = [
   {
     id: 'home',
-    name: '个人收藏',
+    name: i18n.t('apps.fileManager.sidebar.favorites'),
     icon: 'star',
     isDirectory: true,
     children: [],

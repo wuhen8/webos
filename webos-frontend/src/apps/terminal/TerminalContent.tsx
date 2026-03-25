@@ -1,4 +1,6 @@
 import { Fragment, useEffect, useRef, useCallback, useImperativeHandle, forwardRef, useState } from "react"
+import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
@@ -16,34 +18,35 @@ interface QuickAction {
   label: string
   input: string
   tip?: string
+  tipKey?: string
 }
 
 const KEY_GROUPS: QuickAction[][] = [
   // utility
   [
-    { label: 'Tab', input: '\t', tip: '自动补全' },
-    { label: 'Esc', input: '\x1b', tip: 'Escape' },
+    { label: 'Tab', input: '\t', tipKey: 'apps.terminal.toolbar.tips.autocomplete' },
+    { label: 'Esc', input: '\x1b', tipKey: 'apps.terminal.toolbar.tips.escape' },
   ],
   // arrows
   [
-    { label: '↑', input: '\x1b[A', tip: '上一条命令' },
-    { label: '↓', input: '\x1b[B', tip: '下一条命令' },
-    { label: '←', input: '\x1b[D', tip: '光标左移' },
-    { label: '→', input: '\x1b[C', tip: '光标右移' },
+    { label: '↑', input: '\x1b[A', tipKey: 'apps.terminal.toolbar.tips.previousCommand' },
+    { label: '↓', input: '\x1b[B', tipKey: 'apps.terminal.toolbar.tips.nextCommand' },
+    { label: '←', input: '\x1b[D', tipKey: 'apps.terminal.toolbar.tips.cursorLeft' },
+    { label: '→', input: '\x1b[C', tipKey: 'apps.terminal.toolbar.tips.cursorRight' },
   ],
   // navigation
   [
-    { label: 'Home', input: '\x1b[H', tip: '行首' },
-    { label: 'End', input: '\x1b[F', tip: '行尾' },
-    { label: 'PgUp', input: '\x1b[5~', tip: '向上翻页' },
-    { label: 'PgDn', input: '\x1b[6~', tip: '向下翻页' },
+    { label: 'Home', input: '\x1b[H', tipKey: 'apps.terminal.toolbar.tips.lineStart' },
+    { label: 'End', input: '\x1b[F', tipKey: 'apps.terminal.toolbar.tips.lineEnd' },
+    { label: 'PgUp', input: '\x1b[5~', tipKey: 'apps.terminal.toolbar.tips.pageUp' },
+    { label: 'PgDn', input: '\x1b[6~', tipKey: 'apps.terminal.toolbar.tips.pageDown' },
   ],
   // symbols
   [
     { label: '/', input: '/', tip: '/' },
     { label: '-', input: '-', tip: '-' },
     { label: '\\', input: '\\', tip: '\\' },
-    { label: '|', input: '|', tip: '管道符' },
+    { label: '|', input: '|', tipKey: 'apps.terminal.toolbar.tips.pipe' },
   ],
 ]
 
@@ -164,7 +167,7 @@ const SingleTerminal = forwardRef<SingleTerminalHandle, SingleTerminalProps>(fun
           term.write(data)
         } else if (type === 'exited') {
           sidRef.current = null
-          term.writeln("\r\n\x1b[90m终端进程已退出。按 Enter 重新打开...\x1b[0m")
+          term.writeln(`\r\n\x1b[90m${i18n.t('apps.terminal.messages.exited')}\x1b[0m`)
         }
       })
 
@@ -268,11 +271,11 @@ const SingleTerminal = forwardRef<SingleTerminalHandle, SingleTerminalProps>(fun
     if (connected && !prevConnected.current && xtermRef.current) {
       // WS just reconnected
       sidRef.current = null
-      xtermRef.current.writeln("\r\n\x1b[90m连接已恢复，正在重新打开终端...\x1b[0m")
+      xtermRef.current.writeln(`\r\n\x1b[90m${i18n.t('apps.terminal.messages.reconnected')}\x1b[0m`)
       openSession()
     }
     if (!connected && prevConnected.current && xtermRef.current) {
-      xtermRef.current.writeln("\r\n\x1b[90m连接已断开...\x1b[0m")
+      xtermRef.current.writeln(`\r\n\x1b[90m${i18n.t('apps.terminal.messages.disconnected')}\x1b[0m`)
     }
     prevConnected.current = connected
   }, [connected, openSession])
@@ -345,6 +348,7 @@ function QuickActionsBar({ onSend, onModifier, activeModifier, visible }: {
   activeModifier: 'ctrl' | 'alt' | null
   visible: boolean
 }) {
+  const { t } = useTranslation()
   const snippetVer = useSnippetVersion()
   const snippets = loadSnippets()
 
@@ -399,7 +403,7 @@ function QuickActionsBar({ onSend, onModifier, activeModifier, visible }: {
               <button
                 key={k.label}
                 onPointerDown={(e) => { e.preventDefault(); onSend(k.input) }}
-                title={k.tip}
+                title={k.tipKey ? t(k.tipKey) : k.tip}
                 className="px-2.5 py-1 text-xs rounded-lg text-[#9d9d9d] hover:bg-white/10 active:bg-white/15 transition-all shrink-0"
               >
                 {k.label}
@@ -434,6 +438,7 @@ interface TerminalContentProps {
 }
 
 export default function TerminalContent({ windowId, isActive }: TerminalContentProps) {
+  const { t } = useTranslation()
   const { win, procState: d } = useCurrentProcess(windowId)
   const terminalTabs = (d.terminalTabs || []) as any[]
   const activeTerminalTabIndex = (d.activeTerminalTabIndex as number) ?? 0
@@ -588,7 +593,7 @@ export default function TerminalContent({ windowId, isActive }: TerminalContentP
         <button
           onClick={() => addTerminalTab(windowId)}
           className="flex items-center justify-center w-6 h-6 rounded-md hover:bg-[#2d2d2d] text-[#808080] hover:text-[#cccccc] transition-all"
-          title="新建标签页"
+          title={t('apps.terminal.tabBar.newTab')}
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
@@ -598,7 +603,7 @@ export default function TerminalContent({ windowId, isActive }: TerminalContentP
           className={`flex items-center justify-center w-6 h-6 rounded-md transition-all ${
             showToolbar ? 'bg-[#3c3c3c] text-[#4ec9b0]' : 'hover:bg-[#2d2d2d] text-[#808080] hover:text-[#cccccc]'
           }`}
-          title={showToolbar ? '隐藏快捷操作栏' : '显示快捷操作栏'}
+          title={showToolbar ? t('apps.terminal.toolbar.hide') : t('apps.terminal.toolbar.show')}
         >
           <Keyboard className="h-3.5 w-3.5" />
         </button>

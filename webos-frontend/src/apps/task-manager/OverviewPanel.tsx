@@ -1,4 +1,5 @@
 import { Cpu, MemoryStick, HardDrive, Network, Clock } from "lucide-react"
+import { useTranslation } from 'react-i18next'
 import type { SystemOverview } from "./types"
 import { formatBytes } from "./types"
 
@@ -13,10 +14,11 @@ export function OverviewPanel({
   memUsage: number
   networkSpeed: { iface: string; rxSpeed: number; txSpeed: number }[]
 }) {
+  const { t } = useTranslation()
   if (!overview) {
     return (
       <div className="h-full flex items-center justify-center text-slate-400 text-sm">
-        加载中...
+        {t('apps.taskManager.overview.loading')}
       </div>
     )
   }
@@ -39,7 +41,7 @@ export function OverviewPanel({
         {overview.loadAvg && (
           <>
             <span className="w-px h-3 bg-slate-200" />
-            <span>负载: {overview.loadAvg.join(" / ")}</span>
+            <span>{t('apps.taskManager.overview.load')}: {overview.loadAvg.join(" / ")}</span>
           </>
         )}
       </div>
@@ -54,8 +56,8 @@ export function OverviewPanel({
                 <Cpu className="w-4 h-4 text-blue-500" />
               </div>
               <div>
-                <div className="text-[0.6875rem] text-slate-500">CPU</div>
-                <div className="text-[0.625rem] text-slate-400">{overview.numCPU} 核心</div>
+                <div className="text-[0.6875rem] text-slate-500">{t('apps.taskManager.overview.cpu')}</div>
+                <div className="text-[0.625rem] text-slate-400">{t('apps.taskManager.overview.cores', { count: overview.numCPU })}</div>
               </div>
             </div>
             <div className="text-right">
@@ -84,7 +86,7 @@ export function OverviewPanel({
                 <MemoryStick className="w-4 h-4 text-purple-500" />
               </div>
               <div>
-                <div className="text-[0.6875rem] text-slate-500">内存</div>
+                <div className="text-[0.6875rem] text-slate-500">{t('apps.taskManager.overview.memory')}</div>
                 <div className="text-[0.625rem] text-slate-400">
                   {formatBytes(overview.memory?.used || 0)} / {formatBytes(overview.memory?.total || 0)}
                 </div>
@@ -108,7 +110,7 @@ export function OverviewPanel({
           </div>
           {overview.memory?.swapTotal > 0 && (
             <div className="mt-1.5 text-[0.625rem] text-slate-400">
-              Swap: {formatBytes(overview.memory.swapUsed)} / {formatBytes(overview.memory.swapTotal)}
+              {t('apps.taskManager.overview.swap')}: {formatBytes(overview.memory.swapUsed)} / {formatBytes(overview.memory.swapTotal)}
             </div>
           )}
         </div>
@@ -119,7 +121,7 @@ export function OverviewPanel({
             <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center">
               <HardDrive className="w-4 h-4 text-green-500" />
             </div>
-            <div className="text-[0.6875rem] text-slate-500 font-medium">磁盘</div>
+            <div className="text-[0.6875rem] text-slate-500 font-medium">{t('apps.taskManager.overview.disk')}</div>
           </div>
           {disks.length > 0 ? (
             <div className="space-y-2 max-h-[10rem] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
@@ -151,7 +153,7 @@ export function OverviewPanel({
               })}
             </div>
           ) : (
-            <div className="text-[0.6875rem] text-slate-400 py-2">暂无数据</div>
+            <div className="text-[0.6875rem] text-slate-400 py-2">{t('apps.taskManager.overview.noData')}</div>
           )}
         </div>
 
@@ -161,7 +163,7 @@ export function OverviewPanel({
             <div className="w-7 h-7 rounded-lg bg-orange-50 flex items-center justify-center">
               <Network className="w-4 h-4 text-orange-500" />
             </div>
-            <div className="text-[0.6875rem] text-slate-500 font-medium">网络</div>
+            <div className="text-[0.6875rem] text-slate-500 font-medium">{t('apps.taskManager.overview.network')}</div>
           </div>
           {network.length > 0 ? (
             <div className="space-y-1.5 max-h-[10rem] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
@@ -197,7 +199,7 @@ export function OverviewPanel({
               })}
             </div>
           ) : (
-            <div className="text-[0.6875rem] text-slate-400 py-2">暂无数据</div>
+            <div className="text-[0.6875rem] text-slate-400 py-2">{t('apps.taskManager.overview.noData')}</div>
           )}
         </div>
       </div>

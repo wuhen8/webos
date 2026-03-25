@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createPlayer, selectPlayback, selectError } from '@videojs/react'
 import { Video, videoFeatures } from '@videojs/react/video'
 import '@videojs/react/video/skin.css'
@@ -20,6 +21,7 @@ interface VideoPlayerProps {
 const Player = createPlayer({ features: videoFeatures })
 
 export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
+  const { t } = useTranslation()
   const [currentIndex, setCurrentIndex] = useState(0)
   const [showPlaylist, setShowPlaylist] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,13 +59,13 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
         resolveMediaUrl(current.nodeId, current.filePath).then(url => {
           if (!cancelled) setResolvedUrl(url)
         }).catch(() => {
-          if (!cancelled) setError('无法解析视频地址')
+          if (!cancelled) setError(t('apps.video.player.errors.resolveFailed'))
         })
       }
     } else if (current.url) {
       setResolvedUrl(current.url)
     } else {
-      setError('无效的视频地址')
+      setError(t('apps.video.player.errors.invalidUrl'))
     }
 
     return () => { cancelled = true }
@@ -80,7 +82,7 @@ export default function VideoPlayer({ playlist, title }: VideoPlayerProps) {
   if (!resolvedUrl) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-black">
-        <p className="text-white/80 text-lg">加载中...</p>
+        <p className="text-white/80 text-lg">{t('apps.video.player.loading')}</p>
       </div>
     )
   }
@@ -127,6 +129,7 @@ function PlayerContent({
   onClosePlaylist,
   current,
 }: PlayerContentProps) {
+  const { t } = useTranslation()
   // Monitor playback state for auto-play next
   const playback = Player.usePlayer(selectPlayback)
   const errorState = Player.usePlayer(selectError)
@@ -168,7 +171,7 @@ function PlayerContent({
 
             <div className="flex items-center justify-between px-4 py-3">
               <span className="text-white/90 text-sm font-medium tracking-wide">
-                剧集 · {playlist.length}集
+                {t('apps.video.player.playlist.episodes', { count: playlist.length })}
               </span>
               <button
                 onClick={onClosePlaylist}
@@ -201,7 +204,7 @@ function PlayerContent({
             </div>
 
             <div className="px-4 py-2.5 text-xs text-white/40">
-              正在播放 · {current?.label}
+              {t('apps.video.player.playlist.nowPlaying', { label: current?.label })}
             </div>
           </div>
         </>

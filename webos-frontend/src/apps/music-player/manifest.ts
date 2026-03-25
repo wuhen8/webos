@@ -1,8 +1,9 @@
+import i18n from '@/i18n'
 import type { AppConfig, MusicTrack } from '@/types'
 
 export const manifest: AppConfig = {
   id: 'musicPlayer',
-  name: '音乐播放器',
+  name: 'i18n:apps.musicPlayer.name',
   icon: 'Music',
   gradient: 'from-violet-400 to-fuchsia-600',
   shadow: 'shadow-violet-500/30',
@@ -16,7 +17,7 @@ export const manifest: AppConfig = {
   fileAssociations: [
     {
       extensions: ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma', '.opus'],
-      label: '音乐播放器',
+      label: 'i18n:apps.musicPlayer.fileAssociations.audio',
       icon: 'Music',
     },
   ],
@@ -97,7 +98,7 @@ export const manifest: AppConfig = {
     if (dt?.url) {
       tracks.push({
         id: `track-${Date.now()}`,
-        title: dt.title || dt.url.split('/').pop() || '未知曲目',
+        title: dt.title || dt.url.split('/').pop() || i18n.t('apps.musicPlayer.unknownTrack'),
         src: '',
         filePath: dt.url,
         nodeId: dt.nodeId || 'local_1',

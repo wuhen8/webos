@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import { Search, Trash2, Plus, Eye } from "lucide-react"
 import type { DockerVolume, DockerContainer } from "./types"
 
@@ -13,6 +14,7 @@ interface VolumesPanelProps {
 }
 
 export function VolumesPanel({ volumes, containers, searchQuery, setSearchQuery, onRemove, onCreate, onInspect }: VolumesPanelProps) {
+  const { t } = useTranslation()
   const [createName, setCreateName] = useState("")
   const [createDriver, setCreateDriver] = useState("")
 
@@ -49,7 +51,7 @@ export function VolumesPanel({ volumes, containers, searchQuery, setSearchQuery,
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
           <input
             type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索卷名、驱动或挂载点..."
+            placeholder={t('apps.docker.volumes.searchPlaceholder')}
             className="w-full pl-8 pr-3 py-1.5 text-[0.75rem] bg-white/70 border border-slate-200 rounded-lg outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all placeholder:text-slate-300"
           />
         </div>
@@ -57,19 +59,19 @@ export function VolumesPanel({ volumes, containers, searchQuery, setSearchQuery,
           <input
             type="text" value={createName} onChange={(e) => setCreateName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-            placeholder="卷名称"
+            placeholder={t('apps.docker.volumes.createNamePlaceholder')}
             className="w-32 px-2.5 py-1.5 text-[0.75rem] bg-white/70 border border-slate-200 rounded-lg outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all placeholder:text-slate-300"
           />
           <input
             type="text" value={createDriver} onChange={(e) => setCreateDriver(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-            placeholder="驱动 (默认 local)"
+            placeholder={t('apps.docker.volumes.createDriverPlaceholder')}
             className="w-36 px-2.5 py-1.5 text-[0.75rem] bg-white/70 border border-slate-200 rounded-lg outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all placeholder:text-slate-300"
           />
           <button onClick={handleCreate} disabled={!createName.trim()}
             className="flex items-center gap-1 px-2.5 py-1.5 text-[0.6875rem] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
             <Plus className="w-3.5 h-3.5" />
-            创建
+            {t('apps.docker.volumes.create')}
           </button>
         </div>
       </div>
@@ -77,12 +79,12 @@ export function VolumesPanel({ volumes, containers, searchQuery, setSearchQuery,
         <table className="w-full text-[0.6875rem]">
           <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 border-b border-slate-100">
             <tr>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">名称</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">驱动</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">挂载点</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">容器</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">创建时间</th>
-              <th className="px-3 py-2 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider" style={{ width: 70 }}>操作</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.volumes.table.name')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.volumes.table.driver')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.volumes.table.mountpoint')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.volumes.table.containers')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.volumes.table.createdAt')}</th>
+              <th className="px-3 py-2 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider" style={{ width: 70 }}>{t('apps.docker.volumes.table.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -103,16 +105,16 @@ export function VolumesPanel({ volumes, containers, searchQuery, setSearchQuery,
                         ))}
                       </div>
                     ) : (
-                      <span className="px-1.5 py-0.5 bg-slate-50 text-slate-400 rounded text-[0.5625rem]">空闲</span>
+                      <span className="px-1.5 py-0.5 bg-slate-50 text-slate-400 rounded text-[0.5625rem]">{t('apps.docker.volumes.idle')}</span>
                     )}
                   </td>
                   <td className="px-3 py-1.5 text-slate-400">{vol.createdAt ? new Date(vol.createdAt).toLocaleString() : "-"}</td>
                   <td className="px-3 py-1.5 text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => onInspect(vol.name)} className="p-0.5 text-slate-300 hover:text-blue-500 transition-colors rounded hover:bg-blue-50" title="详情">
+                      <button onClick={() => onInspect(vol.name)} className="p-0.5 text-slate-300 hover:text-blue-500 transition-colors rounded hover:bg-blue-50" title={t('apps.docker.volumes.inspect')}>
                         <Eye className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => onRemove(vol.name)} className="p-0.5 text-slate-300 hover:text-red-500 transition-colors rounded hover:bg-red-50" title="删除">
+                      <button onClick={() => onRemove(vol.name)} className="p-0.5 text-slate-300 hover:text-red-500 transition-colors rounded hover:bg-red-50" title={t('apps.docker.volumes.delete')}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -123,7 +125,7 @@ export function VolumesPanel({ volumes, containers, searchQuery, setSearchQuery,
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={6} className="text-center py-8 text-slate-400 text-[0.75rem]">
-                  {searchQuery ? "没有匹配的卷" : "暂无卷"}
+                  {searchQuery ? t('apps.docker.volumes.noMatches') : t('apps.docker.volumes.empty')}
                 </td>
               </tr>
             )}

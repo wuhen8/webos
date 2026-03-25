@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import type { Conversation } from './types'
 
@@ -8,6 +9,7 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete }: 
   onNew: () => void
   onDelete: (id: string) => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="w-48 border-r border-slate-200 flex flex-col bg-slate-50/80">
       <div className="p-2">
@@ -15,7 +17,7 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete }: 
           onClick={onNew}
           className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-violet-600 hover:bg-violet-50 border border-violet-200 transition-colors"
         >
-          + 新建对话
+          {t('apps.aiChat.sidebar.newConversation')}
         </button>
       </div>
       <div className="flex-1 overflow-auto">
@@ -27,7 +29,7 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete }: 
             }`}
             onClick={() => onSelect(c.id)}
           >
-            <span className="truncate flex-1">{c.title || '新对话'}</span>
+            <span className="truncate flex-1">{c.title || t('apps.aiChat.sidebar.untitledConversation')}</span>
             <button
               className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-100 transition-opacity"
               onClick={e => { e.stopPropagation(); onDelete(c.id) }}

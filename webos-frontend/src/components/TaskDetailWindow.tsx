@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+import i18n from '@/i18n'
 import { Loader2, CheckCircle2, XCircle, AlertCircle, X, RotateCcw } from 'lucide-react'
 import { useTaskStore } from '@/stores/taskStore'
 import { useProcessStore } from '@/stores/processStore'
@@ -17,8 +19,8 @@ function formatSpeed(bytesPerSec: number): string {
   return formatBytes(bytesPerSec) + '/s'
 }
 
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleString('zh-CN', { hour12: false })
+function formatTime(ts: number, locale: string): string {
+  return new Date(ts).toLocaleString(locale, { hour12: false })
 }
 
 function formatDuration(start: number, end?: number): string {
@@ -47,30 +49,31 @@ function getSpeed(taskId: string, bytesCurrent: number): number {
 }
 
 const typeLabel: Record<string, string> = {
-  fs_copy: '文件复制', fs_move: '文件移动', fs_delete: '文件删除',
-  upload: '文件上传', download: '文件下载',
-  docker_pull: 'Docker 拉取', appstore_install: '应用安装',
+  fs_copy: 'task.types.fs_copy', fs_move: 'task.types.fs_move', fs_delete: 'task.types.fs_delete',
+  upload: 'task.types.upload', download: 'task.types.download',
+  docker_pull: 'task.types.docker_pull', appstore_install: 'task.types.appstore_install',
 }
 
-const statusConfig: Record<string, { icon: typeof Loader2; color: string; label: string }> = {
-  running: { icon: Loader2, color: 'text-blue-500', label: '运行中' },
-  success: { icon: CheckCircle2, color: 'text-green-500', label: '已完成' },
-  failed:  { icon: XCircle, color: 'text-red-500', label: '失败' },
-  cancelled: { icon: AlertCircle, color: 'text-amber-500', label: '已取消' },
+const statusConfig: Record<string, { icon: typeof Loader2; color: string; labelKey: string }> = {
+  running: { icon: Loader2, color: 'text-blue-500', labelKey: 'task.status.running' },
+  success: { icon: CheckCircle2, color: 'text-green-500', labelKey: 'task.status.success' },
+  failed:  { icon: XCircle, color: 'text-red-500', labelKey: 'task.status.failed' },
+  cancelled: { icon: AlertCircle, color: 'text-amber-500', labelKey: 'task.status.cancelled' },
 }
 
 function LogPanel({ logs }: { logs: string[] }) {
+  const { t } = useTranslation()
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [logs.length])
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <div className="text-[0.6875rem] font-medium text-black/50 mb-1">日志</div>
+      <div className="text-[0.6875rem] font-medium text-black/50 mb-1">{t('task.logs.title')}</div>
       <div
         className="flex-1 min-h-0 overflow-auto rounded-lg bg-black/[0.03] border border-black/[0.06] p-2 font-mono text-[0.625rem] leading-relaxed"
         style={{ scrollbarWidth: 'thin' }}
       >
-        {logs.length === 0 && <div className="text-black/30 text-center py-4">暂无日志</div>}
+        {logs.length === 0 && <div className="text-black/30 text-center py-4">{t('task.logs.empty')}</div>}
         {logs.map((line, i) => (
           <div key={i} className="py-0.5 text-black/70 break-all whitespace-pre-wrap">
             {line}
@@ -92,6 +95,7 @@ function useTaskId(windowId: string): string {
 }
 
 export default function TaskDetailWindow({ windowId }: { windowId: string }) {
+  const { t, i18n: i18next } = useTranslation()
   const taskId = useTaskId(windowId)
 
   // Use useShallow to do shallow comparison on the extracted fields,
@@ -110,13 +114,13 @@ export default function TaskDetailWindow({ windowId }: { windowId: string }) {
 
   const taskTitle = task?.title
   useEffect(() => {
-    if (taskTitle) useWindowStore.getState().updateWindowTitle(windowId, `任务详情 - ${taskTitle}`)
-  }, [taskTitle, windowId])
+    if (taskTitle) useWindowStore.getState().updateWindowTitle(windowId, t('task.detail.windowTitle', { title: taskTitle }))
+  }, [taskTitle, windowId, t])
 
   if (!task) {
     return (
       <div className="h-full flex items-center justify-center text-black/40 text-[0.75rem]">
-        任务不存在或已被清除
+        {t('task.detail.missing')}
       </div>
     )
   }
@@ -135,19 +139,19 @@ export default function TaskDetailWindow({ windowId }: { windowId: string }) {
         <StatusIcon className={`w-5 h-5 ${cfg.color} ${task.status === 'running' ? 'animate-spin' : ''} shrink-0`} />
         <div className="flex-1 min-w-0">
           <div className="text-[0.8125rem] font-semibold text-black/80 truncate">{task.title}</div>
-          <div className={`text-[0.6875rem] ${cfg.color}`}>{cfg.label}</div>
+          <div className={`text-[0.6875rem] ${cfg.color}`}>{t(cfg.labelKey)}</div>
         </div>
         <div className="flex gap-1 shrink-0">
           {task.status === 'running' && task.cancellable && (
             <button onClick={() => taskService.cancel(task.id)}
               className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.6875rem] text-red-600 hover:bg-red-50 transition-colors">
-              <X className="w-3.5 h-3.5" /> 取消
+              <X className="w-3.5 h-3.5" /> {t('task.actions.cancel')}
             </button>
           )}
           {task.status === 'failed' && (
             <button onClick={() => taskService.retry(task.id)}
               className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.6875rem] text-blue-600 hover:bg-blue-50 transition-colors">
-              <RotateCcw className="w-3.5 h-3.5" /> 重试
+              <RotateCcw className="w-3.5 h-3.5" /> {t('task.actions.retry')}
             </button>
           )}
         </div>
@@ -155,12 +159,12 @@ export default function TaskDetailWindow({ windowId }: { windowId: string }) {
 
       {/* Info grid */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[0.6875rem]">
-        <InfoRow label="任务 ID" value={task.id} />
-        <InfoRow label="类型" value={typeLabel[task.type] || task.type} />
-        <InfoRow label="创建时间" value={formatTime(task.createdAt)} />
-        <InfoRow label="耗时" value={formatDuration(task.createdAt, task.doneAt)} />
-        {task.doneAt && <InfoRow label="完成时间" value={formatTime(task.doneAt)} />}
-        {!isLogMode && task.message && <InfoRow label="信息" value={task.message} span />}
+        <InfoRow label={t('task.detail.fields.id')} value={task.id} />
+        <InfoRow label={t('task.detail.fields.type')} value={t(typeLabel[task.type] || task.type)} />
+        <InfoRow label={t('task.detail.fields.createdAt')} value={formatTime(task.createdAt, i18next.language)} />
+        <InfoRow label={t('task.detail.fields.duration')} value={formatDuration(task.createdAt, task.doneAt)} />
+        {task.doneAt && <InfoRow label={t('task.detail.fields.completedAt')} value={formatTime(task.doneAt, i18next.language)} />}
+        {!isLogMode && task.message && <InfoRow label={t('task.detail.fields.message')} value={task.message} span />}
       </div>
 
       {/* Progress (only for progress mode) */}
@@ -176,7 +180,7 @@ export default function TaskDetailWindow({ windowId }: { windowId: string }) {
                   {hasBytes
                     ? `${formatBytes(task.bytesCurrent ?? 0)} / ${formatBytes(task.bytesTotal ?? 0)}`
                     : (task.itemTotal ?? 0) > 0
-                      ? `${task.itemCurrent ?? 0} / ${task.itemTotal} 个项目`
+                      ? t('task.itemsProgress', { current: task.itemCurrent ?? 0, total: task.itemTotal })
                       : ''}
                 </span>
                 <span>
@@ -200,9 +204,10 @@ export default function TaskDetailWindow({ windowId }: { windowId: string }) {
 }
 
 function InfoRow({ label, value, span }: { label: string; value: string; span?: boolean }) {
+  const { t } = useTranslation()
   return (
     <div className={span ? 'col-span-2' : ''}>
-      <span className="text-black/40">{label}：</span>
+      <span className="text-black/40">{label}{t('task.detail.separator')}</span>
       <span className="text-black/70 break-all">{value}</span>
     </div>
   )
@@ -211,7 +216,7 @@ function InfoRow({ label, value, span }: { label: string; value: string; span?: 
 export function openTaskDetailWindow(taskId: string, taskTitle: string) {
   useWindowStore.getState().openChildWindow({
     type: 'taskDetail',
-    title: `任务详情 - ${taskTitle}`,
+    title: i18n.t('task.detail.windowTitle', { title: taskTitle }),
     component: (ctx: any) => <TaskDetailWindow windowId={ctx.win.id} />,
     size: { width: 480, height: 420 },
     initialState: { taskId },

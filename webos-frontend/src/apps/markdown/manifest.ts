@@ -1,9 +1,10 @@
+import i18n from '@/i18n'
 import { fsApi } from '@/lib/storageApi'
 import type { AppConfig } from '@/types'
 
 export const manifest: AppConfig = {
   id: 'markdown',
-  name: 'Markdown 阅读器',
+  name: 'i18n:apps.markdown.name',
   icon: 'BookOpen',
   gradient: 'from-slate-500 to-slate-700',
   shadow: 'shadow-slate-600/30',
@@ -16,7 +17,7 @@ export const manifest: AppConfig = {
   fileAssociations: [
     {
       extensions: ['.md', '.markdown', '.mdown', '.mkd'],
-      label: 'Markdown 阅读器',
+      label: 'i18n:apps.markdown.fileAssociations.markdown',
       icon: 'BookOpen',
     },
   ],
@@ -31,7 +32,7 @@ export const manifest: AppConfig = {
       })
       return { ok: true }
     } catch {
-      return { ok: false, message: '加载 Markdown 文件失败' }
+      return { ok: false, message: i18n.t('apps.markdown.errors.loadFailed') }
     }
   },
 }

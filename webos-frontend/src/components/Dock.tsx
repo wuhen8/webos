@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { getDockItems, getAppConfig, getAllApps, resolveIcon, saveAppOverride } from "@/config/appRegistry"
 import { dockItemContextMenu, githubDockContextMenu } from "@/config/contextMenus"
 import { useWindowStore, useProcessStore, useSettingsStore, useUIStore } from "@/stores"
@@ -8,6 +9,7 @@ import { Rocket, Github } from "lucide-react"
 import type { ContextMenuConfig } from "@/types"
 
 function Dock() {
+  const { t } = useTranslation()
   const windows = useWindowStore((s) => s.windows)
   const processes = useProcessStore((s) => s.processes)
   const activateWindow = useWindowStore((s) => s.activateWindow)
@@ -218,7 +220,7 @@ function Dock() {
         {
           id: 'dock-blank-header',
           type: 'header' as const,
-          label: '添加到 Dock',
+          label: t('dock.addToDock'),
         },
         ...hiddenApps.map(app => ({
           id: `dock-add-${app.id}`,
@@ -388,7 +390,7 @@ function Dock() {
                     boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                   }}
                 >
-                  启动台
+                  {t('launchpad.title')}
                 </div>
                 <div
                   className="absolute -bottom-[0.1875rem] left-1/2 -translate-x-1/2 w-[0.4375rem] h-[0.4375rem] rotate-45"
@@ -557,14 +559,14 @@ function Dock() {
                     items: [
                       {
                         id: 'dock-keep',
-                        label: '在 Dock 中保留',
+                        label: t('dock.keepInDock'),
                         icon: 'Star',
                         action: 'dock.keepInDock',
                       },
                       { id: 'dock-running-divider', type: 'divider' as const },
                       {
                         id: 'dock-quit-running',
-                        label: '退出',
+                        label: t('dock.quit'),
                         icon: 'LogOut',
                         action: 'dock.quit',
                         variant: 'danger' as const,

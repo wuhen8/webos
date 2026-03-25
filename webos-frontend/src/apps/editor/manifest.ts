@@ -1,9 +1,10 @@
 import { fsApi } from '@/lib/storageApi'
+import i18n from '@/i18n'
 import type { AppConfig, EditorTab } from '@/types'
 
 export const manifest: AppConfig = {
   id: 'editor',
-  name: '文本编辑器',
+  name: 'i18n:apps.editor.name',
   icon: 'FileCode',
   gradient: 'from-purple-400 to-purple-600',
   shadow: 'shadow-purple-500/30',
@@ -14,20 +15,20 @@ export const manifest: AppConfig = {
   dockOrder: 2,
   menus: [
     {
-      label: '文件',
+      label: 'i18n:apps.editor.menu.file',
       items: [
-        { label: '保存', shortcut: '⌘S', action: 'save' },
+        { label: 'i18n:apps.editor.menu.save', shortcut: '⌘S', action: 'save' },
       ],
     },
     {
-      label: '编辑',
+      label: 'i18n:apps.editor.menu.edit',
       items: [
-        { label: '撤销', shortcut: '⌘Z', action: 'undo' },
-        { label: '重做', shortcut: '⇧⌘Z', action: 'redo', dividerAfter: true },
-        { label: '剪切', shortcut: '⌘X', action: 'cut' },
-        { label: '复制', shortcut: '⌘C', action: 'copy' },
-        { label: '粘贴', shortcut: '⌘V', action: 'paste' },
-        { label: '全选', shortcut: '⌘A', action: 'selectAll' },
+        { label: 'i18n:apps.editor.menu.undo', shortcut: '⌘Z', action: 'undo' },
+        { label: 'i18n:apps.editor.menu.redo', shortcut: '⇧⌘Z', action: 'redo', dividerAfter: true },
+        { label: 'i18n:apps.editor.menu.cut', shortcut: '⌘X', action: 'cut' },
+        { label: 'i18n:apps.editor.menu.copy', shortcut: '⌘C', action: 'copy' },
+        { label: 'i18n:apps.editor.menu.paste', shortcut: '⌘V', action: 'paste' },
+        { label: 'i18n:apps.editor.menu.selectAll', shortcut: '⌘A', action: 'selectAll' },
       ],
     },
   ],
@@ -41,7 +42,7 @@ export const manifest: AppConfig = {
         '.pl', '.dockerfile', '.makefile','.md', '.gitignore',
         '.vlist', '.alist', '.m3u',
       ],
-      label: '文本编辑器',
+      label: 'i18n:apps.editor.fileAssociationLabel',
       icon: 'FileCode',
     },
   ],
@@ -49,7 +50,13 @@ export const manifest: AppConfig = {
     const nodeId = file.nodeId || 'local_1'
     const MAX_EDIT_SIZE = 16 * 1024 * 1024
     if (file.size > MAX_EDIT_SIZE) {
-      return { ok: false, message: `文件太大（${(file.size / 1024 / 1024).toFixed(1)}MB），不支持打开编辑，最大支持 16MB` }
+      return {
+        ok: false,
+        message: i18n.t('apps.editor.manifest.fileTooLarge', {
+          size: (file.size / 1024 / 1024).toFixed(1),
+          maxSize: 16,
+        }),
+      }
     }
 
     // Check for existing editor window
@@ -82,11 +89,11 @@ export const manifest: AppConfig = {
           file,
           content: data.content,
         })
-        ctx.updateWindowTitle(existing.id, `${newTabs.length} 个文件`)
+        ctx.updateWindowTitle(existing.id, i18n.t('apps.editor.store.titleMultiple', { count: newTabs.length }))
         ctx.activateWindow(existing.id)
         return { ok: true }
       } catch {
-        return { ok: false, message: '加载文件失败' }
+        return { ok: false, message: i18n.t('apps.editor.manifest.loadFailed') }
       }
     }
 
@@ -104,7 +111,7 @@ export const manifest: AppConfig = {
       })
       return { ok: true }
     } catch {
-      return { ok: false, message: '加载文件失败' }
+      return { ok: false, message: i18n.t('apps.editor.manifest.loadFailed') }
     }
   },
 }

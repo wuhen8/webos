@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { Search, Loader2 } from "lucide-react"
 import { useWindowStore, useProcessStore } from "@/stores"
 import { useFileManagerStore } from "@/apps/file-manager/store"
@@ -12,6 +13,7 @@ interface SpotlightSearchProps {
 }
 
 export function SpotlightSearch({ open, onClose }: SpotlightSearchProps) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<FileInfo[]>([])
   const [loading, setLoading] = useState(false)
@@ -197,7 +199,7 @@ export function SpotlightSearch({ open, onClose }: SpotlightSearchProps) {
               composingRef.current = false
               handleInputChange((e.target as HTMLInputElement).value)
             }}
-            placeholder="搜索文件..."
+            placeholder={t('spotlight.placeholder')}
             className="flex-1 bg-transparent text-[0.9375rem] text-black/90 placeholder:text-black/30 outline-none"
           />
           {query && (
@@ -205,7 +207,7 @@ export function SpotlightSearch({ open, onClose }: SpotlightSearchProps) {
               onClick={() => { setQuery(""); setResults([]); inputRef.current?.focus() }}
               className="text-[0.75rem] text-black/40 hover:text-black/60 px-1.5 py-0.5 rounded bg-black/[0.04] hover:bg-black/[0.08] transition-colors"
             >
-              清除
+              {t('spotlight.clear')}
             </button>
           )}
         </div>
@@ -259,13 +261,13 @@ export function SpotlightSearch({ open, onClose }: SpotlightSearchProps) {
         {/* Empty state */}
         {query && !loading && results.length === 0 && (
           <div className="py-8 text-center text-[0.8125rem] text-black/30">
-            未找到匹配的文件
+            {t('spotlight.noResults')}
           </div>
         )}
 
         {/* Footer hint */}
         <div className="flex items-center justify-between px-4 py-2 border-t border-black/[0.06] text-[0.6875rem] text-black/25">
-          <span>↑↓ 导航 · Enter 打开 · Esc 关闭</span>
+          <span>{t('spotlight.footerHint')}</span>
           <span>⌘K</span>
         </div>
       </div>

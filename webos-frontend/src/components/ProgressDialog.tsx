@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 
 interface ProgressDialogProps {
@@ -24,8 +25,9 @@ export function ProgressDialog({
   cancellable = false,
   onCancel,
 }: ProgressDialogProps) {
+  const { t } = useTranslation()
   const pct = progress != null ? Math.round(progress * 100) : null
-  const description = message || `${title}，请稍候。`
+  const description = message || t('task.progress.defaultMessage', { title })
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && cancellable && onCancel) onCancel() }}>
@@ -66,7 +68,7 @@ export function ProgressDialog({
                   <div className="h-full w-1/3 rounded-full bg-blue-400/60 animate-indeterminate" />
                 </div>
                 <div className="text-[0.75rem] text-black/40 text-right">
-                  处理中...
+                  {t('task.progress.processing')}
                 </div>
               </>
             )}
@@ -78,7 +80,7 @@ export function ProgressDialog({
                 onClick={onCancel}
                 className="h-8 rounded-md px-4 text-[0.8125rem] font-medium text-slate-700 bg-gradient-to-b from-white to-slate-100 shadow-[0_1px_2px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.8),0_0_0_0.5px_rgba(0,0,0,0.1)] hover:from-slate-50 hover:to-slate-150 active:from-slate-100 active:to-slate-200 active:scale-[0.98] transition-all duration-150"
               >
-                取消
+                {t('task.actions.cancel')}
               </button>
             </div>
           )}

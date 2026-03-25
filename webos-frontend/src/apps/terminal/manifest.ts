@@ -3,7 +3,7 @@ import type { TerminalTab } from '@/types'
 
 export const manifest: AppConfig = {
   id: 'terminal',
-  name: '终端',
+  name: 'i18n:apps.terminal.name',
   icon: 'TerminalSquare',
   gradient: 'from-gray-700 to-gray-900',
   shadow: 'shadow-gray-800/30',
@@ -15,11 +15,11 @@ export const manifest: AppConfig = {
   dockOrder: 3,
   menus: [
     {
-      label: 'Shell',
+      label: 'i18n:apps.terminal.menu.shell',
       items: [
-        { label: '新建窗口', shortcut: '⌘N', action: 'newTerminal' },
-        { label: '新建标签页', shortcut: '⌘T', action: 'newTerminalTab', dividerAfter: true },
-        { label: '管理快捷命令...', action: 'manageSnippets' },
+        { label: 'i18n:apps.terminal.menu.newWindow', shortcut: '⌘N', action: 'newTerminal' },
+        { label: 'i18n:apps.terminal.menu.newTab', shortcut: '⌘T', action: 'newTerminalTab', dividerAfter: true },
+        { label: 'i18n:apps.terminal.menu.manageSnippets', action: 'manageSnippets' },
       ],
     },
   ],

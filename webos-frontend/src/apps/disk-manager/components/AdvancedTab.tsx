@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import { HardDrive, ChevronDown, ChevronRight, Plus, Trash2, Activity, AlertTriangle, CheckCircle2, XCircle, Loader2, Shield } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { exec } from "@/lib/services"
@@ -8,7 +9,7 @@ import {
   formatBytes, formatPercent, formatHours, classifyDiskStatus, getFilesystemOptions,
   buildCreateVolumeCommands, buildExpandVolumeCommands, buildDeleteVolumeCommands, buildDeletePoolCommands,
   parseSmartJSON, smartAttrStatus,
-  raidLevels, parseRAIDArrays,
+  getRaidLevelsLocalized, parseRAIDArrays,
   buildCreateRAIDCommands, buildStopRAIDCommands, buildAddDiskToRAIDCommands,
   buildRemoveDiskFromRAIDCommands, buildCheckRAIDCommands, buildRepairRAIDCommands,
 } from "../utils"
@@ -28,16 +29,17 @@ interface Props {
   execCmd: (cmd: string, msg: string) => Promise<void>
 }
 
-const statusLabels: Record<string, { text: string; cls: string }> = {
-  "system-disk": { text: "系统盘", cls: "bg-blue-100 text-blue-700" },
-  "in-pool": { text: "存储池", cls: "bg-purple-100 text-purple-700" },
-  "has-partitions": { text: "有分区", cls: "bg-amber-100 text-amber-700" },
-  "available": { text: "可用", cls: "bg-emerald-100 text-emerald-700" },
-}
+const statusLabels = (t: (key: string) => string): Record<string, { text: string; cls: string }> => ({
+  "system-disk": { text: t('apps.diskManager.advanced.disks.status.systemDisk'), cls: "bg-blue-100 text-blue-700" },
+  "in-pool": { text: t('apps.diskManager.advanced.disks.status.inPool'), cls: "bg-purple-100 text-purple-700" },
+  "has-partitions": { text: t('apps.diskManager.advanced.disks.status.hasPartitions'), cls: "bg-amber-100 text-amber-700" },
+  "available": { text: t('apps.diskManager.advanced.disks.status.available'), cls: "bg-emerald-100 text-emerald-700" },
+})
 
 // ==================== Disks Sub-Tab ====================
 
 function DisksSection({ disks, volumeGroups, osType, onFormat, onCreatePartition, onDeletePartition, onMountPartition, onUnmountPartition }: Omit<Props, "execCmd" | "mountPoints">) {
+  const { t } = useTranslation()
   const [expandedDisk, setExpandedDisk] = useState<string | null>(null)
   const [formatDevice, setFormatDevice] = useState<string | null>(null)
   const [formatFs, setFormatFs] = useState("")
@@ -54,11 +56,11 @@ function DisksSection({ disks, volumeGroups, osType, onFormat, onCreatePartition
   return (
     <div className="space-y-2">
       {disks.length === 0 ? (
-        <div className="text-center py-8 text-slate-400 text-[0.75rem]">未检测到磁盘</div>
+        <div className="text-center py-8 text-slate-400 text-[0.75rem]">{t('apps.diskManager.advanced.disks.empty')}</div>
       ) : (
         disks.map((disk) => {
           const { status, poolName } = classifyDiskStatus(disk, volumeGroups)
-          const label = statusLabels[status]
+          const label = statusLabels(t)[status]
           const expanded = expandedDisk === disk.device
 
           return (
@@ -78,7 +80,7 @@ function DisksSection({ disks, volumeGroups, osType, onFormat, onCreatePartition
                     </span>
                   </div>
                   <div className="text-[0.6875rem] text-slate-400 truncate">
-                    {disk.model || "未知型号"} · {formatBytes(disk.size)}{disk.transport ? ` · ${disk.transport}` : ""}
+                    {disk.model || t('apps.diskManager.advanced.common.unknownModel')} · {formatBytes(disk.size)}{disk.transport ? ` · ${disk.transport}` : ""}
                   </div>
                 </div>
               </div>
@@ -89,7 +91,7 @@ function DisksSection({ disks, volumeGroups, osType, onFormat, onCreatePartition
                   {/* Partitions */}
                   {disk.partitions?.length > 0 && (
                     <div className="mt-3">
-                      <h4 className="text-[0.6875rem] font-medium text-slate-500 mb-2">分区</h4>
+                      <h4 className="text-[0.6875rem] font-medium text-slate-500 mb-2">{t('apps.diskManager.advanced.disks.partitionsTitle')}</h4>
                       <div className="space-y-1.5">
                         {disk.partitions.map((part, i) => (
                           <div key={part.device || `part-${i}`} className="bg-slate-50/80 rounded-lg px-3 py-2">
@@ -105,29 +107,29 @@ function DisksSection({ disks, volumeGroups, osType, onFormat, onCreatePartition
                                 <button
                                   className="text-[0.6875rem] text-slate-400 hover:text-blue-600 px-1.5 py-0.5 rounded hover:bg-blue-50"
                                   onClick={() => { setFormatDevice(formatDevice === part.device ? null : part.device); setFormatFs(defaultFs); setFormatLabel("") }}
-                                >格式化</button>
+                                >{t('apps.diskManager.advanced.disks.format')}</button>
                                 {/* Mount/Unmount */}
                                 {part.mountPoint ? (
                                   <button
                                     className="text-[0.6875rem] text-slate-400 hover:text-amber-600 px-1.5 py-0.5 rounded hover:bg-amber-50"
                                     onClick={() => useUIStore.getState().showConfirm({
-                                      title: "卸载分区",
-                                      description: `确定卸载 ${part.device} (${part.mountPoint})？`,
+                                      title: t('apps.diskManager.advanced.disks.unmountPartitionTitle'),
+                                      description: t('apps.diskManager.advanced.disks.unmountPartitionDescription', { device: part.device, mountPoint: part.mountPoint }),
                                       onConfirm: () => onUnmountPartition(part.device, part.mountPoint, false),
                                     })}
-                                  >卸载</button>
+                                  >{t('apps.diskManager.advanced.disks.unmount')}</button>
                                 ) : (
                                   <button
                                     className="text-[0.6875rem] text-slate-400 hover:text-emerald-600 px-1.5 py-0.5 rounded hover:bg-emerald-50"
                                     onClick={() => { setMountDevice(mountDevice === part.device ? null : part.device); setMountPoint(""); setMountPersist(false) }}
-                                  >挂载</button>
+                                  >{t('apps.diskManager.advanced.disks.mount')}</button>
                                 )}
                                 {/* Delete */}
                                 <button
                                   className="text-[0.6875rem] text-slate-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50"
                                   onClick={() => useUIStore.getState().showConfirm({
-                                    title: "删除分区",
-                                    description: `确定删除分区 ${part.device}？所有数据将丢失！`,
+                                    title: t('apps.diskManager.advanced.disks.deletePartitionTitle'),
+                                    description: t('apps.diskManager.advanced.disks.deletePartitionDescription', { device: part.device }),
                                     variant: 'destructive',
                                     onConfirm: () => onDeletePartition(part.device),
                                   })}
@@ -143,16 +145,16 @@ function DisksSection({ disks, volumeGroups, osType, onFormat, onCreatePartition
                                   {fsOptions.map((fs) => <option key={fs} value={fs}>{fs}</option>)}
                                 </select>
                                 <input type="text" value={formatLabel} onChange={(e) => setFormatLabel(e.target.value)}
-                                  placeholder="卷标(可选)" className="bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] w-24" />
+                                  placeholder={t('apps.diskManager.advanced.disks.volumeLabelOptional')} className="bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] w-24" />
                                 <Button size="sm" variant="destructive" className="h-7 text-[0.6875rem]" onClick={() => {
                                   useUIStore.getState().showConfirm({
-                                    title: "格式化分区",
-                                    description: `确定将 ${part.device} 格式化为 ${formatFs}？所有数据将丢失！`,
+                                    title: t('apps.diskManager.advanced.disks.formatPartitionTitle'),
+                                    description: t('apps.diskManager.advanced.disks.formatPartitionDescription', { device: part.device, fsType: formatFs }),
                                     variant: 'destructive',
                                     onConfirm: () => { onFormat(part.device, formatFs, formatLabel); setFormatDevice(null) },
                                   })
-                                }}>格式化</Button>
-                                <button className="text-slate-400 hover:text-slate-600 text-[0.6875rem]" onClick={() => setFormatDevice(null)}>取消</button>
+                                }}>{t('apps.diskManager.advanced.disks.format')}</Button>
+                                <button className="text-slate-400 hover:text-slate-600 text-[0.6875rem]" onClick={() => setFormatDevice(null)}>{t('common.cancel')}</button>
                               </div>
                             )}
 
@@ -163,13 +165,13 @@ function DisksSection({ disks, volumeGroups, osType, onFormat, onCreatePartition
                                   placeholder="/mnt/xxx" className="bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] w-32 font-mono" />
                                 <label className="flex items-center gap-1 text-[0.6875rem] text-slate-500">
                                   <input type="checkbox" checked={mountPersist} onChange={(e) => setMountPersist(e.target.checked)} className="rounded" />
-                                  写入 fstab
+                                  {t('apps.diskManager.advanced.disks.writeToFstab')}
                                 </label>
                                 <Button size="sm" className="h-7 text-[0.6875rem]" disabled={!mountPoint} onClick={() => {
                                   onMountPartition(part.device, mountPoint, part.fsType, mountPersist, part.uuid)
                                   setMountDevice(null)
-                                }}>挂载</Button>
-                                <button className="text-slate-400 hover:text-slate-600 text-[0.6875rem]" onClick={() => setMountDevice(null)}>取消</button>
+                                }}>{t('apps.diskManager.advanced.disks.mount')}</Button>
+                                <button className="text-slate-400 hover:text-slate-600 text-[0.6875rem]" onClick={() => setMountDevice(null)}>{t('common.cancel')}</button>
                               </div>
                             )}
                           </div>
@@ -183,11 +185,11 @@ function DisksSection({ disks, volumeGroups, osType, onFormat, onCreatePartition
                     <div className="mt-3">
                       {partDevice !== disk.device ? (
                         <Button variant="outline" size="sm" onClick={() => { setPartDevice(disk.device); setPartSize("100%"); setPartFs(defaultFs) }}>
-                          <Plus className="w-3.5 h-3.5" /> 创建分区
+                          <Plus className="w-3.5 h-3.5" /> {t('apps.diskManager.advanced.disks.createPartition')}
                         </Button>
                       ) : (
                         <div className="flex items-center gap-2 text-[0.75rem]">
-                          <span className="text-slate-500">大小:</span>
+                          <span className="text-slate-500">{t('apps.diskManager.advanced.disks.size')}:</span>
                           <input type="text" value={partSize} onChange={(e) => setPartSize(e.target.value)}
                             className="bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] w-20" />
                           <select value={partFs} onChange={(e) => setPartFs(e.target.value)}
@@ -196,13 +198,13 @@ function DisksSection({ disks, volumeGroups, osType, onFormat, onCreatePartition
                           </select>
                           <Button size="sm" className="h-7 text-[0.6875rem]" onClick={() => {
                             useUIStore.getState().showConfirm({
-                              title: "创建分区",
-                              description: `将在 ${disk.device} 上创建 GPT 分区表并创建分区，磁盘数据将被清除。`,
+                              title: t('apps.diskManager.advanced.disks.createPartitionTitle'),
+                              description: t('apps.diskManager.advanced.disks.createPartitionDescription', { device: disk.device }),
                               variant: 'destructive',
                               onConfirm: () => { onCreatePartition(disk.device, partSize, partFs); setPartDevice(null) },
                             })
-                          }}>创建</Button>
-                          <button className="text-slate-400 hover:text-slate-600 text-[0.6875rem]" onClick={() => setPartDevice(null)}>取消</button>
+                          }}>{t('apps.diskManager.advanced.disks.create')}</Button>
+                          <button className="text-slate-400 hover:text-slate-600 text-[0.6875rem]" onClick={() => setPartDevice(null)}>{t('common.cancel')}</button>
                         </div>
                       )}
                     </div>
@@ -220,6 +222,7 @@ function DisksSection({ disks, volumeGroups, osType, onFormat, onCreatePartition
 // ==================== LVM Sub-Tab ====================
 
 function LVMSection({ volumeGroups, osType, execCmd }: Pick<Props, "volumeGroups" | "osType" | "execCmd">) {
+  const { t } = useTranslation()
   const [expandedVG, setExpandedVG] = useState<string | null>(null)
   const [createLV, setCreateLV] = useState<string | null>(null)
   const [lvName, setLvName] = useState("")
@@ -234,7 +237,7 @@ function LVMSection({ volumeGroups, osType, execCmd }: Pick<Props, "volumeGroups
   return (
     <div className="space-y-2">
       {volumeGroups.length === 0 ? (
-        <div className="text-center py-8 text-slate-400 text-[0.75rem]">暂无 LVM 卷组</div>
+        <div className="text-center py-8 text-slate-400 text-[0.75rem]">{t('apps.diskManager.advanced.lvm.empty')}</div>
       ) : (
         volumeGroups.map((vg) => {
           const expanded = expandedVG === vg.name
@@ -251,7 +254,7 @@ function LVMSection({ volumeGroups, osType, execCmd }: Pick<Props, "volumeGroups
                     <span className="text-[0.6875rem] text-slate-400">{vg.pvCount} PV · {vg.lvCount} LV</span>
                   </div>
                   <div className="text-[0.6875rem] text-slate-400">
-                    总计 {formatBytes(vg.size)} · 空闲 {formatBytes(vg.free)}
+                    {t('apps.diskManager.advanced.lvm.total')} {formatBytes(vg.size)} · {t('apps.diskManager.advanced.lvm.free')} {formatBytes(vg.free)}
                   </div>
                 </div>
               </div>
@@ -260,14 +263,14 @@ function LVMSection({ volumeGroups, osType, execCmd }: Pick<Props, "volumeGroups
                 <div className="px-4 pb-4 border-t border-slate-100">
                   {/* PVs */}
                   <div className="mt-3">
-                    <h4 className="text-[0.6875rem] font-medium text-slate-500 mb-2">物理卷 (PV)</h4>
+                    <h4 className="text-[0.6875rem] font-medium text-slate-500 mb-2">{t('apps.diskManager.advanced.lvm.physicalVolumes')}</h4>
                     <div className="space-y-1">
                       {(vg.pvs || []).map((pv, i) => (
                         <div key={pv.device || `pv-${i}`} className="flex items-center gap-3 text-[0.75rem] bg-slate-50/80 rounded-lg px-3 py-2">
                           <span className="text-slate-700 font-mono">{pv.device}</span>
                           <div className="flex-1" />
                           <span className="text-slate-500">{formatBytes(pv.size)}</span>
-                          <span className="text-slate-400">空闲 {formatBytes(pv.free)}</span>
+                          <span className="text-slate-400">{t('apps.diskManager.advanced.lvm.free')} {formatBytes(pv.free)}</span>
                         </div>
                       ))}
                     </div>
@@ -275,7 +278,7 @@ function LVMSection({ volumeGroups, osType, execCmd }: Pick<Props, "volumeGroups
 
                   {/* LVs */}
                   <div className="mt-3">
-                    <h4 className="text-[0.6875rem] font-medium text-slate-500 mb-2">逻辑卷 (LV)</h4>
+                    <h4 className="text-[0.6875rem] font-medium text-slate-500 mb-2">{t('apps.diskManager.advanced.lvm.logicalVolumes')}</h4>
                     <div className="space-y-1">
                       {(vg.lvs || []).map((lv, i) => (
                         <div key={lv.path || `lv-${i}`} className="bg-slate-50/80 rounded-lg px-3 py-2">
@@ -290,16 +293,18 @@ function LVMSection({ volumeGroups, osType, execCmd }: Pick<Props, "volumeGroups
                             <button
                               className="text-[0.6875rem] text-slate-400 hover:text-blue-600 px-1.5 py-0.5 rounded hover:bg-blue-50"
                               onClick={() => { setExpandLV(expandLV === lv.path ? null : lv.path); setExpandSize("+100%FREE") }}
-                            >扩展</button>
+                            >{t('apps.diskManager.advanced.lvm.expand')}</button>
                             <button
                               className="text-[0.6875rem] text-slate-400 hover:text-red-600 px-1.5 py-0.5 rounded hover:bg-red-50"
                               onClick={() => {
                                 const cmd = buildDeleteVolumeCommands(lv.path, lv.mountPoint)
                                 useUIStore.getState().showConfirm({
-                                  title: "删除逻辑卷",
-                                  description: `确定删除逻辑卷 ${lv.name} (${lv.path})？${lv.mountPoint ? `将卸载 ${lv.mountPoint} 并从 fstab 移除。` : ""}所有数据将丢失！`,
+                                  title: t('apps.diskManager.advanced.lvm.deleteVolumeTitle'),
+                                  description: lv.mountPoint
+                                    ? t('apps.diskManager.advanced.lvm.deleteVolumeDescriptionWithMount', { name: lv.name, path: lv.path, mountPoint: lv.mountPoint })
+                                    : t('apps.diskManager.advanced.lvm.deleteVolumeDescription', { name: lv.name, path: lv.path }),
                                   variant: 'destructive',
-                                  onConfirm: () => execCmd(cmd, "逻辑卷删除成功"),
+                                  onConfirm: () => execCmd(cmd, t('apps.diskManager.advanced.lvm.deleteVolumeSuccess')),
                                 })
                               }}
                             ><Trash2 className="w-3 h-3" /></button>
@@ -307,16 +312,16 @@ function LVMSection({ volumeGroups, osType, execCmd }: Pick<Props, "volumeGroups
                           {expandLV === lv.path && (
                             <div className="mt-2 flex items-center gap-2 text-[0.75rem]">
                               <input type="text" value={expandSize} onChange={(e) => setExpandSize(e.target.value)}
-                                placeholder="+100%FREE 或 +10G" className="bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] w-32" />
+                                placeholder={t('apps.diskManager.advanced.lvm.expandPlaceholder')} className="bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] w-32" />
                               <Button size="sm" className="h-7 text-[0.6875rem]" onClick={() => {
                                 const cmd = buildExpandVolumeCommands(lv.path, expandSize, lv.fsType)
                                 useUIStore.getState().showConfirm({
-                                  title: "扩展逻辑卷",
-                                  description: `将 ${lv.name} 扩展 ${expandSize}`,
-                                  onConfirm: () => { execCmd(cmd, "逻辑卷扩展成功"); setExpandLV(null) },
+                                  title: t('apps.diskManager.advanced.lvm.expandVolumeTitle'),
+                                  description: t('apps.diskManager.advanced.lvm.expandVolumeDescription', { name: lv.name, size: expandSize }),
+                                  onConfirm: () => { execCmd(cmd, t('apps.diskManager.advanced.lvm.expandVolumeSuccess')); setExpandLV(null) },
                                 })
-                              }}>扩展</Button>
-                              <button className="text-slate-400 hover:text-slate-600 text-[0.6875rem]" onClick={() => setExpandLV(null)}>取消</button>
+                              }}>{t('apps.diskManager.advanced.lvm.expand')}</Button>
+                              <button className="text-slate-400 hover:text-slate-600 text-[0.6875rem]" onClick={() => setExpandLV(null)}>{t('common.cancel')}</button>
                             </div>
                           )}
                         </div>
@@ -329,58 +334,58 @@ function LVMSection({ volumeGroups, osType, execCmd }: Pick<Props, "volumeGroups
                     {createLV !== vg.name ? (
                       <>
                         <Button variant="outline" size="sm" onClick={() => { setCreateLV(vg.name); setLvName(""); setLvSize("100%FREE"); setLvFs(defaultFs); setLvMount("") }}>
-                          <Plus className="w-3.5 h-3.5" /> 创建逻辑卷
+                          <Plus className="w-3.5 h-3.5" /> {t('apps.diskManager.advanced.lvm.createVolume')}
                         </Button>
                         <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200" onClick={() => {
                           const lvs = (vg.lvs || []).map((lv) => ({ path: lv.path, mountPoint: lv.mountPoint || undefined }))
                           const pvDevices = (vg.pvs || []).map((pv) => pv.device)
                           const cmd = buildDeletePoolCommands(vg.name, lvs, pvDevices)
                           useUIStore.getState().showConfirm({
-                            title: "删除卷组",
-                            description: `确定删除卷组 ${vg.name}？将移除所有逻辑卷（${vg.lvCount} 个）和物理卷（${vg.pvCount} 个），所有数据将丢失！`,
+                            title: t('apps.diskManager.advanced.lvm.deleteVolumeGroupTitle'),
+                            description: t('apps.diskManager.advanced.lvm.deleteVolumeGroupDescription', { name: vg.name, lvCount: vg.lvCount, pvCount: vg.pvCount }),
                             variant: 'destructive',
-                            onConfirm: () => execCmd(cmd, "卷组删除成功"),
+                            onConfirm: () => execCmd(cmd, t('apps.diskManager.advanced.lvm.deleteVolumeGroupSuccess')),
                           })
                         }}>
-                          <Trash2 className="w-3.5 h-3.5" /> 删除卷组
+                          <Trash2 className="w-3.5 h-3.5" /> {t('apps.diskManager.advanced.lvm.deleteVolumeGroup')}
                         </Button>
                       </>
                     ) : (
                       <div className="bg-blue-50/50 rounded-lg border border-blue-200/60 p-3 space-y-2">
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="text-[0.6875rem] text-slate-500">名称</label>
+                            <label className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.lvm.name')}</label>
                             <input type="text" value={lvName} onChange={(e) => setLvName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
                               placeholder="lv_name" className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] mt-0.5" />
                           </div>
                           <div>
-                            <label className="text-[0.6875rem] text-slate-500">大小</label>
+                            <label className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.lvm.size')}</label>
                             <input type="text" value={lvSize} onChange={(e) => setLvSize(e.target.value)}
-                              placeholder="100%FREE 或 10G" className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] mt-0.5" />
+                              placeholder={t('apps.diskManager.advanced.lvm.sizePlaceholder')} className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] mt-0.5" />
                           </div>
                           <div>
-                            <label className="text-[0.6875rem] text-slate-500">文件系统</label>
+                            <label className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.lvm.filesystem')}</label>
                             <select value={lvFs} onChange={(e) => setLvFs(e.target.value)}
                               className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] mt-0.5">
                               {fsOptions.map((fs) => <option key={fs} value={fs}>{fs}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className="text-[0.6875rem] text-slate-500">挂载点</label>
+                            <label className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.lvm.mountPoint')}</label>
                             <input type="text" value={lvMount} onChange={(e) => setLvMount(e.target.value)}
                               placeholder="/mnt/xxx" className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] mt-0.5 font-mono" />
                           </div>
                         </div>
                         <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" className="h-7 text-[0.6875rem]" onClick={() => setCreateLV(null)}>取消</Button>
+                          <Button variant="outline" size="sm" className="h-7 text-[0.6875rem]" onClick={() => setCreateLV(null)}>{t('common.cancel')}</Button>
                           <Button size="sm" className="h-7 text-[0.6875rem]" disabled={!lvName || !lvMount} onClick={() => {
                             const cmd = buildCreateVolumeCommands(vg.name, lvName, lvSize, lvFs, lvMount)
                             useUIStore.getState().showConfirm({
-                              title: "创建逻辑卷",
-                              description: `在 ${vg.name} 中创建逻辑卷 ${lvName} (${lvSize})`,
-                              onConfirm: () => { execCmd(cmd, "逻辑卷创建成功"); setCreateLV(null) },
+                              title: t('apps.diskManager.advanced.lvm.createVolumeTitle'),
+                              description: t('apps.diskManager.advanced.lvm.createVolumeDescription', { vgName: vg.name, lvName, size: lvSize }),
+                              onConfirm: () => { execCmd(cmd, t('apps.diskManager.advanced.lvm.createVolumeSuccess')); setCreateLV(null) },
                             })
-                          }}>创建</Button>
+                          }}>{t('apps.diskManager.advanced.disks.create')}</Button>
                         </div>
                       </div>
                     )}
@@ -398,6 +403,7 @@ function LVMSection({ volumeGroups, osType, execCmd }: Pick<Props, "volumeGroups
 // ==================== S.M.A.R.T Sub-Tab ====================
 
 function SmartSection({ disks }: { disks: DiskInfo[] }) {
+  const { t } = useTranslation()
   const [selectedDisk, setSelectedDisk] = useState("")
   const [smartInfo, setSmartInfo] = useState<SmartInfo | null>(null)
   const [smartLoading, setSmartLoading] = useState(false)
@@ -434,9 +440,9 @@ function SmartSection({ disks }: { disks: DiskInfo[] }) {
           onChange={(e) => e.target.value && fetchSmart(e.target.value)}
           className="text-[0.75rem] bg-white/80 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-300"
         >
-          <option value="">选择磁盘...</option>
+          <option value="">{t('apps.diskManager.advanced.smart.selectDisk')}</option>
           {disks.map((d, i) => (
-            <option key={d.device || `disk-${i}`} value={d.device}>{d.device} ({d.model || "未知"})</option>
+            <option key={d.device || `disk-${i}`} value={d.device}>{d.device} ({d.model || t('apps.diskManager.advanced.common.unknownModel')})</option>
           ))}
         </select>
         {smartLoading && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
@@ -448,33 +454,33 @@ function SmartSection({ disks }: { disks: DiskInfo[] }) {
           {!smartInfo.available ? (
             <div className="text-center py-4 text-slate-400 text-[0.75rem]">
               <Activity className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-              此磁盘不支持 S.M.A.R.T 或数据不可用
+              {t('apps.diskManager.advanced.smart.unavailable')}
             </div>
           ) : (
             <>
               {/* Health overview */}
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="text-[0.6875rem] text-slate-500">健康状态</div>
+                  <div className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.smart.healthStatus')}</div>
                   <div className={`text-[0.8125rem] font-semibold ${smartInfo.healthy ? "text-emerald-600" : "text-red-600"}`}>
-                    {smartInfo.healthy ? "健康" : "异常"}
+                    {smartInfo.healthy ? t('apps.diskManager.advanced.smart.healthy') : t('apps.diskManager.advanced.smart.unhealthy')}
                   </div>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="text-[0.6875rem] text-slate-500">温度</div>
+                  <div className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.smart.temperature')}</div>
                   <div className="text-[0.8125rem] font-semibold text-slate-700">{smartInfo.temperature}°C</div>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="text-[0.6875rem] text-slate-500">通电时间</div>
+                  <div className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.smart.powerOnHours')}</div>
                   <div className="text-[0.8125rem] font-semibold text-slate-700">{formatHours(smartInfo.powerOnHours)}</div>
                 </div>
               </div>
 
               {/* Device info */}
               <div className="grid grid-cols-3 gap-3 mb-4 text-[0.75rem]">
-                <div><span className="text-slate-500">型号: </span><span className="text-slate-700">{smartInfo.model}</span></div>
-                <div><span className="text-slate-500">序列号: </span><span className="text-slate-700 font-mono">{smartInfo.serial}</span></div>
-                <div><span className="text-slate-500">固件: </span><span className="text-slate-700">{smartInfo.firmware}</span></div>
+                <div><span className="text-slate-500">{t('apps.diskManager.advanced.smart.model')}: </span><span className="text-slate-700">{smartInfo.model}</span></div>
+                <div><span className="text-slate-500">{t('apps.diskManager.advanced.smart.serial')}: </span><span className="text-slate-700 font-mono">{smartInfo.serial}</span></div>
+                <div><span className="text-slate-500">{t('apps.diskManager.advanced.smart.firmware')}: </span><span className="text-slate-700">{smartInfo.firmware}</span></div>
               </div>
 
               {/* Attributes table */}
@@ -482,13 +488,13 @@ function SmartSection({ disks }: { disks: DiskInfo[] }) {
                 <table className="w-full text-[0.6875rem]">
                   <thead>
                     <tr className="border-b border-slate-200/60">
-                      <th className="text-left py-1.5 px-2 font-medium text-slate-500">状态</th>
-                      <th className="text-left py-1.5 px-2 font-medium text-slate-500">ID</th>
-                      <th className="text-left py-1.5 px-2 font-medium text-slate-500">属性</th>
-                      <th className="text-right py-1.5 px-2 font-medium text-slate-500">当前值</th>
-                      <th className="text-right py-1.5 px-2 font-medium text-slate-500">最差值</th>
-                      <th className="text-right py-1.5 px-2 font-medium text-slate-500">阈值</th>
-                      <th className="text-right py-1.5 px-2 font-medium text-slate-500">原始值</th>
+                      <th className="text-left py-1.5 px-2 font-medium text-slate-500">{t('apps.diskManager.advanced.smart.table.status')}</th>
+                      <th className="text-left py-1.5 px-2 font-medium text-slate-500">{t('apps.diskManager.advanced.smart.table.id')}</th>
+                      <th className="text-left py-1.5 px-2 font-medium text-slate-500">{t('apps.diskManager.advanced.smart.table.attribute')}</th>
+                      <th className="text-right py-1.5 px-2 font-medium text-slate-500">{t('apps.diskManager.advanced.smart.table.current')}</th>
+                      <th className="text-right py-1.5 px-2 font-medium text-slate-500">{t('apps.diskManager.advanced.smart.table.worst')}</th>
+                      <th className="text-right py-1.5 px-2 font-medium text-slate-500">{t('apps.diskManager.advanced.smart.table.threshold')}</th>
+                      <th className="text-right py-1.5 px-2 font-medium text-slate-500">{t('apps.diskManager.advanced.smart.table.raw')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -519,6 +525,8 @@ function SmartSection({ disks }: { disks: DiskInfo[] }) {
 // ==================== RAID Sub-Tab ====================
 
 function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" | "execCmd">) {
+  const { t } = useTranslation()
+  const raidLevels = getRaidLevelsLocalized(t)
   const [arrays, setArrays] = useState<RAIDArray[]>([])
   const [loading, setLoading] = useState(false)
   const [expandedArray, setExpandedArray] = useState<string | null>(null)
@@ -559,7 +567,7 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
     return status === "available" || status === "has-partitions"
   })
 
-  const selectedLevel = raidLevels.find((l) => l.value === raidLevel)
+  const selectedLevel = raidLevels.find((l: ReturnType<typeof getRaidLevelsLocalized>[number]) => l.value === raidLevel)
   const canCreate = selectedDevices.length >= (selectedLevel?.minDisks || 2) && arrayName
 
   const stateColor = (state: string) => {
@@ -582,47 +590,47 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={fetchArrays} disabled={loading}>
           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
-          刷新 RAID
+          {t('apps.diskManager.advanced.raid.refresh')}
         </Button>
         {osType === "linux" && (
           <Button variant="outline" size="sm" onClick={() => { setShowCreate(!showCreate); setSelectedDevices([]); setArrayName("md0"); setRaidLevel("1"); setRaidMount("") }}>
-            <Plus className="w-3.5 h-3.5" /> 创建阵列
+            <Plus className="w-3.5 h-3.5" /> {t('apps.diskManager.advanced.raid.createArray')}
           </Button>
         )}
       </div>
 
       {osType !== "linux" && (
-        <div className="text-center py-8 text-slate-400 text-[0.75rem]">RAID 管理仅支持 Linux (mdadm)</div>
+        <div className="text-center py-8 text-slate-400 text-[0.75rem]">{t('apps.diskManager.advanced.raid.linuxOnly')}</div>
       )}
 
       {/* Create RAID form */}
       {showCreate && osType === "linux" && (
         <div className="bg-blue-50/50 rounded-xl border border-blue-200/60 p-4 space-y-3">
-          <div className="text-[0.8125rem] font-medium text-slate-700">创建 RAID 阵列</div>
+          <div className="text-[0.8125rem] font-medium text-slate-700">{t('apps.diskManager.advanced.raid.createArrayTitle')}</div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[0.6875rem] text-slate-500">阵列名称</label>
+              <label className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.raid.arrayName')}</label>
               <input type="text" value={arrayName} onChange={(e) => setArrayName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
                 placeholder="md0" className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] mt-0.5 font-mono" />
             </div>
             <div>
-              <label className="text-[0.6875rem] text-slate-500">RAID 级别</label>
+              <label className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.raid.level')}</label>
               <select value={raidLevel} onChange={(e) => setRaidLevel(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] mt-0.5">
-                {raidLevels.map((l) => (
+                {raidLevels.map((l: ReturnType<typeof getRaidLevelsLocalized>[number]) => (
                   <option key={l.value} value={l.value}>{l.label} - {l.desc}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="text-[0.6875rem] text-slate-500">文件系统</label>
+              <label className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.raid.filesystem')}</label>
               <select value={raidFs} onChange={(e) => setRaidFs(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] mt-0.5">
                 {fsOptions.map((fs) => <option key={fs} value={fs}>{fs}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[0.6875rem] text-slate-500">挂载点 (可选)</label>
+              <label className="text-[0.6875rem] text-slate-500">{t('apps.diskManager.advanced.raid.mountPointOptional')}</label>
               <input type="text" value={raidMount} onChange={(e) => setRaidMount(e.target.value)}
                 placeholder="/mnt/raid" className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem] mt-0.5 font-mono" />
             </div>
@@ -631,11 +639,11 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
           {/* Disk selection */}
           <div>
             <label className="text-[0.6875rem] text-slate-500 mb-1 block">
-              选择磁盘 (至少 {selectedLevel?.minDisks || 2} 块，已选 {selectedDevices.length})
+              {t('apps.diskManager.advanced.raid.selectDisks', { minDisks: selectedLevel?.minDisks || 2, selectedCount: selectedDevices.length })}
             </label>
             <div className="space-y-1 max-h-40 overflow-auto">
               {availableDisks.length === 0 ? (
-                <div className="text-[0.6875rem] text-slate-400 py-2">无可用磁盘</div>
+                <div className="text-[0.6875rem] text-slate-400 py-2">{t('apps.diskManager.advanced.raid.noAvailableDisks')}</div>
               ) : (
                 availableDisks.map((d) => (
                   <label key={d.device} className="flex items-center gap-2 text-[0.75rem] bg-white/80 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-slate-50">
@@ -643,7 +651,7 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
                       onChange={(e) => setSelectedDevices(e.target.checked ? [...selectedDevices, d.device] : selectedDevices.filter((x) => x !== d.device))}
                       className="rounded" />
                     <span className="font-mono text-slate-700">{d.device}</span>
-                    <span className="text-slate-400">{d.model || "未知"}</span>
+                    <span className="text-slate-400">{d.model || t('apps.diskManager.advanced.common.unknownModel')}</span>
                     <span className="text-slate-400">{formatBytes(d.size)}</span>
                   </label>
                 ))
@@ -652,16 +660,16 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" className="h-7 text-[0.6875rem]" onClick={() => setShowCreate(false)}>取消</Button>
+            <Button variant="outline" size="sm" className="h-7 text-[0.6875rem]" onClick={() => setShowCreate(false)}>{t('common.cancel')}</Button>
             <Button size="sm" className="h-7 text-[0.6875rem]" disabled={!canCreate} onClick={() => {
               const cmd = buildCreateRAIDCommands(raidLevel, selectedDevices, arrayName, raidFs, raidMount)
               useUIStore.getState().showConfirm({
-                title: "创建 RAID 阵列",
-                description: `将使用 ${selectedDevices.length} 块磁盘创建 ${selectedLevel?.label} 阵列 /dev/${arrayName}。所选磁盘数据将被清除！`,
+                title: t('apps.diskManager.advanced.raid.createArrayTitle'),
+                description: t('apps.diskManager.advanced.raid.createArrayDescription', { count: selectedDevices.length, level: selectedLevel?.label || raidLevel, device: `/dev/${arrayName}` }),
                 variant: "destructive",
-                onConfirm: () => { execCmd(cmd, "RAID 阵列创建成功"); setShowCreate(false) },
+                onConfirm: () => { execCmd(cmd, t('apps.diskManager.advanced.raid.createArraySuccess')); setShowCreate(false) },
               })
-            }}>创建</Button>
+            }}>{t('apps.diskManager.advanced.disks.create')}</Button>
           </div>
         </div>
       )}
@@ -684,8 +692,8 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
                   <span className={`text-[0.625rem] px-1.5 py-0.5 rounded-full font-medium ${stateColor(arr.state)}`}>{arr.state}</span>
                 </div>
                 <div className="text-[0.6875rem] text-slate-400">
-                  {formatBytes(arr.size)} · {arr.activeDevices}/{arr.totalDevices} 设备
-                  {arr.failedDevices > 0 && <span className="text-red-500 ml-1">· {arr.failedDevices} 故障</span>}
+                  {formatBytes(arr.size)} · {t('apps.diskManager.advanced.raid.devicesCount', { active: arr.activeDevices, total: arr.totalDevices })}
+                  {arr.failedDevices > 0 && <span className="text-red-500 ml-1">· {t('apps.diskManager.advanced.raid.failedCount', { count: arr.failedDevices })}</span>}
                   {arr.syncPercent != null && arr.syncPercent > 0 && <span className="text-blue-500 ml-1">· {arr.syncAction} {arr.syncPercent.toFixed(1)}%</span>}
                   {arr.mountPoint && <span className="ml-1">· {arr.mountPoint}</span>}
                 </div>
@@ -699,7 +707,7 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
                   <div className="mt-3">
                     <div className="flex items-center gap-2 text-[0.6875rem] text-slate-500 mb-1">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      {arr.syncAction} 进度: {arr.syncPercent.toFixed(1)}%
+                      {t('apps.diskManager.advanced.raid.syncProgress', { action: arr.syncAction, percent: arr.syncPercent.toFixed(1) })}
                     </div>
                     <div className="h-2 bg-slate-100 rounded-full">
                       <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${arr.syncPercent}%` }} />
@@ -709,7 +717,7 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
 
                 {/* Members */}
                 <div className="mt-3">
-                  <h4 className="text-[0.6875rem] font-medium text-slate-500 mb-2">成员磁盘</h4>
+                  <h4 className="text-[0.6875rem] font-medium text-slate-500 mb-2">{t('apps.diskManager.advanced.raid.memberDisks')}</h4>
                   <div className="space-y-1">
                     {arr.members.map((m, i) => (
                       <div key={m.device || `m-${i}`} className="flex items-center gap-3 text-[0.75rem] bg-slate-50/80 rounded-lg px-3 py-2">
@@ -722,11 +730,11 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
                             onClick={() => {
                               const cmd = buildRemoveDiskFromRAIDCommands(arr.device, m.device)
                               useUIStore.getState().showConfirm({
-                                title: "移除故障盘",
-                                description: `从 ${arr.device} 中移除故障磁盘 ${m.device}`,
-                                onConfirm: () => execCmd(cmd, "故障盘已移除"),
+                                title: t('apps.diskManager.advanced.raid.removeFaultyDiskTitle'),
+                                description: t('apps.diskManager.advanced.raid.removeFaultyDiskDescription', { array: arr.device, device: m.device }),
+                                onConfirm: () => execCmd(cmd, t('apps.diskManager.advanced.raid.removeFaultyDiskSuccess')),
                               })
-                            }}>移除</button>
+                            }}>{t('apps.diskManager.advanced.raid.remove')}</button>
                         )}
                       </div>
                     ))}
@@ -738,13 +746,13 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
                   {/* Add disk */}
                   {addDiskArray !== arr.device ? (
                     <Button variant="outline" size="sm" onClick={() => { setAddDiskArray(arr.device); setAddDiskDevice("") }}>
-                      <Plus className="w-3.5 h-3.5" /> 添加磁盘
+                      <Plus className="w-3.5 h-3.5" /> {t('apps.diskManager.advanced.raid.addDisk')}
                     </Button>
                   ) : (
                     <div className="flex items-center gap-2">
                       <select value={addDiskDevice} onChange={(e) => setAddDiskDevice(e.target.value)}
                         className="bg-white border border-slate-200 rounded px-2 py-1 text-[0.6875rem]">
-                        <option value="">选择磁盘...</option>
+                        <option value="">{t('apps.diskManager.advanced.raid.selectDiskPlaceholder')}</option>
                         {availableDisks.filter((d) => !arr.members.some((m) => m.device === d.device)).map((d) => (
                           <option key={d.device} value={d.device}>{d.device} ({formatBytes(d.size)})</option>
                         ))}
@@ -752,30 +760,30 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
                       <Button size="sm" className="h-7 text-[0.6875rem]" disabled={!addDiskDevice} onClick={() => {
                         const cmd = buildAddDiskToRAIDCommands(arr.device, addDiskDevice)
                         useUIStore.getState().showConfirm({
-                          title: "添加磁盘到 RAID",
-                          description: `将 ${addDiskDevice} 添加到 ${arr.device}`,
-                          onConfirm: () => { execCmd(cmd, "磁盘已添加"); setAddDiskArray(null) },
+                          title: t('apps.diskManager.advanced.raid.addDiskTitle'),
+                          description: t('apps.diskManager.advanced.raid.addDiskDescription', { device: addDiskDevice, array: arr.device }),
+                          onConfirm: () => { execCmd(cmd, t('apps.diskManager.advanced.raid.addDiskSuccess')); setAddDiskArray(null) },
                         })
-                      }}>添加</Button>
-                      <button className="text-slate-400 hover:text-slate-600 text-[0.6875rem]" onClick={() => setAddDiskArray(null)}>取消</button>
+                      }}>{t('apps.diskManager.advanced.raid.add')}</Button>
+                      <button className="text-slate-400 hover:text-slate-600 text-[0.6875rem]" onClick={() => setAddDiskArray(null)}>{t('common.cancel')}</button>
                     </div>
                   )}
 
                   {/* Check */}
                   <Button variant="outline" size="sm" onClick={() => {
                     const cmd = buildCheckRAIDCommands(arr.device)
-                    execCmd(cmd, "RAID 检查已启动")
+                    execCmd(cmd, t('apps.diskManager.advanced.raid.checkStarted'))
                   }}>
-                    <CheckCircle2 className="w-3.5 h-3.5" /> 检查
+                    <CheckCircle2 className="w-3.5 h-3.5" /> {t('apps.diskManager.advanced.raid.check')}
                   </Button>
 
                   {/* Repair */}
                   {arr.state.includes("degraded") && (
                     <Button variant="outline" size="sm" onClick={() => {
                       const cmd = buildRepairRAIDCommands(arr.device)
-                      execCmd(cmd, "RAID 修复已启动")
+                      execCmd(cmd, t('apps.diskManager.advanced.raid.repairStarted'))
                     }}>
-                      <Activity className="w-3.5 h-3.5" /> 修复
+                      <Activity className="w-3.5 h-3.5" /> {t('apps.diskManager.advanced.raid.repair')}
                     </Button>
                   )}
 
@@ -783,21 +791,23 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
                   <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200" onClick={() => {
                     const cmd = buildStopRAIDCommands(arr.device, arr.mountPoint)
                     useUIStore.getState().showConfirm({
-                      title: "停止 RAID 阵列",
-                      description: `确定停止并删除 ${arr.device}？${arr.mountPoint ? `将卸载 ${arr.mountPoint}。` : ""}阵列将被解散！`,
+                      title: t('apps.diskManager.advanced.raid.stopArrayTitle'),
+                      description: arr.mountPoint
+                        ? t('apps.diskManager.advanced.raid.stopArrayDescriptionWithMount', { device: arr.device, mountPoint: arr.mountPoint })
+                        : t('apps.diskManager.advanced.raid.stopArrayDescription', { device: arr.device }),
                       variant: "destructive",
-                      onConfirm: () => execCmd(cmd, "RAID 阵列已停止"),
+                      onConfirm: () => execCmd(cmd, t('apps.diskManager.advanced.raid.stopArraySuccess')),
                     })
                   }}>
-                    <Trash2 className="w-3.5 h-3.5" /> 停止阵列
+                    <Trash2 className="w-3.5 h-3.5" /> {t('apps.diskManager.advanced.raid.stopArray')}
                   </Button>
                 </div>
 
                 {/* Detail info */}
                 <div className="mt-3 grid grid-cols-3 gap-2 text-[0.6875rem]">
                   <div><span className="text-slate-500">UUID: </span><span className="text-slate-700 font-mono">{arr.uuid || "-"}</span></div>
-                  <div><span className="text-slate-500">文件系统: </span><span className="text-slate-700">{arr.fsType || "-"}</span></div>
-                  <div><span className="text-slate-500">挂载点: </span><span className="text-slate-700 font-mono">{arr.mountPoint || "-"}</span></div>
+                  <div><span className="text-slate-500">{t('apps.diskManager.advanced.raid.filesystem')}: </span><span className="text-slate-700">{arr.fsType || "-"}</span></div>
+                  <div><span className="text-slate-500">{t('apps.diskManager.advanced.raid.mountPoint')}: </span><span className="text-slate-700 font-mono">{arr.mountPoint || "-"}</span></div>
                 </div>
               </div>
             )}
@@ -806,7 +816,7 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
       })}
 
       {osType === "linux" && !loading && arrays.length === 0 && (
-        <div className="text-center py-8 text-slate-400 text-[0.75rem]">未检测到 RAID 阵列</div>
+        <div className="text-center py-8 text-slate-400 text-[0.75rem]">{t('apps.diskManager.advanced.raid.empty')}</div>
       )}
     </div>
   )
@@ -815,6 +825,7 @@ function RAIDSection({ disks, osType, execCmd }: Pick<Props, "disks" | "osType" 
 // ==================== Main AdvancedTab ====================
 
 export function AdvancedTab(props: Props) {
+  const { t } = useTranslation()
   const [subTab, setSubTab] = useState<SubTab>("disks")
 
   const subTabClass = (tab: SubTab) =>
@@ -829,16 +840,16 @@ export function AdvancedTab(props: Props) {
       {/* Sub-tab selector */}
       <div className="flex items-center gap-1 bg-slate-100/60 rounded-lg p-0.5 w-fit">
         <button className={subTabClass("disks")} onClick={() => setSubTab("disks")}>
-          <span className="flex items-center gap-1.5"><HardDrive className="w-3 h-3" />磁盘列表</span>
+          <span className="flex items-center gap-1.5"><HardDrive className="w-3 h-3" />{t('apps.diskManager.advanced.tabs.disks')}</span>
         </button>
         <button className={subTabClass("lvm")} onClick={() => setSubTab("lvm")}>
-          <span className="flex items-center gap-1.5"><Plus className="w-3 h-3" />LVM 管理</span>
+          <span className="flex items-center gap-1.5"><Plus className="w-3 h-3" />{t('apps.diskManager.advanced.tabs.lvm')}</span>
         </button>
         <button className={subTabClass("smart")} onClick={() => setSubTab("smart")}>
-          <span className="flex items-center gap-1.5"><Activity className="w-3 h-3" />S.M.A.R.T</span>
+          <span className="flex items-center gap-1.5"><Activity className="w-3 h-3" />{t('apps.diskManager.advanced.tabs.smart')}</span>
         </button>
         <button className={subTabClass("raid")} onClick={() => setSubTab("raid")}>
-          <span className="flex items-center gap-1.5"><Shield className="w-3 h-3" />RAID</span>
+          <span className="flex items-center gap-1.5"><Shield className="w-3 h-3" />{t('apps.diskManager.advanced.tabs.raid')}</span>
         </button>
       </div>
 

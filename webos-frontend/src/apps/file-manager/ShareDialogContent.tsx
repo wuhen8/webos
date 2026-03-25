@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Copy, Check, Link, Loader2 } from 'lucide-react'
 import { request as wsRequest } from '@/stores/webSocketStore'
 import { getOrigin } from '@/lib/env'
@@ -6,15 +7,16 @@ import { copyToClipboard } from '@/utils'
 import { useCurrentProcess } from '@/hooks/useCurrentProcess'
 
 const EXPIRY_OPTIONS = [
-  { label: '永不过期', value: 0 },
-  { label: '1 天', value: 86400 },
-  { label: '7 天', value: 604800 },
-  { label: '30 天', value: 2592000 },
-]
+  { labelKey: 'apps.fileManager.shareDialog.expiry.never', value: 0 },
+  { labelKey: 'apps.fileManager.shareDialog.expiry.oneDay', value: 86400 },
+  { labelKey: 'apps.fileManager.shareDialog.expiry.sevenDays', value: 604800 },
+  { labelKey: 'apps.fileManager.shareDialog.expiry.thirtyDays', value: 2592000 },
+] as const
 
 type NetworkMode = 'internal' | 'external'
 
 export default function ShareDialogContent({ windowId }: { windowId: string }) {
+  const { t } = useTranslation()
   const { procState } = useCurrentProcess(windowId)
   const appData = procState as { nodeId?: string; path?: string; fileName?: string }
 
@@ -50,10 +52,10 @@ export default function ShareDialogContent({ windowId }: { windowId: string }) {
           setNetworkMode('internal')
         }
       } else {
-        setError(result?.message || '创建分享链接失败')
+        setError(result?.message || t('apps.fileManager.shareDialog.createFailed'))
       }
     } catch (e: any) {
-      setError(e?.message || '创建分享链接失败')
+      setError(e?.message || t('apps.fileManager.shareDialog.createFailed'))
     } finally {
       setLoading(false)
     }
@@ -74,12 +76,12 @@ export default function ShareDialogContent({ windowId }: { windowId: string }) {
       {/* File name */}
       <div className="flex items-center gap-2 text-sm text-slate-700">
         <Link className="h-4 w-4 text-blue-500 flex-shrink-0" />
-        <span className="truncate font-medium">{appData.fileName || '未知文件'}</span>
+        <span className="truncate font-medium">{appData.fileName || t('apps.fileManager.shareDialog.unknownFile')}</span>
       </div>
 
       {/* Network mode selector */}
       <div>
-        <label className="block text-xs text-slate-500 mb-1.5">链接类型</label>
+        <label className="block text-xs text-slate-500 mb-1.5">{t('apps.fileManager.shareDialog.linkType')}</label>
         <div className="grid grid-cols-2 gap-1.5">
           <button
             onClick={() => { setNetworkMode('external'); setCopied(false) }}
@@ -87,7 +89,7 @@ export default function ShareDialogContent({ windowId }: { windowId: string }) {
               networkMode === 'external' ? selectedBtn : unselectedBtn
             }`}
           >
-            外网链接
+            {t('apps.fileManager.shareDialog.external')}
           </button>
           <button
             onClick={() => { setNetworkMode('internal'); setCopied(false) }}
@@ -95,14 +97,14 @@ export default function ShareDialogContent({ windowId }: { windowId: string }) {
               networkMode === 'internal' ? selectedBtn : unselectedBtn
             }`}
           >
-            内网链接
+            {t('apps.fileManager.shareDialog.internal')}
           </button>
         </div>
       </div>
 
       {/* Expiry selector */}
       <div>
-        <label className="block text-xs text-slate-500 mb-1.5">有效期</label>
+        <label className="block text-xs text-slate-500 mb-1.5">{t('apps.fileManager.shareDialog.validPeriod')}</label>
         <div className="grid grid-cols-4 gap-1.5">
           {EXPIRY_OPTIONS.map(opt => (
             <button
@@ -112,7 +114,7 @@ export default function ShareDialogContent({ windowId }: { windowId: string }) {
                 expiry === opt.value ? selectedBtn : unselectedBtn
               }`}
             >
-              {opt.label}
+              {t(opt.labelKey)}
             </button>
           ))}
         </div>
@@ -126,7 +128,7 @@ export default function ShareDialogContent({ windowId }: { windowId: string }) {
           className="flex items-center justify-center gap-2 w-full py-2 rounded-lg text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-50 transition-colors"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link className="h-4 w-4" />}
-          {loading ? '生成中...' : '生成分享链接'}
+          {loading ? t('apps.fileManager.shareDialog.creating') : t('apps.fileManager.shareDialog.createLink')}
         </button>
       )}
 
@@ -140,7 +142,7 @@ export default function ShareDialogContent({ windowId }: { windowId: string }) {
         <div className="flex flex-col gap-2">
           {networkMode === 'external' && !hasExternal && (
             <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-              未配置外部访问地址，请在存储节点设置中配置 externalHost
+              {t('apps.fileManager.shareDialog.externalHostMissing')}
             </div>
           )}
           {displayUrl && (
@@ -162,11 +164,15 @@ export default function ShareDialogContent({ windowId }: { windowId: string }) {
                   }`}
                 >
                   {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                  {copied ? '已复制' : '复制'}
+                  {copied ? t('apps.fileManager.shareDialog.copied') : t('apps.fileManager.shareDialog.copy')}
                 </button>
               </div>
               <p className="text-[0.6875rem] text-slate-400">
-                {expiry === 0 ? '此链接永不过期' : `此链接将在 ${EXPIRY_OPTIONS.find(o => o.value === expiry)?.label}后过期`}
+                {expiry === 0
+                  ? t('apps.fileManager.shareDialog.neverExpires')
+                  : t('apps.fileManager.shareDialog.expiresAfter', {
+                      label: t(EXPIRY_OPTIONS.find(o => o.value === expiry)?.labelKey || 'apps.fileManager.shareDialog.expiry.never'),
+                    })}
               </p>
             </>
           )}

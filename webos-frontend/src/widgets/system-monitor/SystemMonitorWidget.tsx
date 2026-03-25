@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Activity, HardDrive, Cpu, ArrowUp, ArrowDown } from 'lucide-react'
 import type { WidgetProps } from '@/stores/widgetStore'
 import { useSystemWebSocket } from '@/hooks/useSystemWebSocket'
@@ -21,6 +22,7 @@ function formatSpeed(bytesPerSec: number): string {
 }
 
 export function SystemMonitorWidget({ widget }: WidgetProps) {
+  const { t } = useTranslation()
   const [overview, setOverview] = useState<SystemOverview | null>(null)
   const [prevNetwork, setPrevNetwork] = useState<SystemOverview["network"] | null>(null)
   const [networkSpeed, setNetworkSpeed] = useState<{ rxSpeed: number; txSpeed: number }>({ rxSpeed: 0, txSpeed: 0 })
@@ -71,7 +73,7 @@ export function SystemMonitorWidget({ widget }: WidgetProps) {
         <Cpu className="w-4 h-4 text-blue-400" />
         <div className="flex-1">
           <div className="flex justify-between mb-0.5 text-black/80">
-            <span>CPU</span>
+            <span>{t('widgets.systemMonitor.metrics.cpu')}</span>
             <span className="font-mono">{cpuUsage.toFixed(1)}%</span>
           </div>
           <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -88,7 +90,7 @@ export function SystemMonitorWidget({ widget }: WidgetProps) {
         <Activity className="w-4 h-4 text-green-400" />
         <div className="flex-1">
           <div className="flex justify-between mb-0.5 text-black/80">
-            <span>内存</span>
+            <span>{t('widgets.systemMonitor.metrics.memory')}</span>
             <span className="font-mono">{memUsage.toFixed(1)}%</span>
           </div>
           <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -105,7 +107,7 @@ export function SystemMonitorWidget({ widget }: WidgetProps) {
         <HardDrive className="w-4 h-4 text-purple-400" />
         <div className="flex-1">
           <div className="flex justify-between mb-0.5 text-black/80">
-            <span>磁盘</span>
+            <span>{t('widgets.systemMonitor.metrics.disk')}</span>
             <span className="font-mono">{diskUsage.toFixed(1)}%</span>
           </div>
           <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">

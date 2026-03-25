@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { useTranslation } from 'react-i18next'
 import {
   Home,
   Monitor,
@@ -71,6 +72,7 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalMenu, closeGlobalMenu, activeNodeId, onSwitchNode, onNavigateNode, totalCount = 0, selectedCount = 0, collapsed = false, onToggleCollapse, showTrash = false }: SidebarProps) {
+  const { t } = useTranslation()
   const {
     sidebarConfig,
     isLoading,
@@ -347,7 +349,7 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
     return (
       <div className={`flex flex-col h-full ${collapsed ? 'w-10' : 'w-56'} bg-white/10 backdrop-blur-xl border-r border-white/20 transition-all duration-200`}>
         <div className="px-4 py-3 border-b border-white/20 flex items-center justify-between">
-          {!collapsed && <h2 className="text-sm font-semibold text-slate-800">文件管理</h2>}
+          {!collapsed && <h2 className="text-sm font-semibold text-slate-800">{t('apps.fileManager.sidebar.title')}</h2>}
           {onToggleCollapse && (
             <button onClick={onToggleCollapse} className="p-0.5 rounded hover:bg-white/20 text-slate-600 transition-colors">
               {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -367,9 +369,9 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
     <div className={`flex flex-col h-full ${collapsed ? 'w-10' : 'w-56'} bg-white/10 backdrop-blur-xl border-r border-white/20 transition-all duration-200 shrink-0`}>
       {/* 侧边栏标题 */}
       <div className={`${collapsed ? 'px-2' : 'px-4'} py-3 border-b border-white/20 flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
-        {!collapsed && <h2 className="text-sm font-semibold text-slate-800">文件管理</h2>}
+        {!collapsed && <h2 className="text-sm font-semibold text-slate-800">{t('apps.fileManager.sidebar.title')}</h2>}
         {onToggleCollapse && (
-          <button onClick={onToggleCollapse} className="p-0.5 rounded hover:bg-white/20 text-slate-600 transition-colors" title={collapsed ? '展开侧栏' : '折叠侧栏'}>
+          <button onClick={onToggleCollapse} className="p-0.5 rounded hover:bg-white/20 text-slate-600 transition-colors" title={collapsed ? t('apps.fileManager.sidebar.expand') : t('apps.fileManager.sidebar.collapse')}>
             {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
         )}
@@ -413,7 +415,7 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
               ) : (
                 <ChevronRight className="h-3 w-3 text-slate-500" />
               )}
-              <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wide">个人收藏</h3>
+              <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wide">{t('apps.fileManager.sidebar.favorites')}</h3>
             </div>
             <Star className="h-3 w-3 text-slate-400" />
           </div>
@@ -476,7 +478,7 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
         
         {/* 位置标签 */}
         <div className="px-2">
-          <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2 px-2">位置</h3>
+          <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2 px-2">{t('apps.fileManager.sidebar.locations')}</h3>
           <div className="space-y-1">
             {storageNodes.map(node => (
               <Button
@@ -504,7 +506,7 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
                 onClick={() => onSwitchNode?.("local_1")}
               >
                 <HardDrive className="h-4 w-4 mr-2" />
-                <span className="text-sm flex-1">本地磁盘</span>
+                <span className="text-sm flex-1">{t('apps.fileManager.sidebar.localDisk')}</span>
               </Button>
             )}
           </div>
@@ -523,7 +525,7 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
             onClick={() => useWindowStore.getState().openWindow('fileManager', { forceNew: true, appDataOptions: { showTrash: true } })}
           >
             <Trash2 className="h-4 w-4 mr-2" />
-            <span className="text-sm flex-1">回收站</span>
+            <span className="text-sm flex-1">{t('apps.fileManager.sidebar.trash')}</span>
           </Button>
         </div>
 
@@ -532,7 +534,7 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
           <>
             <div className="mx-4 my-3 border-t border-white/20" />
             <div className="px-2">
-              <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2 px-2">磁盘映像</h3>
+              <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2 px-2">{t('apps.fileManager.sidebar.diskImages')}</h3>
               <div className="space-y-1">
                 {mountedIsos.map(iso => (
                   <Button
@@ -551,12 +553,12 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
                         try {
                           const resp = await exec(`umount "${iso.mountPoint}" && rmdir "${iso.mountPoint}"`)
                           if (resp.exitCode !== 0) {
-                            toast({ title: "卸载失败", description: resp.stderr || "无法卸载", variant: "destructive" })
+                            toast({ title: t('apps.fileManager.sidebar.ejectFailed'), description: resp.stderr || t('apps.fileManager.sidebar.unableUnmount'), variant: "destructive" })
                             return
                           }
-                          toast({ title: "已推出", description: `${iso.name} 已卸载` })
+                          toast({ title: t('apps.fileManager.sidebar.ejected'), description: t('apps.fileManager.sidebar.ejectedDescription', { name: iso.name }) })
                         } catch {
-                          toast({ title: "错误", description: "卸载失败", variant: "destructive" })
+                          toast({ title: t('apps.fileManager.sidebar.error'), description: t('apps.fileManager.sidebar.ejectFailed'), variant: "destructive" })
                         }
                       }}
                       className="opacity-0 group-hover:opacity-100 hover:bg-white/20 rounded p-1 cursor-pointer"
@@ -576,7 +578,10 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
       {!collapsed && (
       <div className="px-4 py-3 border-t border-white/20">
         <div className="flex items-center text-xs text-slate-500">
-          <span>{totalCount} 个项目{selectedCount > 0 ? `，已选择 ${selectedCount} 个` : ''}</span>
+          <span>{selectedCount > 0
+            ? t('apps.fileManager.sidebar.selectedSummaryWithSelection', { total: totalCount, selected: selectedCount })
+            : t('apps.fileManager.sidebar.selectedSummary', { total: totalCount })}
+          </span>
         </div>
       </div>
       )}

@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { request, notify, registerMessageHandler, registerDisconnectHook } from '@/stores/webSocketStore'
 import { exec } from '@/lib/services/execService'
 import { fsService } from '@/lib/services/fsService'
@@ -49,7 +50,7 @@ export const dockerService = {
     return { status: 'ok' }
   },
   async daemonRestart(): Promise<{ status: string }> {
-    await exec('systemctl restart docker', { background: true, title: 'Docker 重启', refreshChannels: ['sub.docker_containers', 'sub.docker_images', 'sub.docker_compose', 'sub.docker_networks', 'sub.docker_volumes'] })
+    await exec('systemctl restart docker', { background: true, title: i18n.t('apps.docker.settings.actions.restartDocker'), refreshChannels: ['sub.docker_containers', 'sub.docker_images', 'sub.docker_compose', 'sub.docker_networks', 'sub.docker_volumes'] })
     return { status: 'ok' }
   },
   pull(imageName: string) {

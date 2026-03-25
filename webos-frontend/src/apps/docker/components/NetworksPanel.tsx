@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import { Search, Trash2, Plus, Eye } from "lucide-react"
 import type { DockerNetwork, DockerContainer } from "./types"
 
@@ -15,6 +16,7 @@ interface NetworksPanelProps {
 const BUILTIN_NETWORKS = ["bridge", "host", "none"]
 
 export function NetworksPanel({ networks, containers, searchQuery, setSearchQuery, onRemove, onCreate, onInspect }: NetworksPanelProps) {
+  const { t } = useTranslation()
   const [createName, setCreateName] = useState("")
   const [createDriver, setCreateDriver] = useState("bridge")
 
@@ -52,7 +54,7 @@ export function NetworksPanel({ networks, containers, searchQuery, setSearchQuer
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
           <input
             type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索网络名、ID 或驱动..."
+            placeholder={t('apps.docker.networks.searchPlaceholder')}
             className="w-full pl-8 pr-3 py-1.5 text-[0.75rem] bg-white/70 border border-slate-200 rounded-lg outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all placeholder:text-slate-300"
           />
         </div>
@@ -60,20 +62,20 @@ export function NetworksPanel({ networks, containers, searchQuery, setSearchQuer
           <input
             type="text" value={createName} onChange={(e) => setCreateName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-            placeholder="网络名称"
+            placeholder={t('apps.docker.networks.createNamePlaceholder')}
             className="w-32 px-2.5 py-1.5 text-[0.75rem] bg-white/70 border border-slate-200 rounded-lg outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all placeholder:text-slate-300"
           />
           <select value={createDriver} onChange={(e) => setCreateDriver(e.target.value)}
             className="px-2 py-1.5 text-[0.75rem] bg-white/70 border border-slate-200 rounded-lg outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all">
-            <option value="bridge">bridge</option>
-            <option value="overlay">overlay</option>
-            <option value="macvlan">macvlan</option>
-            <option value="ipvlan">ipvlan</option>
+            <option value="bridge">{t('apps.docker.networks.drivers.bridge')}</option>
+            <option value="overlay">{t('apps.docker.networks.drivers.overlay')}</option>
+            <option value="macvlan">{t('apps.docker.networks.drivers.macvlan')}</option>
+            <option value="ipvlan">{t('apps.docker.networks.drivers.ipvlan')}</option>
           </select>
           <button onClick={handleCreate} disabled={!createName.trim()}
             className="flex items-center gap-1 px-2.5 py-1.5 text-[0.6875rem] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
             <Plus className="w-3.5 h-3.5" />
-            创建
+            {t('apps.docker.networks.create')}
           </button>
         </div>
       </div>
@@ -81,13 +83,13 @@ export function NetworksPanel({ networks, containers, searchQuery, setSearchQuer
         <table className="w-full text-[0.6875rem]">
           <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 border-b border-slate-100">
             <tr>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">名称</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">ID</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">驱动</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">范围</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">子网</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">容器</th>
-              <th className="px-3 py-2 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider" style={{ width: 70 }}>操作</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.networks.table.name')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.networks.table.id')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.networks.table.driver')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.networks.table.scope')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.networks.table.subnet')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.networks.table.containers')}</th>
+              <th className="px-3 py-2 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider" style={{ width: 70 }}>{t('apps.docker.networks.table.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -98,7 +100,7 @@ export function NetworksPanel({ networks, containers, searchQuery, setSearchQuer
                 <tr key={net.id} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors">
                   <td className="px-3 py-1.5 text-slate-700 font-medium truncate max-w-[10rem]">
                     {net.name}
-                    {isBuiltin && <span className="ml-1.5 px-1 py-0.5 bg-slate-100 text-slate-400 rounded text-[0.5625rem]">内置</span>}
+                    {isBuiltin && <span className="ml-1.5 px-1 py-0.5 bg-slate-100 text-slate-400 rounded text-[0.5625rem]">{t('apps.docker.networks.builtin')}</span>}
                   </td>
                   <td className="px-3 py-1.5 text-slate-500 font-mono">{net.shortId}</td>
                   <td className="px-3 py-1.5">
@@ -114,16 +116,16 @@ export function NetworksPanel({ networks, containers, searchQuery, setSearchQuer
                         ))}
                       </div>
                     ) : (
-                      <span className="px-1.5 py-0.5 bg-slate-50 text-slate-400 rounded text-[0.5625rem]">空闲</span>
+                      <span className="px-1.5 py-0.5 bg-slate-50 text-slate-400 rounded text-[0.5625rem]">{t('apps.docker.networks.idle')}</span>
                     )}
                   </td>
                   <td className="px-3 py-1.5 text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => onInspect(net.id, net.name)} className="p-0.5 text-slate-300 hover:text-blue-500 transition-colors rounded hover:bg-blue-50" title="详情">
+                      <button onClick={() => onInspect(net.id, net.name)} className="p-0.5 text-slate-300 hover:text-blue-500 transition-colors rounded hover:bg-blue-50" title={t('apps.docker.networks.inspect')}>
                         <Eye className="w-3.5 h-3.5" />
                       </button>
                       {!isBuiltin && (
-                        <button onClick={() => onRemove(net.id)} className="p-0.5 text-slate-300 hover:text-red-500 transition-colors rounded hover:bg-red-50" title="删除">
+                        <button onClick={() => onRemove(net.id)} className="p-0.5 text-slate-300 hover:text-red-500 transition-colors rounded hover:bg-red-50" title={t('apps.docker.networks.delete')}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
@@ -135,7 +137,7 @@ export function NetworksPanel({ networks, containers, searchQuery, setSearchQuer
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={7} className="text-center py-8 text-slate-400 text-[0.75rem]">
-                  {searchQuery ? "没有匹配的网络" : "暂无网络"}
+                  {searchQuery ? t('apps.docker.networks.noMatches') : t('apps.docker.networks.empty')}
                 </td>
               </tr>
             )}

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { useTranslation } from 'react-i18next'
 import { Loader2, CheckCircle2, XCircle, Trash2, X, RotateCcw } from "lucide-react"
 import { useTaskStore, type BackgroundTask } from "@/stores/taskStore"
 import { taskService } from "@/lib/services"
@@ -35,6 +36,7 @@ function getSpeed(taskId: string, bytesCurrent: number): number {
 }
 
 function TaskProgress({ task }: { task: BackgroundTask }) {
+  const { t } = useTranslation()
   if (task.status !== "running" || task.progress == null) return null
 
   const pct = Math.round(task.progress * 100)
@@ -56,7 +58,7 @@ function TaskProgress({ task }: { task: BackgroundTask }) {
           {hasBytes
             ? `${formatBytes(task.bytesCurrent ?? 0)} / ${formatBytes(task.bytesTotal ?? 0)}`
             : (task.itemTotal ?? 0) > 0
-              ? `${task.itemCurrent ?? 0} / ${task.itemTotal} 个项目`
+              ? t('task.itemsProgress', { current: task.itemCurrent ?? 0, total: task.itemTotal })
               : ""}
         </span>
         <span>
@@ -77,6 +79,7 @@ function IndeterminateProgress() {
 }
 
 export function TaskIndicator() {
+  const { t } = useTranslation()
   const tasks = useTaskStore((s) => s.tasks)
   const clearCompleted = useTaskStore((s) => s.clearCompleted)
   const taskCancel = taskService.cancel
@@ -178,7 +181,10 @@ export function TaskIndicator() {
         >
           <div className="px-3 py-2 border-b border-black/[0.06]">
             <span className="text-[0.75rem] font-semibold text-black/70">
-              后台任务 {runningCount > 0 && `(${runningCount} 运行中)`}
+              {t('task.indicator.title', {
+                runningCount,
+                suffix: runningCount > 0 ? t('task.indicator.runningSuffix', { count: runningCount }) : '',
+              })}
             </span>
           </div>
           <div className="max-h-[15rem] overflow-auto" style={{ scrollbarWidth: 'thin' }}>
@@ -201,7 +207,7 @@ export function TaskIndicator() {
                     <button
                       onClick={(e) => { e.stopPropagation(); taskCancel(task.id) }}
                       className="shrink-0 p-0.5 rounded hover:bg-black/[0.08] text-black/30 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                      title="取消"
+                      title={t('task.actions.cancel')}
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -210,7 +216,7 @@ export function TaskIndicator() {
                     <button
                       onClick={(e) => { e.stopPropagation(); taskRetry(task.id) }}
                       className="shrink-0 p-0.5 rounded hover:bg-black/[0.08] text-black/30 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100"
-                      title="重试"
+                      title={t('task.actions.retry')}
                     >
                       <RotateCcw className="w-3 h-3" />
                     </button>
@@ -230,7 +236,7 @@ export function TaskIndicator() {
                 onClick={() => { clearCompleted(); if (tasks.filter(t => t.status === 'running').length === 0) setOpen(false) }}
                 className="flex items-center gap-1 text-[0.6875rem] text-black/40 hover:text-black/70 transition-colors"
               >
-                <Trash2 className="w-3 h-3" /> 清除已完成
+                <Trash2 className="w-3 h-3" /> {t('task.actions.clearCompleted')}
               </button>
             </div>
           )}

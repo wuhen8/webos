@@ -61,10 +61,10 @@ export interface WasmProcInfo {
   name: string
   state: "running" | "stopped" | "failed" | "starting"
   error?: string
-  memory?: number      // WASM 内存大小（字节）
-  eventCount?: number  // 处理的事件数
-  lastUpdated?: number // 更新时间戳
-  autostart?: boolean  // 是否开机自启
+  memory?: number      // WASM memory size in bytes
+  eventCount?: number  // Number of processed events
+  lastUpdated?: number // Last update timestamp
+  autostart?: boolean  // Whether autostart is enabled
 }
 
 export interface UnifiedTask {

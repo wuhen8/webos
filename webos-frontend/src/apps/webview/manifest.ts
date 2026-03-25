@@ -1,8 +1,9 @@
+import i18n from '@/i18n'
 import type { AppConfig } from '@/types'
 
 export const manifest: AppConfig = {
   id: 'webview',
-  name: 'HTML 预览',
+  name: 'i18n:apps.webview.name',
   icon: 'Globe',
   gradient: 'from-teal-400 to-teal-600',
   shadow: 'shadow-teal-500/30',
@@ -15,7 +16,7 @@ export const manifest: AppConfig = {
   fileAssociations: [
     {
       extensions: ['.html', '.htm'],
-      label: 'HTML 预览',
+      label: i18n.t('apps.webview.fileAssociation'),
       icon: 'Globe',
     },
   ],
@@ -30,7 +31,7 @@ export const manifest: AppConfig = {
       })
       return { ok: true }
     } catch {
-      return { ok: false, message: '无法加载 HTML 文件' }
+      return { ok: false, message: i18n.t('apps.webview.loadFailed') }
     }
   },
   defaultAppData: (options) => {

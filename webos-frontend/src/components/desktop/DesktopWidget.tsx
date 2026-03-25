@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { useTranslation } from 'react-i18next'
 import type { Widget, WidgetDefinition } from '@/stores/widgetStore'
 import type { DesktopItem } from '@/stores/desktopLayoutStore'
 import { useDesktopLayoutStore } from '@/stores/desktopLayoutStore'
@@ -18,6 +19,7 @@ interface DesktopWidgetProps {
 }
 
 export function DesktopWidget({ item, widget, definition, position }: DesktopWidgetProps) {
+  const { t } = useTranslation()
   const moveItem = useDesktopLayoutStore((s) => s.moveItem)
   const updateItemSize = useDesktopLayoutStore((s) => s.updateItemSize)
 
@@ -108,7 +110,7 @@ export function DesktopWidget({ item, widget, definition, position }: DesktopWid
         items: [
           {
             id: 'widget-remove',
-            label: '移除小组件',
+            label: t('widgets.actions.remove'),
             icon: 'Trash2',
             action: 'widget.remove',
             variant: 'danger',

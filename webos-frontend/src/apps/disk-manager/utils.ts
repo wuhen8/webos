@@ -1,3 +1,5 @@
+import i18n from "@/i18n"
+import type { TFunction } from "i18next"
 import type { SmartInfo, SmartAttr, OSType, DiskInfo, LVMVolumeGroup, StoragePool, PoolMemberDisk, DiskStatus, PartitionInfo, RAIDArray, RAIDMember } from "./types"
 
 // ==================== Formatting ====================
@@ -14,9 +16,43 @@ export function formatHours(hours: number): string {
   if (!hours) return "-"
   const days = Math.floor(hours / 24)
   const h = hours % 24
-  if (days > 365) return `${(days / 365).toFixed(1)} 年`
-  if (days > 0) return `${days} 天 ${h} 小时`
-  return `${h} 小时`
+  if (days > 365) return i18n.t('apps.diskManager.utils.time.years', { value: (days / 365).toFixed(1) })
+  if (days > 0) return i18n.t('apps.diskManager.utils.time.daysHours', { days, hours: h })
+  return i18n.t('apps.diskManager.utils.time.hours', { hours: h })
+}
+
+type RaidLevelOption = {
+  value: string
+  label: string
+  minDisks: number
+  fault: number
+  desc: string
+  short: string
+}
+
+function getRaidLevels(t: TFunction<'translation', undefined>): RaidLevelOption[] {
+  return [
+    { value: "0", label: "RAID 0", minDisks: 1, fault: 0,
+      desc: t('apps.diskManager.utils.raid.levels.0.desc'),
+      short: t('apps.diskManager.utils.raid.levels.0.short') },
+    { value: "1", label: "RAID 1", minDisks: 2, fault: -1,
+      desc: t('apps.diskManager.utils.raid.levels.1.desc'),
+      short: t('apps.diskManager.utils.raid.levels.1.short') },
+    { value: "5", label: "RAID 5", minDisks: 3, fault: 1,
+      desc: t('apps.diskManager.utils.raid.levels.5.desc'),
+      short: t('apps.diskManager.utils.raid.levels.5.short') },
+    { value: "6", label: "RAID 6", minDisks: 4, fault: 2,
+      desc: t('apps.diskManager.utils.raid.levels.6.desc'),
+      short: t('apps.diskManager.utils.raid.levels.6.short') },
+    { value: "10", label: "RAID 10", minDisks: 4, fault: -2,
+      desc: t('apps.diskManager.utils.raid.levels.10.desc'),
+      short: t('apps.diskManager.utils.raid.levels.10.short') },
+  ]
+}
+
+export const raidLevels: RaidLevelOption[] = getRaidLevels(i18n.t.bind(i18n))
+export function getRaidLevelsLocalized(t: TFunction<'translation', undefined>) {
+  return getRaidLevels(t)
 }
 
 export function formatPercent(value: number): string {
@@ -163,7 +199,7 @@ export function buildCreatePoolCommands(devices: string[], poolName: string, fsT
   return cmds.join(" && ")
 }
 
-/** HDD -> mdadm RAID -> LVM -> FS -> mount 全链路命令 */
+/** Full pipeline: HDD -> mdadm RAID -> LVM -> filesystem -> mount */
 export function buildCreatePoolWithRAIDCommands(
   devices: string[], raidLevel: string, arrayName: string,
   poolName: string, lvName: string, fsType: string, mountPoint: string
@@ -173,21 +209,21 @@ export function buildCreatePoolWithRAIDCommands(
   const lvPath = `/dev/${poolName}/${lvName}`
   const cmds: string[] = []
 
-  // 1. 清除磁盘
+  // 1. Wipe disks
   for (const dev of devices) {
     cmds.push(`wipefs -a ${dev}`)
   }
-  // 2. 创建 RAID
+  // 2. Create RAID
   cmds.push(`mdadm --create ${mdDev} --level=${raidLevel} --raid-devices=${devices.length} ${devices.join(" ")} --run`)
-  // 3. 保存 RAID 配置
+  // 3. Save RAID configuration
   cmds.push(`mkdir -p /etc/mdadm && mdadm --detail --scan >> /etc/mdadm/mdadm.conf 2>/dev/null || mdadm --detail --scan >> /etc/mdadm.conf`)
   // 4. LVM: PV -> VG -> LV
   cmds.push(`pvcreate -f ${mdDev}`)
   cmds.push(`vgcreate ${poolName} ${mdDev}`)
   cmds.push(`lvcreate -Wy --yes -l 100%FREE -n ${lvName} ${poolName}`)
-  // 5. 格式化
+  // 5. Format
   cmds.push(`${mkfs} ${lvPath}`)
-  // 6. 挂载 + fstab
+  // 6. Mount + fstab
   cmds.push(`mkdir -p ${mountPoint}`)
   cmds.push(`mount ${lvPath} ${mountPoint}`)
   cmds.push(`echo '${lvPath} ${mountPoint} ${fsType} defaults 0 2' >> /etc/fstab`)
@@ -212,7 +248,7 @@ export function buildAddDiskToPoolCommands(device: string, poolName: string, lvP
   return cmds.join(" && ")
 }
 
-/** 添加磁盘到 RAID 存储池: bash 脚本方式，确保 wait 循环正确执行 */
+/** Add a disk to a RAID-backed storage pool using a bash script so wait loops execute correctly */
 export function buildExpandPoolWithRAIDCommands(
   diskDevice: string, raidDevice: string, newTotalDevices: number,
   poolName: string, lvPath: string, fsType: string
@@ -222,11 +258,11 @@ export function buildExpandPoolWithRAIDCommands(
     `wipefs -a ${diskDevice}`,
     `mdadm --add ${raidDevice} ${diskDevice}`,
     `sleep 2`,
-    `echo "等待 RAID recovery 完成..."`,
+    `echo "Waiting for RAID recovery to complete..."`,
     `while grep -qE 'recovery|resync' /proc/mdstat 2>/dev/null; do sleep 5; done`,
     `mdadm --grow ${raidDevice} --raid-devices=${newTotalDevices}`,
     `sleep 2`,
-    `echo "等待 RAID reshape 完成..."`,
+    `echo "Waiting for RAID reshape to complete..."`,
     `while grep -qE 'reshape|resync|recovery' /proc/mdstat 2>/dev/null; do sleep 5; done`,
     `mdadm --detail --scan > /etc/mdadm/mdadm.conf 2>/dev/null || mdadm --detail --scan > /etc/mdadm.conf`,
     `pvresize ${raidDevice}`,
@@ -352,24 +388,6 @@ export function buildExtendVGCommands(device: string, vgName: string, lvPath: st
 
 
 // ==================== RAID (mdadm) ====================
-
-export const raidLevels = [
-  { value: "0", label: "RAID 0", minDisks: 1, fault: 0,
-    desc: "数据条带分布，读写速度翻倍，但任何一块盘坏了全部数据丢失，不允许坏盘",
-    short: "高性能 · 0 容错" },
-  { value: "1", label: "RAID 1", minDisks: 2, fault: -1,
-    desc: "所有磁盘互为镜像，允许坏到只剩 1 块盘，可用容量等于最小的一块盘",
-    short: "全镜像 · N-1 容错" },
-  { value: "5", label: "RAID 5", minDisks: 3, fault: 1,
-    desc: "数据和校验分布在所有盘上，允许坏 1 块盘，可用容量 = (N-1) × 最小盘",
-    short: "均衡 · 1 盘容错" },
-  { value: "6", label: "RAID 6", minDisks: 4, fault: 2,
-    desc: "双重校验，允许同时坏 2 块盘，可用容量 = (N-2) × 最小盘",
-    short: "高安全 · 2 盘容错" },
-  { value: "10", label: "RAID 10", minDisks: 4, fault: -2,
-    desc: "先镜像再条带，每组镜像允许坏 1 块，兼顾性能和冗余，可用容量 = N/2 × 最小盘",
-    short: "高性能+冗余 · 每组 1 盘容错" },
-]
 
 export function buildCreateRAIDCommands(
   level: string, devices: string[], arrayName: string, fsType: string, mountPoint: string

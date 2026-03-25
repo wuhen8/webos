@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useToast } from "@/hooks/use-toast"
 import { notify } from "@/stores/webSocketStore"
 import { openTaskDetailWindow } from "@/components/TaskDetailWindow"
@@ -5,14 +6,15 @@ import { Square } from "lucide-react"
 import type { UnifiedTask } from "./types"
 
 export function TaskPanel({ tasks }: { tasks: UnifiedTask[] }) {
+  const { t } = useTranslation()
   const { toast } = useToast()
 
   const cancelTask = async (id: string) => {
     try {
       notify("task.cancel", { data: id })
-      toast({ title: "成功", description: `已发送取消请求` })
+      toast({ title: t('common.success'), description: t('apps.taskManager.tasks.cancelSubmitted') })
     } catch {
-      toast({ title: "失败", description: "取消任务失败", variant: "destructive" })
+      toast({ title: t('common.error'), description: t('apps.taskManager.tasks.cancelFailed'), variant: "destructive" })
     }
   }
 
@@ -28,10 +30,10 @@ export function TaskPanel({ tasks }: { tasks: UnifiedTask[] }) {
 
   const statusLabel = (status: string) => {
     switch (status) {
-      case "running": return "运行中"
-      case "success": return "已完成"
-      case "failed": return "失败"
-      case "cancelled": return "已取消"
+      case "running": return t('apps.taskManager.tasks.statusLabel.running')
+      case "success": return t('apps.taskManager.tasks.statusLabel.success')
+      case "failed": return t('apps.taskManager.tasks.statusLabel.failed')
+      case "cancelled": return t('apps.taskManager.tasks.statusLabel.cancelled')
       default: return status
     }
   }
@@ -39,19 +41,19 @@ export function TaskPanel({ tasks }: { tasks: UnifiedTask[] }) {
   const categoryLabel = (cat?: string) => {
     if (!cat) return "-"
     switch (cat) {
-      case "system": return "系统"
-      case "service": return "服务"
-      case "scheduler": return "定时"
-      case "file": return "文件"
-      case "download": return "下载"
+      case "system": return t('apps.taskManager.tasks.categoryLabel.system')
+      case "service": return t('apps.taskManager.tasks.categoryLabel.service')
+      case "scheduler": return t('apps.taskManager.tasks.categoryLabel.scheduler')
+      case "file": return t('apps.taskManager.tasks.categoryLabel.file')
+      case "download": return t('apps.taskManager.tasks.categoryLabel.download')
       default: return cat
     }
   }
 
-  const formatDuration = (t: UnifiedTask) => {
+  const formatDuration = (task: UnifiedTask) => {
     const now = Date.now()
-    const start = t.createdAt
-    const end = t.status === "running" ? now : (t.doneAt || now)
+    const start = task.createdAt
+    const end = task.status === "running" ? now : (task.doneAt || now)
     const ms = end - start
     if (ms < 1000) return `${ms}ms`
     const s = Math.floor(ms / 1000)
@@ -64,9 +66,9 @@ export function TaskPanel({ tasks }: { tasks: UnifiedTask[] }) {
     return `${h}h${rm}m`
   }
 
-  const formatProgress = (t: UnifiedTask) => {
-    if (t.progress != null && t.progress > 0) {
-      return `${(t.progress * 100).toFixed(0)}%`
+  const formatProgress = (task: UnifiedTask) => {
+    if (task.progress != null && task.progress > 0) {
+      return `${(task.progress * 100).toFixed(0)}%`
     }
     return ""
   }
@@ -77,10 +79,10 @@ export function TaskPanel({ tasks }: { tasks: UnifiedTask[] }) {
     <div className="h-full flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <div className="text-[0.6875rem] text-slate-400">
-          {tasks.length} 个任务
+          {t('apps.taskManager.tasks.count', { count: tasks.length })}
           {tasks.filter(t => t.status === "running").length > 0 && (
             <span className="ml-2 text-green-600">
-              ({tasks.filter(t => t.status === "running").length} 运行中)
+              {t('apps.taskManager.tasks.runningCount', { count: tasks.filter(t => t.status === "running").length })}
             </span>
           )}
         </div>
@@ -91,42 +93,42 @@ export function TaskPanel({ tasks }: { tasks: UnifiedTask[] }) {
           <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 border-b border-slate-100">
             <tr>
               <th className={thClass} style={{ width: 100 }}>ID</th>
-              <th className={thClass}>标题</th>
-              <th className={thClass} style={{ width: 50 }}>类别</th>
-              <th className={thClass} style={{ width: 70 }}>状态</th>
-              <th className={thClass} style={{ width: 50 }}>进度</th>
-              <th className={thClass} style={{ width: 70 }}>时长</th>
-              <th className={thClass}>信息</th>
-              <th className={thClass} style={{ width: 60 }}>操作</th>
+              <th className={thClass}>{t('apps.taskManager.tasks.title')}</th>
+              <th className={thClass} style={{ width: 50 }}>{t('apps.taskManager.tasks.category')}</th>
+              <th className={thClass} style={{ width: 70 }}>{t('apps.taskManager.tasks.status')}</th>
+              <th className={thClass} style={{ width: 50 }}>{t('apps.taskManager.tasks.progress')}</th>
+              <th className={thClass} style={{ width: 70 }}>{t('apps.taskManager.tasks.duration')}</th>
+              <th className={thClass}>{t('apps.taskManager.tasks.message')}</th>
+              <th className={thClass} style={{ width: 60 }}>{t('apps.taskManager.tasks.actions')}</th>
             </tr>
           </thead>
           <tbody>
-            {tasks.map((t) => (
-              <tr key={t.id} className="border-b border-slate-50 hover:bg-slate-50/80 cursor-pointer" onClick={() => openTaskDetailWindow(t.id, t.title)}>
-                <td className="px-2 py-1 text-slate-500 font-mono text-[0.625rem]">{t.id.replace("task_", "").slice(0, 8)}</td>
-                <td className="px-2 py-1 text-slate-700">{t.title}</td>
-                <td className="px-2 py-1 text-slate-500 text-[0.625rem]">{categoryLabel(t.category)}</td>
+            {tasks.map((task) => (
+              <tr key={task.id} className="border-b border-slate-50 hover:bg-slate-50/80 cursor-pointer" onClick={() => openTaskDetailWindow(task.id, task.title)}>
+                <td className="px-2 py-1 text-slate-500 font-mono text-[0.625rem]">{task.id.replace("task_", "").slice(0, 8)}</td>
+                <td className="px-2 py-1 text-slate-700">{task.title}</td>
+                <td className="px-2 py-1 text-slate-500 text-[0.625rem]">{categoryLabel(task.category)}</td>
                 <td className="px-2 py-1">
-                  <span className={`inline-block py-0.5 rounded text-[0.625rem] font-medium ${statusColor(t.status)}`}>
-                    {statusLabel(t.status)}
+                  <span className={`inline-block py-0.5 rounded text-[0.625rem] font-medium ${statusColor(task.status)}`}>
+                    {statusLabel(task.status)}
                   </span>
                 </td>
                 <td className="px-2 py-1 text-slate-500 tabular-nums text-[0.625rem]">
-                  {t.status === "running" && formatProgress(t)}
+                  {task.status === "running" && formatProgress(task)}
                 </td>
-                <td className="px-2 py-1 text-slate-500 tabular-nums">{formatDuration(t)}</td>
-                <td className="px-2 py-1 text-slate-500 truncate max-w-[12.5rem] text-[0.625rem]" title={t.message || ""}>
-                  {t.message || "—"}
+                <td className="px-2 py-1 text-slate-500 tabular-nums">{formatDuration(task)}</td>
+                <td className="px-2 py-1 text-slate-500 truncate max-w-[12.5rem] text-[0.625rem]" title={task.message || ""}>
+                  {task.message || "—"}
                 </td>
                 <td className="px-2 py-1">
-                  {t.status === "running" && t.cancellable && (
+                  {task.status === "running" && task.cancellable && (
                     <button
-                      onClick={() => cancelTask(t.id)}
+                      onClick={() => cancelTask(task.id)}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[0.5625rem] text-red-600 hover:bg-red-50 rounded transition-colors"
-                      title="取消"
+                      title={t('apps.taskManager.tasks.cancelAction')}
                     >
                       <Square className="w-3 h-3" />
-                      取消
+                      {t('apps.taskManager.tasks.cancelAction')}
                     </button>
                   )}
                 </td>
@@ -135,7 +137,7 @@ export function TaskPanel({ tasks }: { tasks: UnifiedTask[] }) {
             {tasks.length === 0 && (
               <tr>
                 <td colSpan={8} className="text-center py-8 text-slate-400 text-[0.75rem]">
-                  暂无任务
+                  {t('apps.taskManager.tasks.empty')}
                 </td>
               </tr>
             )}

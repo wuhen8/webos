@@ -1,11 +1,12 @@
 import { fsApi } from '@/lib/storageApi'
+import i18n from '@/i18n'
 import type { AppConfig, FileInfo } from '@/types'
 
 const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.bmp', '.ico']
 
 export const manifest: AppConfig = {
   id: 'image',
-  name: '图片预览',
+  name: 'i18n:apps.image.name',
   icon: 'Monitor',
   gradient: 'from-emerald-400 to-emerald-600',
   shadow: 'shadow-emerald-500/30',
@@ -18,7 +19,7 @@ export const manifest: AppConfig = {
   fileAssociations: [
     {
       extensions: imageExtensions,
-      label: '图片查看器',
+      label: i18n.t('apps.image.fileAssociation'),
       icon: 'Image',
     },
   ],

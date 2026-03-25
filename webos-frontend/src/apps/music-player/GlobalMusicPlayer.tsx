@@ -115,7 +115,7 @@ export default function GlobalMusicPlayer() {
     let cancelled = false
     ;(async () => {
       try {
-        // 如果 filePath 已经是直链 URL，直接使用；否则走 presign 解析
+        // If filePath is already a direct URL, use it as-is; otherwise resolve via presign
         const isDirectUrl = activeTrack.filePath.startsWith('http://') || activeTrack.filePath.startsWith('https://')
         const url = isDirectUrl ? activeTrack.filePath : await resolveMediaUrl(activeTrack.nodeId, activeTrack.filePath)
         if (cancelled) return

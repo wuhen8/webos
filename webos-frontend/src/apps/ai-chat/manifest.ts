@@ -2,7 +2,7 @@ import type { AppConfig } from '@/types'
 
 export const manifest: AppConfig = {
   id: 'ai-chat',
-  name: 'AI 助手',
+  name: 'i18n:apps.aiChat.name',
   icon: 'Bot',
   gradient: 'from-violet-400 to-purple-600',
   shadow: 'shadow-violet-500/30',
@@ -14,9 +14,9 @@ export const manifest: AppConfig = {
   dockOrder: 4,
   menus: [
     {
-      label: '对话',
+      label: 'i18n:apps.aiChat.menu.conversation',
       items: [
-        { label: '新建对话', shortcut: '⌘N', action: 'newChat' },
+        { label: 'i18n:apps.aiChat.menu.newConversation', shortcut: '⌘N', action: 'newChat' },
       ],
     },
   ],

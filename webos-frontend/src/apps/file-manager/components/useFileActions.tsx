@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import type { FileInfo, ClipboardState } from "@/types"
 import { fsApi } from "@/lib/storageApi"
 import { exec } from "@/lib/services"
@@ -14,6 +15,7 @@ import { ExtractPasswordDialog } from "./ExtractPasswordDialog"
 import type { FileActionsContext } from "./types"
 
 export function useFileActions(ctx: FileActionsContext) {
+  const { t } = useTranslation()
   const {
     files, filesRef, selectedFiles, setSelectedFiles, currentPath, activeNodeId,
     clipboard, setClipboard, loadFiles, navigateTo, toast, showConfirm,
@@ -46,9 +48,9 @@ export function useFileActions(ctx: FileActionsContext) {
       if (inlineCreate === "folder") await fsApi.mkdir(activeNodeId, currentPath, name)
       else await fsApi.createFile(activeNodeId, currentPath, name)
       await loadFiles()
-      toast({ title: "成功", description: inlineCreate === "folder" ? "文件夹创建成功" : "文件创建成功" })
+      toast({ title: t('apps.fileManager.actions.success'), description: inlineCreate === "folder" ? t('apps.fileManager.actions.createFolderSuccess') : t('apps.fileManager.actions.createFileSuccess') })
     } catch {
-      toast({ title: "错误", description: "创建失败", variant: "destructive" })
+      toast({ title: t('apps.fileManager.actions.error'), description: t('apps.fileManager.actions.createFailed'), variant: "destructive" })
     } finally { setInlineCreate(null); setInlineName("") }
   }
 
@@ -66,9 +68,9 @@ export function useFileActions(ctx: FileActionsContext) {
     try {
       await fsApi.rename(activeNodeId, parentPath, inlineRenameOldName, newName)
       await loadFiles()
-      toast({ title: "成功", description: "重命名成功" })
+      toast({ title: t('apps.fileManager.actions.success'), description: t('apps.fileManager.actions.renameSuccess') })
     } catch {
-      toast({ title: "错误", description: "重命名失败", variant: "destructive" })
+      toast({ title: t('apps.fileManager.actions.error'), description: t('apps.fileManager.actions.renameFailed'), variant: "destructive" })
     } finally { setInlineRenamePath(null); setInlineRenameOldName(""); setInlineRenameValue("") }
   }
 
@@ -89,7 +91,7 @@ export function useFileActions(ctx: FileActionsContext) {
     try {
       const resp = await exec(`mkdir -p "${mountPoint}" && mount -o loop,ro "${file.path}" "${mountPoint}"`)
       if (resp.exitCode !== 0) {
-        toast({ title: "挂载失败", description: resp.stderr || "无法挂载 ISO", variant: "destructive" }); return
+        toast({ title: t('apps.fileManager.actions.mountFailed'), description: resp.stderr || t('apps.fileManager.actions.unableMountIso'), variant: "destructive" }); return
       }
       const processStore = useProcessStore.getState()
       const tab = { id: `fmtab-${Date.now()}`, currentPath: mountPoint, history: [mountPoint], historyIndex: 0, files: [], selectedFiles: [], activeNodeId, title: file.name }
@@ -105,8 +107,8 @@ export function useFileActions(ctx: FileActionsContext) {
       }
       processStore.addWindowToProcess(pid, id)
       useWindowStore.setState({ nextZIndex: newZIndex, windows: [...state.windows.map(w => ({ ...w, isActive: false })), newWindow] })
-      toast({ title: "已挂载", description: `${file.name} 已挂载到 ${mountPoint}` })
-    } catch { toast({ title: "错误", description: "挂载 ISO 失败", variant: "destructive" }) }
+      toast({ title: t('apps.fileManager.actions.mounted'), description: t('apps.fileManager.actions.mountedDescription', { name: file.name, mountPoint }) })
+    } catch { toast({ title: t('apps.fileManager.actions.error'), description: t('apps.fileManager.actions.mountIsoFailed'), variant: "destructive" }) }
   }
 
   const handleFileDoubleClick = (file: FileInfo) => {
@@ -116,7 +118,7 @@ export function useFileActions(ctx: FileActionsContext) {
     else if (isIsoFile(file)) handleMountIso(file)
     else if (isExtractable(file)) handleExtract(file)
     else findOrCreateEditorWindow(file).then(res => {
-      if (!res.ok && res.message) toast({ title: "无法打开", description: res.message, variant: "destructive" })
+      if (!res.ok && res.message) toast({ title: t('apps.fileManager.actions.openFailed'), description: res.message, variant: "destructive" })
     })
   }
 
@@ -151,7 +153,7 @@ export function useFileActions(ctx: FileActionsContext) {
     const taskId = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const upsertTask = useTaskStore.getState().upsertTask
     const makeTask = (overrides: Partial<import('@/stores/taskStore').BackgroundTask>) => ({
-      id: taskId, type: 'upload', title: `上传 ${file.name}`,
+      id: taskId, type: 'upload', title: t('apps.fileManager.actions.uploadTaskTitle', { name: file.name }),
       status: 'running' as const, message: '', createdAt: Date.now(),
       progress: 0, bytesCurrent: 0, bytesTotal: file.size, ...overrides,
     })
@@ -180,7 +182,7 @@ export function useFileActions(ctx: FileActionsContext) {
       upsertTask(makeTask({ status: 'success', progress: 1, bytesCurrent: file.size, doneAt: Date.now() }))
       loadFiles()
     } catch {
-      upsertTask(makeTask({ status: 'failed', message: '上传失败', doneAt: Date.now() }))
+      upsertTask(makeTask({ status: 'failed', message: t('apps.fileManager.actions.uploadFailed'), doneAt: Date.now() }))
     }
   }
 
@@ -188,9 +190,9 @@ export function useFileActions(ctx: FileActionsContext) {
     try {
       await fsApi.delete(activeNodeId, filesToDelete.map(f => f.path))
       setSelectedFiles(new Set())
-      toast({ title: "删除任务已提交", description: `正在移动 ${filesToDelete.length} 个项目到回收站` })
+      toast({ title: t('apps.fileManager.actions.deleteTaskSubmitted'), description: t('apps.fileManager.actions.deleteTaskDescription', { count: filesToDelete.length }) })
     } catch (e: any) {
-      toast({ title: "删除失败", description: e?.message || "删除出错", variant: "destructive" })
+      toast({ title: t('apps.fileManager.actions.deleteFailed'), description: e?.message || t('apps.fileManager.actions.deleteError'), variant: "destructive" })
     }
   }
 
@@ -218,7 +220,7 @@ export function useFileActions(ctx: FileActionsContext) {
       // Success — close password dialog if open
       setPasswordDialogOpen(false)
       setPasswordDialogFile(null)
-      toast({ title: "解压任务已提交", description: `${file.name} 正在后台解压` })
+      toast({ title: t('apps.fileManager.actions.extractTaskSubmitted'), description: t('apps.fileManager.actions.extractTaskDescription', { name: file.name }) })
     } catch (e: any) {
       const isRpcErr = e instanceof JsonRpcClientError
       const code = isRpcErr ? e.code : undefined
@@ -235,7 +237,7 @@ export function useFileActions(ctx: FileActionsContext) {
       } else {
         setPasswordDialogOpen(false)
         setPasswordDialogFile(null)
-        toast({ title: "解压失败", description: e?.message || "解压出错", variant: "destructive" })
+        toast({ title: t('apps.fileManager.actions.extractFailed'), description: e?.message || t('apps.fileManager.actions.extractError'), variant: "destructive" })
       }
     }
   }
@@ -256,9 +258,9 @@ export function useFileActions(ctx: FileActionsContext) {
       const outputPath = currentPath === '/' ? '/' + archiveName : currentPath + '/' + archiveName
 
       await fsApi.compress(activeNodeId, filesToCompress.map(f => f.path), outputPath)
-      toast({ title: "压缩任务已提交", description: `正在后台压缩为 ${archiveName}` })
+      toast({ title: t('apps.fileManager.actions.compressTaskSubmitted'), description: t('apps.fileManager.actions.compressTaskDescription', { name: archiveName }) })
     } catch (e: any) {
-      toast({ title: "压缩失败", description: e?.message || "压缩出错", variant: "destructive" })
+      toast({ title: t('apps.fileManager.actions.compressFailed'), description: e?.message || t('apps.fileManager.actions.compressError'), variant: "destructive" })
     }
   }
 
@@ -269,13 +271,13 @@ export function useFileActions(ctx: FileActionsContext) {
   const handleCopy = () => {
     const sel = files.filter(f => selectedFiles.has(f.path))
     setClipboard({ files: sel, action: "copy", sourceNodeId: activeNodeId })
-    toast({ title: "已复制", description: `复制 ${sel.length} 个文件` })
+    toast({ title: t('apps.fileManager.actions.copied'), description: t('apps.fileManager.actions.copiedDescription', { count: sel.length }) })
   }
 
   const handleCut = () => {
     const sel = files.filter(f => selectedFiles.has(f.path))
     setClipboard({ files: sel, action: "move", sourceNodeId: activeNodeId })
-    toast({ title: "已剪切", description: `剪切 ${sel.length} 个文件` })
+    toast({ title: t('apps.fileManager.actions.cut'), description: t('apps.fileManager.actions.cutDescription', { count: sel.length }) })
   }
 
   const handlePaste = async () => {
@@ -286,15 +288,15 @@ export function useFileActions(ctx: FileActionsContext) {
     try {
       if (action === "copy") {
         await fsApi.copy(sourceNodeId, paths, currentPath, activeNodeId)
-        toast({ title: "复制任务已提交", description: `正在后台复制 ${clipFiles.length} 个项目` })
+        toast({ title: t('apps.fileManager.actions.copyTaskSubmitted'), description: t('apps.fileManager.actions.copyTaskDescription', { count: clipFiles.length }) })
       } else {
         await fsApi.move(sourceNodeId, paths, currentPath, activeNodeId)
-        toast({ title: "移动任务已提交", description: `正在后台移动 ${clipFiles.length} 个项目` })
+        toast({ title: t('apps.fileManager.actions.moveTaskSubmitted'), description: t('apps.fileManager.actions.moveTaskDescription', { count: clipFiles.length }) })
       }
       setClipboard(null)
       setSelectedFiles(new Set())
     } catch (e: any) {
-      toast({ title: "操作失败", description: e?.message || "操作出错", variant: "destructive" })
+      toast({ title: t('apps.fileManager.actions.operationFailed'), description: e?.message || t('apps.fileManager.actions.operationError'), variant: "destructive" })
     }
   }
 
@@ -307,21 +309,21 @@ export function useFileActions(ctx: FileActionsContext) {
   }
 
   const handleDownload = async (file: FileInfo) => {
-    if (file.isDir) { toast({ title: "提示", description: "文件夹暂不支持下载", variant: "destructive" }); return }
+    if (file.isDir) { toast({ title: t('apps.fileManager.actions.notice'), description: t('apps.fileManager.actions.folderDownloadUnsupported'), variant: "destructive" }); return }
     try {
       const url = await resolveDownloadUrl(file)
       const link = document.createElement('a')
       link.href = url; link.download = file.name; link.target = '_blank'; link.rel = 'noopener noreferrer'
       document.body.appendChild(link); link.click(); document.body.removeChild(link)
-      toast({ title: "开始下载", description: `正在下载 ${file.name}` })
-    } catch { toast({ title: "错误", description: "下载失败", variant: "destructive" }) }
+      toast({ title: t('apps.fileManager.actions.downloadStarted'), description: t('apps.fileManager.actions.downloadStartedDescription', { name: file.name }) })
+    } catch { toast({ title: t('apps.fileManager.actions.error'), description: t('apps.fileManager.actions.downloadFailed'), variant: "destructive" }) }
   }
 
   const handleShare = (file: FileInfo) => {
-    if (file.isDir) { toast({ title: "提示", description: "文件夹暂不支持分享", variant: "destructive" }); return }
+    if (file.isDir) { toast({ title: t('apps.fileManager.actions.notice'), description: t('apps.fileManager.actions.folderShareUnsupported'), variant: "destructive" }); return }
     useWindowStore.getState().openChildWindow({
       type: 'shareDialog',
-      title: `分享 - ${file.name}`,
+      title: t('apps.fileManager.content.windowTitles.share', { name: file.name }),
       component: (ctx: any) => <ShareDialogContent windowId={ctx.win.id} />,
       size: { width: 420, height: 330 },
       initialState: { nodeId: activeNodeId, path: file.path, fileName: file.name },
@@ -333,7 +335,7 @@ export function useFileActions(ctx: FileActionsContext) {
   const handleInfo = (file: FileInfo) => {
     useWindowStore.getState().openChildWindow({
       type: 'fileInfoDialog',
-      title: `详细信息 - ${file.name}`,
+      title: t('apps.fileManager.content.windowTitles.info', { name: file.name }),
       component: (ctx: any) => <FileInfoContent windowId={ctx.win.id} />,
       size: { width: 380, height: 340 },
       initialState: { nodeId: activeNodeId, path: file.path, fileName: file.name, isDir: file.isDir, extension: file.extension },
@@ -352,7 +354,7 @@ export function useFileActions(ctx: FileActionsContext) {
       case 'fm.openWith.editor':
         if (targetFile && !targetFile.isDir) {
           findOrCreateEditorWindow(targetFile, { forceEditor: true }).then(res => {
-            if (!res.ok && res.message) toast({ title: "无法打开", description: res.message, variant: "destructive" })
+            if (!res.ok && res.message) toast({ title: t('apps.fileManager.actions.openFailed'), description: res.message, variant: "destructive" })
           })
         }
         break
@@ -381,7 +383,7 @@ export function useFileActions(ctx: FileActionsContext) {
         if (targetFile && !targetFile.isDir) {
           useWindowStore.getState().openChildWindow({
             type: 'openWithDialog',
-            title: `打开方式 - ${targetFile.name}`,
+            title: t('apps.fileManager.content.windowTitles.openWith', { name: targetFile.name }),
             component: (ctx: any) => <OpenWithDialogContent windowId={ctx.win.id} />,
             size: { width: 400, height: 380 },
             initialState: { ext: targetFile.extension.toLowerCase(), fileName: targetFile.name, path: targetFile.path },
@@ -395,7 +397,7 @@ export function useFileActions(ctx: FileActionsContext) {
           const appId = action.replace('fm.openWith.', '')
           if (targetFile && !targetFile.isDir) {
             findOrCreateEditorWindow(targetFile, { forceApp: appId }).then(res => {
-              if (!res.ok && res.message) toast({ title: "无法打开", description: res.message, variant: "destructive" })
+              if (!res.ok && res.message) toast({ title: t('apps.fileManager.actions.openFailed'), description: res.message, variant: "destructive" })
             })
           }
         } else if (action.startsWith('fm.setDefaultApp.')) {
@@ -403,7 +405,7 @@ export function useFileActions(ctx: FileActionsContext) {
           if (targetFile) {
             const ext = targetFile.extension.toLowerCase()
             useSettingsStore.getState().setFileDefaultApp(ext, appId)
-            toast({ title: "已设置", description: `${ext} 文件将默认使用此应用打开` })
+            toast({ title: t('apps.fileManager.openWith.defaultSet'), description: t('apps.fileManager.openWith.defaultSetDescription', { ext }) })
           }
         }
         break

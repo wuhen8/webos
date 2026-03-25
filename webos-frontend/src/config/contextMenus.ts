@@ -8,13 +8,13 @@ export const desktopContextMenu: ContextMenuConfig = {
   items: [
     {
       id: 'desktop-open-fm',
-      label: '打开文件管理器',
+      label: 'i18n:context.desktop.openFileManager',
       icon: 'Folder',
       action: 'desktop.openFileManager',
     },
     {
       id: 'desktop-open-editor',
-      label: '打开编辑器',
+      label: 'i18n:context.desktop.openEditor',
       icon: 'FileCode',
       action: 'desktop.openEditor',
     },
@@ -24,25 +24,25 @@ export const desktopContextMenu: ContextMenuConfig = {
     },
     {
       id: 'desktop-add-widget',
-      label: '添加小组件',
+      label: 'i18n:context.desktop.addWidget',
       icon: 'AppWindow',
       action: 'desktop.addWidget',
       children: [
         {
           id: 'widget.clock',
-          label: '时钟',
+          label: 'i18n:context.desktop.clock',
           icon: 'Clock',
           action: 'desktop.addWidget',
         },
         {
           id: 'widget.weather',
-          label: '天气',
+          label: 'i18n:context.desktop.weather',
           icon: 'Cloud',
           action: 'desktop.addWidget',
         },
         {
           id: 'widget.system-monitor',
-          label: '系统监控',
+          label: 'i18n:context.desktop.systemMonitor',
           icon: 'Activity',
           action: 'desktop.addWidget',
         },
@@ -54,14 +54,14 @@ export const desktopContextMenu: ContextMenuConfig = {
     },
     {
       id: 'desktop-open-github',
-      label: 'GitHub 仓库',
+      label: 'i18n:context.desktop.githubRepo',
       icon: 'Github',
       action: 'desktop.openUrl',
       url: 'https://github.com/wuhen8/webos',
     },
     {
       id: 'desktop-open-clipboard',
-      label: '打开剪切板',
+      label: 'i18n:context.desktop.openClipboard',
       icon: 'Globe',
       action: 'desktop.openWebview',
       url: 'https://139.196.54.68/netcut/mc',
@@ -72,7 +72,7 @@ export const desktopContextMenu: ContextMenuConfig = {
     },
     {
       id: 'desktop-logout',
-      label: '退出登录',
+      label: 'i18n:context.desktop.logout',
       icon: 'LogOut',
       action: 'desktop.logout',
       variant: 'danger',
@@ -86,7 +86,7 @@ export const windowTitleBarContextMenu: ContextMenuConfig = {
   items: [
     {
       id: 'titlebar-minimize',
-      label: '最小化',
+      label: 'i18n:context.window.minimize',
       icon: 'Minus',
       action: 'window.minimize',
     },
@@ -105,7 +105,7 @@ export const dockItemContextMenu: ContextMenuConfig = {
   items: [
     {
       id: 'dock-new-window',
-      label: '新建窗口',
+      label: 'i18n:context.window.newWindow',
       icon: 'Monitor',
       action: 'dock.newWindow',
     },
@@ -115,13 +115,13 @@ export const dockItemContextMenu: ContextMenuConfig = {
     },
     {
       id: 'dock-remove',
-      label: '从 Dock 中移除',
+      label: 'i18n:context.window.removeFromDock',
       icon: 'Minus',
       action: 'dock.removeFromDock',
     },
     {
       id: 'dock-quit',
-      label: '退出',
+      label: 'i18n:context.window.quit',
       icon: 'LogOut',
       action: 'dock.quit',
       variant: 'danger',
@@ -135,13 +135,13 @@ export const githubDockContextMenu: ContextMenuConfig = {
   items: [
     {
       id: 'github-open',
-      label: '打开 GitHub 仓库',
+      label: 'i18n:context.window.openGithubRepo',
       icon: 'Globe',
       action: 'github.open',
     },
     {
       id: 'github-copy',
-      label: '复制链接',
+      label: 'i18n:context.window.copyLink',
       icon: 'Copy',
       action: 'github.copy',
     },
@@ -154,7 +154,7 @@ export const webviewTitleBarContextMenu: ContextMenuConfig = {
   items: [
     {
       id: 'webview-titlebar-minimize',
-      label: '最小化',
+      label: 'i18n:context.window.minimize',
       icon: 'Minus',
       action: 'window.minimize',
     },
@@ -170,7 +170,7 @@ export const webviewTitleBarContextMenu: ContextMenuConfig = {
     },
     {
       id: 'webview-titlebar-reload',
-      label: '刷新',
+      label: 'i18n:context.window.reload',
       icon: 'RefreshCw',
       action: 'window.reload',
     },
@@ -180,7 +180,7 @@ export const webviewTitleBarContextMenu: ContextMenuConfig = {
     },
     {
       id: 'webview-titlebar-open-browser',
-      label: '在浏览器中打开',
+      label: 'i18n:context.window.openInBrowser',
       icon: 'Globe',
       action: 'window.openInBrowser',
     },

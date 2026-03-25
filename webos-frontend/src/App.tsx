@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { useTranslation } from 'react-i18next'
 import { AnimatePresence } from "framer-motion"
 import { useHotkeys } from "@/hooks/useHotkeys"
 import { useKeyboardDispatcher } from "@/hooks/useKeyboardDispatcher"
@@ -30,11 +31,14 @@ import type { ContextMenuItemConfig } from "@/types"
 
 import { useAuthStore, useSettingsStore, useUIStore, useWindowStore, useWebSocketStore } from "@/stores"
 import { useProgressDialogStore } from "@/stores/progressDialogStore"
+import i18n from '@/i18n'
 import GlobalMusicPlayer from "@/apps/music-player/GlobalMusicPlayer"
 import { UnifiedDesktop } from "@/components/desktop/UnifiedDesktop"
 
 function App() {
   const authPhase = useAuthStore((s) => s.authPhase)
+  const locale = useSettingsStore((s) => s.locale)
+  const { t } = useTranslation()
 
   const wsConnect = useWebSocketStore((s) => s.connect)
   const wsDisconnect = useWebSocketStore((s) => s.disconnect)
@@ -71,6 +75,10 @@ function App() {
   useEffect(() => {
     loadSettings()
   }, [loadSettings, wsConnected])
+
+  useEffect(() => {
+    void i18n.changeLanguage(locale)
+  }, [locale])
 
   // Load app overrides when authenticated and WebSocket is connected
   useEffect(() => {
@@ -293,7 +301,7 @@ function App() {
                   active:from-slate-100 active:to-slate-200 active:scale-[0.98]
                   transition-all duration-150"
               >
-                {confirmDialog?.cancelText || '取消'}
+                {confirmDialog?.cancelText || t('common.cancel')}
               </button>
               <button
                 onClick={() => {
@@ -307,7 +315,7 @@ function App() {
                   }
                   active:scale-[0.98]`}
               >
-                {confirmDialog?.confirmText || '确认'}
+                {confirmDialog?.confirmText || t('common.confirm')}
               </button>
             </div>
           </DialogContent>

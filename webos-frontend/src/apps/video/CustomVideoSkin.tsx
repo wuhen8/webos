@@ -1,4 +1,5 @@
 import { type ComponentProps, forwardRef, type ReactNode, useRef, type PropsWithChildren, type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AlertDialog, Container, usePlayer, selectError, BufferingIndicator, CaptionsButton, Controls, FullscreenButton, MuteButton, PiPButton, PlayButton, PlaybackRateButton, Popover, SeekButton, Slider, Time, TimeSlider, Tooltip, VolumeSlider } from '@videojs/react'
 
 export interface ErrorDialogClasses {
@@ -12,6 +13,7 @@ export interface ErrorDialogClasses {
 }
 
 export function ErrorDialog({ classes }: { classes?: ErrorDialogClasses }): ReactNode {
+  const { t } = useTranslation()
   const errorState = usePlayer(selectError)
   const lastError = useRef(errorState?.error)
   if (errorState?.error) lastError.current = errorState.error
@@ -28,13 +30,13 @@ export function ErrorDialog({ classes }: { classes?: ErrorDialogClasses }): Reac
       <AlertDialog.Popup className={classes?.root}>
         <div className={classes?.dialog}>
           <div className={classes?.content}>
-            <AlertDialog.Title className={classes?.title}>Something went wrong.</AlertDialog.Title>
+            <AlertDialog.Title className={classes?.title}>{t('apps.video.player.customSkin.errorTitle')}</AlertDialog.Title>
             <AlertDialog.Description className={classes?.description}>
-              {lastError.current?.message ?? 'An error occurred while trying to play the video. Please try again.'}
+              {lastError.current?.message ?? t('apps.video.player.customSkin.errorDescription')}
             </AlertDialog.Description>
           </div>
           <div className={classes?.actions}>
-            <AlertDialog.Close className={classes?.close}>OK</AlertDialog.Close>
+            <AlertDialog.Close className={classes?.close}>{t('common.confirm')}</AlertDialog.Close>
           </div>
         </div>
       </AlertDialog.Popup>
@@ -66,28 +68,33 @@ const errorClasses = {
 }
 
 function PlayLabel(): ReactNode {
+  const { t } = useTranslation()
   const paused = usePlayer((s) => Boolean(s.paused))
   const ended = usePlayer((s) => Boolean(s.ended))
-  if (ended) return <>Replay</>
-  return paused ? <>Play</> : <>Pause</>
+  if (ended) return <>{t('apps.video.player.customSkin.replay')}</>
+  return paused ? <>{t('apps.video.player.customSkin.play')}</> : <>{t('apps.video.player.customSkin.pause')}</>
 }
 
 function CaptionsLabel(): ReactNode {
+  const { t } = useTranslation()
   const active = usePlayer((s) => Boolean(s.subtitlesShowing))
-  return active ? <>Disable captions</> : <>Enable captions</>
+  return active ? <>{t('apps.video.player.customSkin.disableCaptions')}</> : <>{t('apps.video.player.customSkin.enableCaptions')}</>
 }
 
 function PiPLabel(): ReactNode {
+  const { t } = useTranslation()
   const pip = usePlayer((s) => Boolean(s.pip))
-  return pip ? <>Exit picture-in-picture</> : <>Enter picture-in-picture</>
+  return pip ? <>{t('apps.video.player.customSkin.exitPictureInPicture')}</> : <>{t('apps.video.player.customSkin.enterPictureInPicture')}</>
 }
 
 function FullscreenLabel(): ReactNode {
+  const { t } = useTranslation()
   const fullscreen = usePlayer((s) => Boolean(s.fullscreen))
-  return fullscreen ? <>Exit fullscreen</> : <>Enter fullscreen</>
+  return fullscreen ? <>{t('apps.video.player.customSkin.exitFullscreen')}</> : <>{t('apps.video.player.customSkin.enterFullscreen')}</>
 }
 
 export function CustomVideoSkin(props: CustomVideoSkinProps): ReactNode {
+  const { t } = useTranslation()
   const { children, className, onPlaylistClick, showPlaylistButton, ...rest } = props
 
   return (
@@ -143,7 +150,7 @@ export function CustomVideoSkin(props: CustomVideoSkinProps): ReactNode {
                 />
               }
             />
-            <Tooltip.Popup className="media-surface media-tooltip">Seek backward {SEEK_TIME} seconds</Tooltip.Popup>
+            <Tooltip.Popup className="media-surface media-tooltip">{t('apps.video.player.customSkin.seekBackward', { seconds: SEEK_TIME })}</Tooltip.Popup>
           </Tooltip.Root>
 
           <Tooltip.Root side="top">
@@ -162,7 +169,7 @@ export function CustomVideoSkin(props: CustomVideoSkinProps): ReactNode {
                 />
               }
             />
-            <Tooltip.Popup className="media-surface media-tooltip">Seek forward {SEEK_TIME} seconds</Tooltip.Popup>
+            <Tooltip.Popup className="media-surface media-tooltip">{t('apps.video.player.customSkin.seekForward', { seconds: SEEK_TIME })}</Tooltip.Popup>
           </Tooltip.Root>
 
           <Time.Group className="media-time">
@@ -191,7 +198,7 @@ export function CustomVideoSkin(props: CustomVideoSkinProps): ReactNode {
                 />
               }
             />
-            <Tooltip.Popup className="media-surface media-tooltip">Toggle playback rate</Tooltip.Popup>
+            <Tooltip.Popup className="media-surface media-tooltip">{t('apps.video.player.customSkin.togglePlaybackRate')}</Tooltip.Popup>
           </Tooltip.Root>
 
           <Popover.Root openOnHover delay={200} closeDelay={100} side="top">
@@ -255,7 +262,7 @@ export function CustomVideoSkin(props: CustomVideoSkinProps): ReactNode {
                 }
               />
               <Tooltip.Popup className="media-surface media-tooltip">
-                剧集列表
+                {t('apps.video.player.playlist.button')}
               </Tooltip.Popup>
             </Tooltip.Root>
           )}

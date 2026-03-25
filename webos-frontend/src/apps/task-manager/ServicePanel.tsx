@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import { Search, XCircle } from "lucide-react"
 import type { ServiceInfo } from "./types"
 
@@ -9,6 +10,7 @@ export function ServicePanel({
   services: ServiceInfo[]
   onContextMenu: (e: React.MouseEvent, serviceName: string) => void
 }) {
+  const { t } = useTranslation()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedService, setSelectedService] = useState<string | null>(null)
 
@@ -28,21 +30,21 @@ export function ServicePanel({
 
   const activeStateLabel = (state: string) => {
     switch (state) {
-      case "active": return "运行中"
-      case "inactive": return "已停止"
-      case "failed": return "失败"
-      case "activating": return "启动中"
-      case "deactivating": return "停止中"
+      case "active": return t('apps.taskManager.services.state.active')
+      case "inactive": return t('apps.taskManager.services.state.inactive')
+      case "failed": return t('apps.taskManager.services.state.failed')
+      case "activating": return t('apps.taskManager.services.state.activating')
+      case "deactivating": return t('apps.taskManager.services.state.deactivating')
       default: return state
     }
   }
 
   const enabledLabel = (enabled: string) => {
     switch (enabled) {
-      case "enabled": return "已启用"
-      case "disabled": return "已禁用"
-      case "static": return "静态"
-      case "masked": return "已屏蔽"
+      case "enabled": return t('apps.taskManager.services.enabledState.enabled')
+      case "disabled": return t('apps.taskManager.services.enabledState.disabled')
+      case "static": return t('apps.taskManager.services.enabledState.static')
+      case "masked": return t('apps.taskManager.services.enabledState.masked')
       default: return enabled
     }
   }
@@ -67,7 +69,7 @@ export function ServicePanel({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索服务名或描述..."
+            placeholder={t('apps.taskManager.services.searchPlaceholder')}
             className="w-full pl-8 pr-3 py-1.5 text-[0.75rem] bg-white/70 border border-slate-200 rounded-lg outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all placeholder:text-slate-300"
           />
           {searchQuery && (
@@ -76,18 +78,18 @@ export function ServicePanel({
             </button>
           )}
         </div>
-        <div className="text-[0.6875rem] text-slate-400 shrink-0">{filtered.length} 条结果</div>
+        <div className="text-[0.6875rem] text-slate-400 shrink-0">{t('apps.taskManager.services.resultCount', { count: filtered.length })}</div>
       </div>
 
       <div className="flex-1 overflow-auto rounded-lg border border-slate-100 bg-white/50">
         <table className="w-full text-[0.6875rem]">
           <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 border-b border-slate-100">
             <tr>
-              <th className={thClass}>服务名</th>
-              <th className={thClass}>状态</th>
-              <th className={thClass}>子状态</th>
-              <th className={thClass}>开机自启</th>
-              <th className={thClass}>描述</th>
+              <th className={thClass}>{t('apps.taskManager.services.name')}</th>
+              <th className={thClass}>{t('apps.taskManager.services.status')}</th>
+              <th className={thClass}>{t('apps.taskManager.services.subState')}</th>
+              <th className={thClass}>{t('apps.taskManager.services.enabled')}</th>
+              <th className={thClass}>{t('apps.taskManager.services.description')}</th>
             </tr>
           </thead>
           <tbody>
@@ -120,7 +122,7 @@ export function ServicePanel({
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={5} className="text-center py-8 text-slate-400 text-[0.75rem]">
-                  {searchQuery ? "没有匹配的服务" : "加载中..."}
+                  {searchQuery ? t('apps.taskManager.services.noMatches') : t('apps.taskManager.overview.loading')}
                 </td>
               </tr>
             )}

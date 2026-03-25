@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Cloud, CloudRain, Sun, Wind } from 'lucide-react'
 import type { WidgetProps } from '@/stores/widgetStore'
 
 export function WeatherWidget({ widget, onUpdateConfig }: WidgetProps) {
+  const { t } = useTranslation()
   const [weather, setWeather] = useState({
     temp: 22,
     condition: 'sunny',
@@ -37,10 +39,10 @@ export function WeatherWidget({ widget, onUpdateConfig }: WidgetProps) {
 
   const getConditionText = () => {
     switch (weather.condition) {
-      case 'sunny': return '晴天'
-      case 'cloudy': return '多云'
-      case 'rainy': return '雨天'
-      default: return '晴天'
+      case 'sunny': return t('widgets.weather.conditions.sunny')
+      case 'cloudy': return t('widgets.weather.conditions.cloudy')
+      case 'rainy': return t('widgets.weather.conditions.rainy')
+      default: return t('widgets.weather.conditions.sunny')
     }
   }
 

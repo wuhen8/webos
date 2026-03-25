@@ -2,7 +2,7 @@ import type { AppConfig } from '@/types'
 
 export const manifest: AppConfig = {
   id: 'appStore',
-  name: '应用商店',
+  name: 'i18n:apps.appStore.name',
   icon: 'PackageOpen',
   gradient: 'from-violet-400 to-violet-600',
   shadow: 'shadow-violet-500/30',

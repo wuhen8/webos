@@ -1,4 +1,5 @@
 import { createElement } from 'react'
+import i18n from '@/i18n'
 import type { MenuActionHandler } from '@/types'
 import { useWindowStore } from '@/stores/windowStore'
 import { lazyLoad } from '@/config/lazyLoad'
@@ -12,7 +13,7 @@ export const actions: Record<string, MenuActionHandler> = {
   manageShares: (ctx) => {
     useWindowStore.getState().openChildWindow({
       type: 'shareManager',
-      title: '分享管理',
+      title: i18n.t('apps.fileManager.shareManager.title'),
       component: (renderCtx) => createElement(ShareManagerContent, { windowId: renderCtx.win.id }),
       size: { width: 700, height: 500 },
       singleton: true,

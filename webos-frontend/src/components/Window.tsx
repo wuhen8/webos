@@ -12,6 +12,7 @@ import { windowTitleBarContextMenu, webviewTitleBarContextMenu } from "@/config/
 import { useWindowStore, useUIStore } from "@/stores"
 import { useProcessStore } from "@/stores/processStore"
 import { getAppConfig, resolveIcon } from "@/config/appRegistry"
+import i18n from '@/i18n'
 
 // ── Snap constants ──
 const EDGE_SNAP_THRESHOLD = 10
@@ -667,7 +668,7 @@ export function Window({ window: win, children }: WindowProps) {
         onContextMenu={(e) => {
           e.preventDefault()
           const ctx: ContextMenuContext = {
-            maximizeLabel: win.isMaximized ? '还原' : '最大化',
+            maximizeLabel: win.isMaximized ? i18n.t('context.window.restoreAction') : i18n.t('context.window.maximizeAction'),
             isMaximized: win.isMaximized,
           }
           const menuConfig = win.type === 'webview' ? webviewTitleBarContextMenu : windowTitleBarContextMenu

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { useTranslation } from 'react-i18next'
 import { Lock, Unlock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -14,6 +15,7 @@ interface ExtractPasswordDialogProps {
 }
 
 export function ExtractPasswordDialog({ open, onOpenChange, fileName, onConfirm, hasError }: ExtractPasswordDialogProps) {
+  const { t } = useTranslation()
   const [password, setPassword] = useState("")
   const [shaking, setShaking] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -58,9 +60,9 @@ export function ExtractPasswordDialog({ open, onOpenChange, fileName, onConfirm,
           .shake { animation: shake 0.5s ease-in-out; }
         `}</style>
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-slate-900">需要密码</DialogTitle>
+          <DialogTitle className="text-lg font-semibold text-slate-900">{t('apps.fileManager.extractDialog.title')}</DialogTitle>
           <DialogDescription className="text-sm text-slate-700">
-            压缩包已加密，请输入密码以解压
+            {t('apps.fileManager.extractDialog.description')}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -72,7 +74,7 @@ export function ExtractPasswordDialog({ open, onOpenChange, fileName, onConfirm,
             ref={inputRef}
             type="password"
             className={`w-full h-10 rounded-xl bg-white/20 backdrop-blur-sm border border-white/30 px-3 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-400/50${shaking ? ' shake' : ''}`}
-            placeholder="请输入解压密码"
+            placeholder={t('apps.fileManager.extractDialog.placeholder')}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => {
@@ -87,7 +89,7 @@ export function ExtractPasswordDialog({ open, onOpenChange, fileName, onConfirm,
             className="rounded-xl transition-transform hover:scale-105 active:scale-95 bg-white/20 hover:bg-white/30 border-white/30 text-slate-900"
             onClick={handleCancel}
           >
-            取消
+            {t('apps.fileManager.extractDialog.cancel')}
           </Button>
           <Button
             variant="outline"
@@ -96,7 +98,7 @@ export function ExtractPasswordDialog({ open, onOpenChange, fileName, onConfirm,
             onClick={handleConfirm}
           >
             <Unlock className="h-4 w-4 mr-2" />
-            解压
+            {t('apps.fileManager.extractDialog.extract')}
           </Button>
         </DialogFooter>
       </DialogContent>

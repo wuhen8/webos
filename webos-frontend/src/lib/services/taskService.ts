@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { request, notify, registerMessageHandler, registerReconnectHook, registerDisconnectHook, refreshChannel } from '@/stores/webSocketStore'
 import { useTaskStore } from '@/stores/taskStore'
 import { toast } from '@/hooks/use-toast'
@@ -10,7 +11,7 @@ registerMessageHandler((msg) => {
     useTaskStore.getState().upsertTask(data)
     if (!data.silent && (data.status === 'success' || data.status === 'failed')) {
       toast({
-        title: data.status === 'success' ? '任务完成' : '任务失败',
+        title: data.status === 'success' ? i18n.t('task.toast.completed') : i18n.t('task.toast.failed'),
         description: data.title,
         variant: data.status === 'success' ? 'success' : 'destructive',
       })

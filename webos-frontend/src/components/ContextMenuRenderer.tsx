@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { resolveIcon } from '@/config/appRegistry'
+import { resolveI18nText } from '@/i18n/resolve'
 import type { ContextMenuConfig, ContextMenuContext, ContextMenuEntry, ContextMenuItemConfig } from '@/types'
 
 interface ContextMenuRendererProps {
@@ -52,7 +53,8 @@ function resolveCondition(
 }
 
 function resolveLabel(label: string, ctx: ContextMenuContext): string {
-  return label.includes('{{') ? resolveTemplate(label, ctx) : label
+  const resolved = resolveI18nText(label, ctx)
+  return resolved.includes('{{') ? resolveTemplate(resolved, ctx) : resolved
 }
 
 function isVisible(entry: ContextMenuEntry, ctx: ContextMenuContext): boolean {

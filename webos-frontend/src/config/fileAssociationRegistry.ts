@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { appRegistry, getDynamicApps } from './appRegistry'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { AppConfig, ContextMenuEntry } from '@/types'
@@ -129,7 +130,7 @@ export function buildOpenWithMenuItems(ext?: string): ContextMenuEntry[] {
     const isCurrentDefault = appId === currentDefault
     return {
       id: `open-with-${appId}`,
-      label: (assoc?.label || config.name) + (isCurrentDefault ? ' (默认)' : ''),
+      label: (assoc?.label || config.name) + (isCurrentDefault ? i18n.t('apps.fileManager.openWith.defaultSuffix') : ''),
       icon: assoc?.icon || config.icon,
       action: `fm.openWith.${appId}`,
     }
@@ -140,7 +141,7 @@ export function buildOpenWithMenuItems(ext?: string): ContextMenuEntry[] {
     items.push({ id: 'open-with-divider', type: 'divider' })
     items.push({
       id: 'open-with-more',
-      label: '其他...',
+      label: i18n.t('apps.fileManager.openWith.moreApps'),
       icon: 'Settings',
       action: 'fm.openWithDialog',
     })

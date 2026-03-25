@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Play, Pencil } from "lucide-react"
 import { taskService } from "@/lib/services"
 import { SettingsIcon } from "./SettingsIcon"
@@ -21,6 +22,7 @@ interface ScheduledJob {
 }
 
 export default function ScheduledTab() {
+  const { t } = useTranslation()
   const [scheduledJobs, setScheduledJobs] = useState<ScheduledJob[]>([])
   const [scheduledShowAdd, setScheduledShowAdd] = useState(false)
   const [scheduledEditId, setScheduledEditId] = useState<string | null>(null)
@@ -194,18 +196,22 @@ export default function ScheduledTab() {
   }
 
   const formatRelativeTime = (ms: number) => {
-    if (!ms) return "从未运行"
+    if (!ms) return t('settings.scheduled.neverRun')
     const diff = Date.now() - ms
-    if (diff < 60000) return "刚刚"
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-    return `${Math.floor(diff / 86400000)}天前`
+    if (diff < 60000) return t('settings.scheduled.justNow')
+    if (diff < 3600000) return t('settings.scheduled.minutesAgo', { count: Math.floor(diff / 60000) })
+    if (diff < 86400000) return t('settings.scheduled.hoursAgo', { count: Math.floor(diff / 3600000) })
+    return t('settings.scheduled.daysAgo', { count: Math.floor(diff / 86400000) })
   }
 
   const formatSchedule = (job: ScheduledJob) => {
     if (job.scheduleType === "once" && job.runAt) {
       const d = new Date(job.runAt)
-      return `一次性 ${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      return t('settings.scheduled.onceAt', {
+        month: d.getMonth() + 1,
+        day: d.getDate(),
+        time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+      })
     }
     if (job.cronDesc) return job.cronDesc
     return job.cronExpr
@@ -223,19 +229,19 @@ export default function ScheduledTab() {
         <div className="w-16 h-16 rounded-2xl bg-violet-500 flex items-center justify-center shadow-lg mb-3">
           <SettingsIcon type="scheduled" className="w-10 h-10 text-white" />
         </div>
-        <h1 className="text-xl font-semibold text-gray-900">定时任务</h1>
-        <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">管理计划任务，支持 Cron 表达式</p>
+        <h1 className="text-xl font-semibold text-gray-900">{t('settings.sidebar.scheduled')}</h1>
+        <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">{t('settings.scheduled.subtitle')}</p>
       </div>
 
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2 px-1">
-          <h2 className="text-[0.75rem] font-medium text-gray-500 uppercase tracking-wide">任务列表</h2>
+          <h2 className="text-[0.75rem] font-medium text-gray-500 uppercase tracking-wide">{t('settings.scheduled.list')}</h2>
           <button
             onClick={() => { resetScheduledForm(); setScheduledShowAdd(true) }}
             className="flex items-center gap-1 px-2 py-1 text-[0.75rem] text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
-            添加
+            {t('settings.scheduled.addTask')}
           </button>
         </div>
         <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
@@ -258,26 +264,26 @@ export default function ScheduledTab() {
                     </button>
                     <span className="text-[0.8125rem] font-medium text-gray-900 flex-1 min-w-0 truncate">{job.name}</span>
                     <span className="text-[0.6875rem] text-gray-400 flex-shrink-0">{formatSchedule(job)}</span>
-                    {job.silent && <span className="text-[0.6rem] text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded flex-shrink-0">静默</span>}
-                    {job.scheduleType === 'once' && <span className="text-[0.6rem] text-blue-400 bg-blue-100 px-1.5 py-0.5 rounded flex-shrink-0">一次性</span>}
+                    {job.silent && <span className="text-[0.6rem] text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded flex-shrink-0">{t('settings.scheduled.muted')}</span>}
+                    {job.scheduleType === 'once' && <span className="text-[0.6rem] text-blue-400 bg-blue-100 px-1.5 py-0.5 rounded flex-shrink-0">{t('settings.scheduled.oneTime')}</span>}
                   </div>
                   <div className="mt-1 ml-10">
-                    <span className="text-[0.6875rem] text-gray-400 font-mono">{job.jobType === 'shell' ? 'Shell' : job.jobType === 'command' ? '命令' : '内置'}: {configLabel}</span>
+                    <span className="text-[0.6875rem] text-gray-400 font-mono">{job.jobType === 'shell' ? t('settings.scheduled.jobTypes.shell') : job.jobType === 'command' ? t('settings.scheduled.jobTypes.command') : t('settings.scheduled.jobTypes.builtin')}: {configLabel}</span>
                   </div>
                   <div className="flex items-center justify-between mt-1.5 ml-10">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[0.6875rem] text-gray-400">上次: {formatRelativeTime(job.lastRunAt)}</span>
-                      {job.lastStatus === 'success' && <span className="text-[0.6875rem] text-green-500">成功</span>}
-                      {job.lastStatus === 'failed' && <span className="text-[0.6875rem] text-red-500">失败</span>}
+                      <span className="text-[0.6875rem] text-gray-400">{t('settings.scheduled.lastRun')} {formatRelativeTime(job.lastRunAt)}</span>
+                      {job.lastStatus === 'success' && <span className="text-[0.6875rem] text-green-500">{t('settings.scheduled.success')}</span>}
+                      {job.lastStatus === 'failed' && <span className="text-[0.6875rem] text-red-500">{t('settings.scheduled.failed')}</span>}
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => handleRunScheduledJob(job.id)} className="p-1 hover:bg-black/[0.05] rounded transition-colors" title="立即运行">
+                      <button onClick={() => handleRunScheduledJob(job.id)} className="p-1 hover:bg-black/[0.05] rounded transition-colors" title={t('settings.scheduled.runNow')}>
                         <Play className="w-3.5 h-3.5 text-gray-500" />
                       </button>
-                      <button onClick={() => handleEditScheduledJob(job)} className="p-1 hover:bg-black/[0.05] rounded transition-colors" title="编辑">
+                      <button onClick={() => handleEditScheduledJob(job)} className="p-1 hover:bg-black/[0.05] rounded transition-colors" title={t('settings.scheduled.edit')}>
                         <Pencil className="w-3.5 h-3.5 text-gray-500" />
                       </button>
-                      <button onClick={() => handleDeleteScheduledJob(job.id)} className="p-1 hover:bg-black/[0.05] rounded transition-colors" title="删除">
+                      <button onClick={() => handleDeleteScheduledJob(job.id)} className="p-1 hover:bg-black/[0.05] rounded transition-colors" title={t('settings.scheduled.delete')}>
                         <Trash2 className="w-3.5 h-3.5 text-red-400 hover:text-red-600" />
                       </button>
                     </div>
@@ -288,7 +294,7 @@ export default function ScheduledTab() {
             )
           })}
           {scheduledJobs.length === 0 && !scheduledShowAdd && (
-            <div className="px-4 py-3 text-[0.8125rem] text-gray-400">暂无任务</div>
+            <div className="px-4 py-3 text-[0.8125rem] text-gray-400">{t('settings.scheduled.empty')}</div>
           )}
         </div>
       </div>
@@ -296,92 +302,99 @@ export default function ScheduledTab() {
       {/* 添加/编辑表单 */}
       {scheduledShowAdd && (
         <div className="bg-[#f5f5f7] rounded-xl overflow-hidden p-4 mb-4">
-          <h3 className="text-[0.8125rem] font-medium text-gray-900 mb-3">{scheduledEditId ? '编辑任务' : '添加任务'}</h3>
+          <h3 className="text-[0.8125rem] font-medium text-gray-900 mb-3">{scheduledEditId ? t('settings.scheduled.editTask') : t('settings.scheduled.createTask')}</h3>
           <div className="space-y-3">
             <div>
-              <label className="text-[0.75rem] text-gray-500 mb-1 block">任务名称</label>
-              <input type="text" value={scheduledForm.name} onChange={(e) => setScheduledForm(f => ({ ...f, name: e.target.value }))} placeholder="输入任务名称" className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30" />
+              <label className="text-[0.75rem] text-gray-500 mb-1 block">{t('settings.scheduled.taskName')}</label>
+              <input type="text" value={scheduledForm.name} onChange={(e) => setScheduledForm(f => ({ ...f, name: e.target.value }))} placeholder={t('settings.scheduled.taskNamePlaceholder')} className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30" />
             </div>
             <div>
-              <label className="text-[0.75rem] text-gray-500 mb-1 block">类型</label>
+              <label className="text-[0.75rem] text-gray-500 mb-1 block">{t('settings.scheduled.type')}</label>
               <div className="flex gap-2">
-                <button onClick={() => setScheduledForm(f => ({ ...f, jobType: "shell" }))} className={`px-3 py-1.5 text-[0.8125rem] rounded-md border transition-colors ${scheduledForm.jobType === 'shell' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>Shell 命令</button>
-                <button onClick={() => setScheduledForm(f => ({ ...f, jobType: "command" }))} className={`px-3 py-1.5 text-[0.8125rem] rounded-md border transition-colors ${scheduledForm.jobType === 'command' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>WebOS 命令</button>
-                <button onClick={() => setScheduledForm(f => ({ ...f, jobType: "builtin" }))} className={`px-3 py-1.5 text-[0.8125rem] rounded-md border transition-colors ${scheduledForm.jobType === 'builtin' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>内置操作</button>
+                <button onClick={() => setScheduledForm(f => ({ ...f, jobType: "shell" }))} className={`px-3 py-1.5 text-[0.8125rem] rounded-md border transition-colors ${scheduledForm.jobType === 'shell' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>{t('settings.scheduled.shellCommand')}</button>
+                <button onClick={() => setScheduledForm(f => ({ ...f, jobType: "command" }))} className={`px-3 py-1.5 text-[0.8125rem] rounded-md border transition-colors ${scheduledForm.jobType === 'command' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>{t('settings.scheduled.webosCommand')}</button>
+                <button onClick={() => setScheduledForm(f => ({ ...f, jobType: "builtin" }))} className={`px-3 py-1.5 text-[0.8125rem] rounded-md border transition-colors ${scheduledForm.jobType === 'builtin' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>{t('settings.scheduled.builtinOperation')}</button>
               </div>
             </div>
             {scheduledForm.jobType === "shell" ? (
               <div>
-                <label className="text-[0.75rem] text-gray-500 mb-1 block">Shell 命令</label>
-                <input type="text" value={scheduledForm.command} onChange={(e) => setScheduledForm(f => ({ ...f, command: e.target.value }))} placeholder="例如: tar czf /backup/data.tar.gz /data" className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" />
+                <label className="text-[0.75rem] text-gray-500 mb-1 block">{t('settings.scheduled.shellCommand')}</label>
+                <input type="text" value={scheduledForm.command} onChange={(e) => setScheduledForm(f => ({ ...f, command: e.target.value }))} placeholder={t('settings.scheduled.shellCommandPlaceholder')} className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" />
               </div>
             ) : scheduledForm.jobType === "command" ? (
               <div>
-                <label className="text-[0.75rem] text-gray-500 mb-1 block">WebOS 命令</label>
-                <input type="text" value={scheduledForm.command} onChange={(e) => setScheduledForm(f => ({ ...f, command: e.target.value }))} placeholder="例如: notify 你好 或 ai 检查服务器状态" className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" />
-                <p className="text-[0.6875rem] text-gray-400 mt-1">支持所有斜杠命令，如 notify、ai、status、jobs 等（无需 / 前缀）</p>
+                <label className="text-[0.75rem] text-gray-500 mb-1 block">{t('settings.scheduled.webosCommand')}</label>
+                <input type="text" value={scheduledForm.command} onChange={(e) => setScheduledForm(f => ({ ...f, command: e.target.value }))} placeholder={t('settings.scheduled.webosCommandPlaceholder')} className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" />
+                <p className="text-[0.6875rem] text-gray-400 mt-1">{t('settings.scheduled.webosCommandHint')}</p>
               </div>
             ) : (
               <div className="space-y-2">
                 <div>
-                  <label className="text-[0.75rem] text-gray-500 mb-1 block">内置操作</label>
+                  <label className="text-[0.75rem] text-gray-500 mb-1 block">{t('settings.scheduled.builtinOperation')}</label>
                   <select value={scheduledForm.operation} onChange={(e) => setScheduledForm(f => ({ ...f, operation: e.target.value }))} className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30">
-                    <option value="rebuild-index-local">重建本地索引</option>
-                    <option value="rebuild-index-s3">重建S3索引</option>
-                    <option value="clean-uploads">清理过期上传</option>
-                    <option value="copy">复制文件</option>
-                    <option value="compress">压缩文件</option>
-                    <option value="extract">解压文件</option>
+                    <option value="rebuild-index-local">{t('settings.scheduled.operations.rebuildIndexLocal')}</option>
+                    <option value="rebuild-index-s3">{t('settings.scheduled.operations.rebuildIndexS3')}</option>
+                    <option value="clean-uploads">{t('settings.scheduled.operations.cleanUploads')}</option>
+                    <option value="copy">{t('settings.scheduled.operations.copy')}</option>
+                    <option value="compress">{t('settings.scheduled.operations.compress')}</option>
+                    <option value="extract">{t('settings.scheduled.operations.extract')}</option>
                   </select>
                 </div>
                 {scheduledForm.operation === "copy" && (
                   <div className="space-y-2 pl-2 border-l-2 border-blue-200">
-                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">存储节点 ID</label><input type="text" value={scheduledForm.opNodeId} onChange={(e) => setScheduledForm(f => ({ ...f, opNodeId: e.target.value }))} placeholder="例如: local-1" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
-                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">源路径 (每行一个)</label><textarea value={scheduledForm.opPaths} onChange={(e) => setScheduledForm(f => ({ ...f, opPaths: e.target.value }))} placeholder={"/data/folder1\n/data/file.txt"} rows={3} className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono resize-none" /></div>
-                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">目标目录</label><input type="text" value={scheduledForm.opTo} onChange={(e) => setScheduledForm(f => ({ ...f, opTo: e.target.value }))} placeholder="/backup" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
-                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">目标节点 ID (跨存储时填写)</label><input type="text" value={scheduledForm.opDstNodeId} onChange={(e) => setScheduledForm(f => ({ ...f, opDstNodeId: e.target.value }))} placeholder="留空则同源节点" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
+                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">{t('settings.scheduled.storageNodeId')}</label><input type="text" value={scheduledForm.opNodeId} onChange={(e) => setScheduledForm(f => ({ ...f, opNodeId: e.target.value }))} placeholder={t('settings.scheduled.storageNodeIdPlaceholder')} className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
+                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">{t('settings.scheduled.sourcePaths')}</label><textarea value={scheduledForm.opPaths} onChange={(e) => setScheduledForm(f => ({ ...f, opPaths: e.target.value }))} placeholder={"/data/folder1\n/data/file.txt"} rows={3} className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono resize-none" /></div>
+                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">{t('settings.scheduled.targetDirectory')}</label><input type="text" value={scheduledForm.opTo} onChange={(e) => setScheduledForm(f => ({ ...f, opTo: e.target.value }))} placeholder="/backup" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
+                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">{t('settings.scheduled.targetNodeId')}</label><input type="text" value={scheduledForm.opDstNodeId} onChange={(e) => setScheduledForm(f => ({ ...f, opDstNodeId: e.target.value }))} placeholder={t('settings.scheduled.targetNodeIdPlaceholder')} className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
                   </div>
                 )}
                 {scheduledForm.operation === "compress" && (
                   <div className="space-y-2 pl-2 border-l-2 border-blue-200">
-                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">存储节点 ID</label><input type="text" value={scheduledForm.opNodeId} onChange={(e) => setScheduledForm(f => ({ ...f, opNodeId: e.target.value }))} placeholder="例如: local-1" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
-                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">要压缩的路径 (每行一个)</label><textarea value={scheduledForm.opPaths} onChange={(e) => setScheduledForm(f => ({ ...f, opPaths: e.target.value }))} placeholder={"/data/folder1\n/data/file.txt"} rows={3} className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono resize-none" /></div>
-                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">输出文件路径</label><input type="text" value={scheduledForm.opOutput} onChange={(e) => setScheduledForm(f => ({ ...f, opOutput: e.target.value }))} placeholder="/backup/archive.zip" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
+                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">{t('settings.scheduled.storageNodeId')}</label><input type="text" value={scheduledForm.opNodeId} onChange={(e) => setScheduledForm(f => ({ ...f, opNodeId: e.target.value }))} placeholder={t('settings.scheduled.storageNodeIdPlaceholder')} className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
+                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">{t('settings.scheduled.pathsToCompress')}</label><textarea value={scheduledForm.opPaths} onChange={(e) => setScheduledForm(f => ({ ...f, opPaths: e.target.value }))} placeholder={"/data/folder1\n/data/file.txt"} rows={3} className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono resize-none" /></div>
+                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">{t('settings.scheduled.outputFilePath')}</label><input type="text" value={scheduledForm.opOutput} onChange={(e) => setScheduledForm(f => ({ ...f, opOutput: e.target.value }))} placeholder="/backup/archive.zip" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
                   </div>
                 )}
                 {scheduledForm.operation === "extract" && (
                   <div className="space-y-2 pl-2 border-l-2 border-blue-200">
-                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">存储节点 ID</label><input type="text" value={scheduledForm.opNodeId} onChange={(e) => setScheduledForm(f => ({ ...f, opNodeId: e.target.value }))} placeholder="例如: local-1" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
-                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">压缩文件路径</label><input type="text" value={scheduledForm.opPath} onChange={(e) => setScheduledForm(f => ({ ...f, opPath: e.target.value }))} placeholder="/data/archive.zip" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
-                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">解压目标目录 (留空则解压到同目录)</label><input type="text" value={scheduledForm.opDest} onChange={(e) => setScheduledForm(f => ({ ...f, opDest: e.target.value }))} placeholder="/data/extracted" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
+                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">{t('settings.scheduled.storageNodeId')}</label><input type="text" value={scheduledForm.opNodeId} onChange={(e) => setScheduledForm(f => ({ ...f, opNodeId: e.target.value }))} placeholder={t('settings.scheduled.storageNodeIdPlaceholder')} className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
+                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">{t('settings.scheduled.archivePath')}</label><input type="text" value={scheduledForm.opPath} onChange={(e) => setScheduledForm(f => ({ ...f, opPath: e.target.value }))} placeholder="/data/archive.zip" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
+                    <div><label className="text-[0.6875rem] text-gray-500 mb-0.5 block">{t('settings.scheduled.extractDestination')}</label><input type="text" value={scheduledForm.opDest} onChange={(e) => setScheduledForm(f => ({ ...f, opDest: e.target.value }))} placeholder="/data/extracted" className="w-full px-2 py-1 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" /></div>
                   </div>
                 )}
               </div>
             )}
             <div>
-              <label className="text-[0.75rem] text-gray-500 mb-1 block">执行计划</label>
+              <label className="text-[0.75rem] text-gray-500 mb-1 block">{t('settings.scheduled.schedule')}</label>
               <div className="flex flex-wrap gap-1.5 mb-2">
-                {([["once", "一次性"], ["interval", "固定间隔"], ["daily", "每天"], ["weekly", "每周"], ["monthly", "每月"], ["cron", "Cron 表达式"]] as const).map(([mode, label]) => (
+                {([
+                  ["once", t('settings.scheduled.scheduleModes.once')],
+                  ["interval", t('settings.scheduled.scheduleModes.interval')],
+                  ["daily", t('settings.scheduled.scheduleModes.daily')],
+                  ["weekly", t('settings.scheduled.scheduleModes.weekly')],
+                  ["monthly", t('settings.scheduled.scheduleModes.monthly')],
+                  ["cron", t('settings.scheduled.scheduleModes.cron')],
+                ] as const).map(([mode, label]) => (
                   <button key={mode} onClick={() => setScheduledForm(f => ({ ...f, scheduleMode: mode }))} className={`px-2.5 py-1 text-[0.75rem] rounded-md border transition-colors ${scheduledForm.scheduleMode === mode ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>{label}</button>
                 ))}
               </div>
               {scheduledForm.scheduleMode === "once" && (
                 <div>
                   <input type="datetime-local" value={scheduledForm.onceDateTime} onChange={(e) => setScheduledForm(f => ({ ...f, onceDateTime: e.target.value }))} className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30" />
-                  <p className="text-[0.6875rem] text-gray-400 mt-1">任务将在指定时间执行一次后自动删除</p>
+                  <p className="text-[0.6875rem] text-gray-400 mt-1">{t('settings.scheduled.onceHint')}</p>
                 </div>
               )}
               {scheduledForm.scheduleMode === "interval" && (
                 <div className="flex gap-2">
                   <input type="number" min={1} value={scheduledForm.intervalValue} onChange={(e) => setScheduledForm(f => ({ ...f, intervalValue: parseInt(e.target.value) || 1 }))} className="w-24 px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30" />
                   <select value={scheduledForm.intervalUnit} onChange={(e) => setScheduledForm(f => ({ ...f, intervalUnit: e.target.value as any }))} className="px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30">
-                    <option value="seconds">秒</option><option value="minutes">分钟</option><option value="hours">小时</option>
+                    <option value="seconds">{t('settings.scheduled.intervalUnits.seconds')}</option><option value="minutes">{t('settings.scheduled.intervalUnits.minutes')}</option><option value="hours">{t('settings.scheduled.intervalUnits.hours')}</option>
                   </select>
                 </div>
               )}
               {scheduledForm.scheduleMode === "daily" && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[0.8125rem] text-gray-600">每天</span>
+                  <span className="text-[0.8125rem] text-gray-600">{t('settings.scheduled.everyDay')}</span>
                   <input type="number" min={0} max={23} value={scheduledForm.dailyHour} onChange={(e) => setScheduledForm(f => ({ ...f, dailyHour: Math.min(23, Math.max(0, parseInt(e.target.value) || 0)) }))} className="w-16 px-2 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 text-center" />
                   <span className="text-[0.8125rem] text-gray-600">:</span>
                   <input type="number" min={0} max={59} value={scheduledForm.dailyMinute} onChange={(e) => setScheduledForm(f => ({ ...f, dailyMinute: Math.min(59, Math.max(0, parseInt(e.target.value) || 0)) }))} className="w-16 px-2 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 text-center" />
@@ -390,7 +403,7 @@ export default function ScheduledTab() {
               {scheduledForm.scheduleMode === "weekly" && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-1.5">
-                    {(["日", "一", "二", "三", "四", "五", "六"]).map((d, i) => (
+                    {(t('settings.scheduled.weekDays', { returnObjects: true }) as string[]).map((d, i) => (
                       <button key={i} onClick={() => setScheduledForm(f => { const days = f.weeklyDays.includes(i) ? f.weeklyDays.filter(v => v !== i) : [...f.weeklyDays, i].sort(); return { ...f, weeklyDays: days.length ? days : [i] } })} className={`w-8 h-8 text-[0.75rem] rounded-md border transition-colors ${scheduledForm.weeklyDays.includes(i) ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>{d}</button>
                     ))}
                   </div>
@@ -417,8 +430,8 @@ export default function ScheduledTab() {
               )}
               {scheduledForm.scheduleMode === "cron" && (
                 <div>
-                  <input type="text" value={scheduledForm.cronExpr} onChange={(e) => setScheduledForm(f => ({ ...f, cronExpr: e.target.value }))} placeholder="秒 分 时 日 月 周  例: 0 30 2 * * 1-5" className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" />
-                  <p className="text-[0.6875rem] text-gray-400 mt-1">6位: 秒(0-59) 分(0-59) 时(0-23) 日(1-31) 月(1-12) 周(0-6,0=日)</p>
+                  <input type="text" value={scheduledForm.cronExpr} onChange={(e) => setScheduledForm(f => ({ ...f, cronExpr: e.target.value }))} placeholder={t('settings.scheduled.cronPlaceholder')} className="w-full px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30 font-mono" />
+                  <p className="text-[0.6875rem] text-gray-400 mt-1">{t('settings.scheduled.cronHint')}</p>
                 </div>
               )}
             </div>
@@ -427,12 +440,12 @@ export default function ScheduledTab() {
                 <button onClick={() => setScheduledForm(f => ({ ...f, silent: !f.silent }))} className={`w-8 h-[1.125rem] rounded-full transition-colors relative ${scheduledForm.silent ? 'bg-green-500' : 'bg-gray-300'}`}>
                   <div className={`absolute top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform ${scheduledForm.silent ? 'translate-x-[1.125rem]' : 'translate-x-0.5'}`} />
                 </button>
-                <span className="text-[0.8125rem] text-gray-600">静默执行</span>
-                <span className="text-[0.6875rem] text-gray-400">完成时不弹出通知</span>
+                <span className="text-[0.8125rem] text-gray-600">{t('settings.scheduled.silent')}</span>
+                <span className="text-[0.6875rem] text-gray-400">{t('settings.scheduled.silentHint')}</span>
               </label>
               <div className="flex gap-2">
-                <button onClick={resetScheduledForm} className="px-3 py-1.5 text-[0.8125rem] bg-white hover:bg-gray-100 text-gray-700 rounded-md border border-gray-200 transition-colors">取消</button>
-                <button onClick={handleSaveScheduledJob} disabled={!scheduledForm.name.trim() || ((scheduledForm.jobType === 'shell' || scheduledForm.jobType === 'command') && !scheduledForm.command.trim()) || (scheduledForm.scheduleMode === 'once' && !scheduledForm.onceDateTime)} className="px-3 py-1.5 text-[0.8125rem] bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-md transition-colors">{scheduledEditId ? '保存' : '添加'}</button>
+                <button onClick={resetScheduledForm} className="px-3 py-1.5 text-[0.8125rem] bg-white hover:bg-gray-100 text-gray-700 rounded-md border border-gray-200 transition-colors">{t('apps.settings.firewall.cancel')}</button>
+                <button onClick={handleSaveScheduledJob} disabled={!scheduledForm.name.trim() || ((scheduledForm.jobType === 'shell' || scheduledForm.jobType === 'command') && !scheduledForm.command.trim()) || (scheduledForm.scheduleMode === 'once' && !scheduledForm.onceDateTime)} className="px-3 py-1.5 text-[0.8125rem] bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-md transition-colors">{scheduledEditId ? t('apps.settings.sharing.save') : t('settings.storage.add')}</button>
               </div>
             </div>
           </div>

@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { lazyLoad } from '@/config/lazyLoad'
 import type { AppRenderer } from '@/config/componentRegistry'
 
@@ -10,7 +11,7 @@ export const renderer: AppRenderer = (ctx) => {
   let playlist = d.playlist
   if (!Array.isArray(playlist) || playlist.length === 0) {
     const src = (d.src as string) || ''
-    playlist = src ? [{ label: ctx.win.title || '视频', url: src }] : []
+    playlist = src ? [{ label: ctx.win.title || i18n.t('apps.video.player.fallbackTitle'), url: src }] : []
   }
 
   return (

@@ -1,6 +1,7 @@
 // notifyService.ts — Handles system.notify broadcast events from backend.
 // Shows toast notifications for all connected clients.
 
+import i18n from '@/i18n'
 import { registerMessageHandler } from '@/stores/webSocketStore'
 import { toast, type ToastVariant } from '@/hooks/use-toast'
 
@@ -20,7 +21,7 @@ registerMessageHandler((msg: any) => {
 
   toast({
     variant,
-    title: title || '系统通知',
+    title: title || i18n.t('common.systemNotification'),
     description: prefix + (message || ''),
   })
 

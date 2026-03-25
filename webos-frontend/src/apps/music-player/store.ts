@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import i18n from '@/i18n'
 import { useWindowStore } from '@/stores/windowStore'
 import { useProcessStore } from '@/stores/processStore'
 import { fsApi } from '@/lib/storageApi'
@@ -123,7 +124,7 @@ function updatePlayerState(windowId: string, nextFolders: PersistedMusicFolder[]
     activeMusicTrackIndex: nextActiveIndex,
   }))
 
-  useWindowStore.getState().updateWindowTitle(windowId, nextTracks[nextActiveIndex]?.title || '音乐播放器')
+  useWindowStore.getState().updateWindowTitle(windowId, nextTracks[nextActiveIndex]?.title || i18n.t('apps.musicPlayer.name'))
 }
 
 async function rescanPersistedFolders(windowId: string, folders: PersistedMusicFolder[]) {
@@ -213,7 +214,7 @@ export const useMusicPlayerStore = create<MusicPlayerStore>((set) => ({
       musicTracks: newTracks,
       activeMusicTrackIndex: newActiveIndex,
     }))
-    useWindowStore.getState().updateWindowTitle(windowId, newTracks[newActiveIndex]?.title || '音乐播放器')
+    useWindowStore.getState().updateWindowTitle(windowId, newTracks[newActiveIndex]?.title || i18n.t('apps.musicPlayer.name'))
   },
 
   playNextTrack: (windowId) => {

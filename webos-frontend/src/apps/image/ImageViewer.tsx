@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   ZoomIn,
   ZoomOut,
@@ -30,6 +31,7 @@ const ZOOM_STEP = 0.1
 const TOOLBAR_HIDE_DELAY = 3000
 
 export default function ImageViewer({ windowId }: ImageViewerProps) {
+  const { t } = useTranslation()
   const { win, procState: d } = useCurrentProcess(windowId)
   const src = (d.src as string) || ''
   const title = win?.title || 'Image'
@@ -336,7 +338,7 @@ export default function ImageViewer({ windowId }: ImageViewerProps) {
       {error && (
         <div className="absolute inset-0 flex items-center justify-center z-[1] pointer-events-none">
           <div className="text-white/80 text-center">
-            <p className="text-lg mb-2">图片加载失败</p>
+            <p className="text-lg mb-2">{t('apps.image.loadFailed')}</p>
             <p className="text-sm text-white/50">{title}</p>
           </div>
         </div>
@@ -388,7 +390,7 @@ export default function ImageViewer({ windowId }: ImageViewerProps) {
               flex items-center justify-center
               hover:bg-black/60 disabled:opacity-30 disabled:cursor-not-allowed
               transition-all duration-200"
-            title="上一张 (←)"
+            title={`${t('apps.image.previous')} (←)`}
           >
             <ChevronLeft size={20} />
           </button>
@@ -403,7 +405,7 @@ export default function ImageViewer({ windowId }: ImageViewerProps) {
               flex items-center justify-center
               hover:bg-black/60 disabled:opacity-30 disabled:cursor-not-allowed
               transition-all duration-200"
-            title="下一张 (→)"
+            title={`${t('apps.image.next')} (→)`}
           >
             <ChevronRight size={20} />
           </button>
@@ -425,11 +427,11 @@ export default function ImageViewer({ windowId }: ImageViewerProps) {
         {/* Nav counter */}
         {hasNav && (
           <>
-            <ToolbarButton onClick={goPrev} title="上一张 (←)" disabled={imageIndex <= 0}>
+            <ToolbarButton onClick={goPrev} title={`${t('apps.image.previous')} (←)`} disabled={imageIndex <= 0}>
               <ChevronLeft size={16} />
             </ToolbarButton>
             <span className="text-xs min-w-[3em] text-center tabular-nums">{imageIndex + 1}/{imageList.length}</span>
-            <ToolbarButton onClick={goNext} title="下一张 (→)" disabled={imageIndex >= imageList.length - 1}>
+            <ToolbarButton onClick={goNext} title={`${t('apps.image.next')} (→)`} disabled={imageIndex >= imageList.length - 1}>
               <ChevronRight size={16} />
             </ToolbarButton>
             <ToolbarSeparator />
@@ -437,38 +439,38 @@ export default function ImageViewer({ windowId }: ImageViewerProps) {
         )}
 
         {/* Zoom group */}
-        <ToolbarButton onClick={zoomOut} title="缩小 (-)">
+        <ToolbarButton onClick={zoomOut} title={`${t('apps.image.zoomOut')} (-)`}>
           <ZoomOut size={16} />
         </ToolbarButton>
         <span className="text-xs min-w-[3.5em] text-center tabular-nums">{zoomPercent}%</span>
-        <ToolbarButton onClick={zoomIn} title="放大 (+)">
+        <ToolbarButton onClick={zoomIn} title={`${t('apps.image.zoomIn')} (+)`}>
           <ZoomIn size={16} />
         </ToolbarButton>
 
         <ToolbarSeparator />
 
         {/* Rotate group */}
-        <ToolbarButton onClick={rotateCCW} title="逆时针旋转 (Shift+R)">
+        <ToolbarButton onClick={rotateCCW} title={`${t('apps.image.rotateCounterclockwise')} (Shift+R)`}>
           <RotateCcw size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={rotateCW} title="顺时针旋转 (R)">
+        <ToolbarButton onClick={rotateCW} title={`${t('apps.image.rotateClockwise')} (R)`}>
           <RotateCw size={16} />
         </ToolbarButton>
 
         <ToolbarSeparator />
 
         {/* Flip group */}
-        <ToolbarButton onClick={toggleFlipH} title="水平翻转 (H)" active={flipH}>
+        <ToolbarButton onClick={toggleFlipH} title={`${t('apps.image.flipHorizontal')} (H)`} active={flipH}>
           <FlipHorizontal2 size={16} />
         </ToolbarButton>
-        <ToolbarButton onClick={toggleFlipV} title="垂直翻转 (V)" active={flipV}>
+        <ToolbarButton onClick={toggleFlipV} title={`${t('apps.image.flipVertical')} (V)`} active={flipV}>
           <FlipVertical2 size={16} />
         </ToolbarButton>
 
         <ToolbarSeparator />
 
         {/* Reset */}
-        <ToolbarButton onClick={resetView} title="重置 (0)">
+        <ToolbarButton onClick={resetView} title={`${t('apps.image.reset')} (0)`}>
           <Maximize size={16} />
         </ToolbarButton>
       </div>

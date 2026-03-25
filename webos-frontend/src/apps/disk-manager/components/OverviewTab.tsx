@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { HardDrive, Database, Layers, BarChart3 } from "lucide-react"
 import type { MountPointInfo, DiskInfo, LVMVolumeGroup } from "../types"
 import { formatBytes, formatPercent } from "../utils"
@@ -21,14 +22,15 @@ function progressBg(percent: number): string {
 }
 
 export function OverviewTab({ mountPoints, disks, volumeGroups }: Props) {
+  const { t } = useTranslation()
   const totalCapacity = mountPoints.reduce((s, m) => s + (m.size || 0), 0)
   const totalUsed = mountPoints.reduce((s, m) => s + (m.used || 0), 0)
 
   const summaryCards = [
-    { icon: Database, label: "总容量", value: formatBytes(totalCapacity), color: "text-blue-600 bg-blue-50" },
-    { icon: BarChart3, label: "已用", value: formatBytes(totalUsed), color: "text-amber-600 bg-amber-50" },
-    { icon: Layers, label: "存储池", value: String(volumeGroups.length), color: "text-purple-600 bg-purple-50" },
-    { icon: HardDrive, label: "磁盘数", value: String(disks.length), color: "text-emerald-600 bg-emerald-50" },
+    { icon: Database, label: t('apps.diskManager.overview.summary.totalCapacity'), value: formatBytes(totalCapacity), color: "text-blue-600 bg-blue-50" },
+    { icon: BarChart3, label: t('apps.diskManager.overview.summary.used'), value: formatBytes(totalUsed), color: "text-amber-600 bg-amber-50" },
+    { icon: Layers, label: t('apps.diskManager.overview.summary.pools'), value: String(volumeGroups.length), color: "text-purple-600 bg-purple-50" },
+    { icon: HardDrive, label: t('apps.diskManager.overview.summary.diskCount'), value: String(disks.length), color: "text-emerald-600 bg-emerald-50" },
   ]
 
   return (
@@ -53,19 +55,19 @@ export function OverviewTab({ mountPoints, disks, volumeGroups }: Props) {
         <table className="w-full text-[0.75rem]">
           <thead>
             <tr className="border-b border-slate-200/60 bg-slate-50/50">
-              <th className="text-left px-4 py-2.5 font-medium text-slate-500">文件系统</th>
-              <th className="text-left px-4 py-2.5 font-medium text-slate-500">类型</th>
-              <th className="text-left px-4 py-2.5 font-medium text-slate-500">容量</th>
-              <th className="text-left px-4 py-2.5 font-medium text-slate-500">已用</th>
-              <th className="text-left px-4 py-2.5 font-medium text-slate-500">可用</th>
-              <th className="text-left px-4 py-2.5 font-medium text-slate-500 w-[180px]">使用率</th>
-              <th className="text-left px-4 py-2.5 font-medium text-slate-500">挂载点</th>
+              <th className="text-left px-4 py-2.5 font-medium text-slate-500">{t('apps.diskManager.overview.table.filesystem')}</th>
+              <th className="text-left px-4 py-2.5 font-medium text-slate-500">{t('apps.diskManager.overview.table.type')}</th>
+              <th className="text-left px-4 py-2.5 font-medium text-slate-500">{t('apps.diskManager.overview.table.capacity')}</th>
+              <th className="text-left px-4 py-2.5 font-medium text-slate-500">{t('apps.diskManager.overview.table.used')}</th>
+              <th className="text-left px-4 py-2.5 font-medium text-slate-500">{t('apps.diskManager.overview.table.available')}</th>
+              <th className="text-left px-4 py-2.5 font-medium text-slate-500 w-[180px]">{t('apps.diskManager.overview.table.usage')}</th>
+              <th className="text-left px-4 py-2.5 font-medium text-slate-500">{t('apps.diskManager.overview.table.mountPoint')}</th>
             </tr>
           </thead>
           <tbody>
             {mountPoints.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-slate-400">暂无挂载点数据</td>
+                <td colSpan={7} className="text-center py-8 text-slate-400">{t('apps.diskManager.overview.table.empty')}</td>
               </tr>
             ) : (
               mountPoints.map((mp, i) => (

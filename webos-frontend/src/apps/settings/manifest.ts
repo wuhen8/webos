@@ -2,7 +2,7 @@ import type { AppConfig } from '@/types'
 
 export const manifest: AppConfig = {
   id: 'settings',
-  name: '系统设置',
+  name: 'i18n:apps.settings.name',
   icon: 'Settings',
   gradient: 'from-slate-400 to-slate-600',
   shadow: 'shadow-slate-500/30',

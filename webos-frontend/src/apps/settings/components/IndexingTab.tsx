@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { X } from "lucide-react"
 import { request as wsRequest } from '@/stores/webSocketStore'
 import { SettingsIcon } from "./SettingsIcon"
 
 export default function IndexingTab() {
+  const { t } = useTranslation()
   const [skipDirs, setSkipDirs] = useState<string[]>([])
   const [skipDirInput, setSkipDirInput] = useState("")
   const [skipDirsLoading, setSkipDirsLoading] = useState(false)
@@ -67,18 +69,18 @@ export default function IndexingTab() {
         <div className="w-16 h-16 rounded-2xl bg-amber-500 flex items-center justify-center shadow-lg mb-3">
           <SettingsIcon type="indexing" className="w-10 h-10 text-white" />
         </div>
-        <h1 className="text-xl font-semibold text-gray-900">索引</h1>
-        <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">管理文件索引范围和排除规则，索引用于加速文件搜索</p>
+        <h1 className="text-xl font-semibold text-gray-900">{t('settings.sidebar.indexing')}</h1>
+        <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">{t('settings.indexing.subtitle')}</p>
       </div>
 
       {/* 索引目录 */}
       <div className="bg-[#f5f5f7] rounded-xl overflow-hidden px-4 py-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[0.8125rem] font-medium text-gray-900">索引目录</span>
-          <span className="text-[0.6875rem] text-gray-400">留空则索引存储节点根目录下所有内容</span>
+          <span className="text-[0.8125rem] font-medium text-gray-900">{t('settings.indexing.indexDirs')}</span>
+          <span className="text-[0.6875rem] text-gray-400">{t('settings.indexing.indexDirsHint')}</span>
         </div>
         {indexDirsLoading ? (
-          <div className="text-[0.8125rem] text-gray-400 py-2">加载中...</div>
+          <div className="text-[0.8125rem] text-gray-400 py-2">{t('apps.settings.firewall.loading')}</div>
         ) : (
           <>
             <div className="flex flex-wrap gap-1.5 mb-3">
@@ -97,7 +99,7 @@ export default function IndexingTab() {
                 </span>
               ))}
               {indexDirs.length === 0 && (
-                <span className="text-[0.75rem] text-gray-400">未指定，将索引全部内容</span>
+                <span className="text-[0.75rem] text-gray-400">{t('settings.indexing.indexAll')}</span>
               )}
             </div>
             <div className="flex gap-2">
@@ -106,7 +108,7 @@ export default function IndexingTab() {
                 value={indexDirInput}
                 onChange={(e) => setIndexDirInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') addIndexDir() }}
-                placeholder="输入要索引的目录路径，如 /home 或 /data"
+                placeholder={t('settings.indexing.indexDirPlaceholder')}
                 className="flex-1 px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30"
               />
               <button
@@ -114,7 +116,7 @@ export default function IndexingTab() {
                 disabled={!indexDirInput.trim()}
                 className="px-3 py-1.5 text-[0.8125rem] bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-md transition-colors"
               >
-                添加
+                {t('apps.settings.firewall.add')}
               </button>
             </div>
           </>
@@ -124,11 +126,11 @@ export default function IndexingTab() {
       {/* 索引排除目录 */}
       <div className="bg-[#f5f5f7] rounded-xl overflow-hidden mt-6 px-4 py-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[0.8125rem] font-medium text-gray-900">排除目录</span>
-          <span className="text-[0.6875rem] text-gray-400">以 / 开头为绝对路径，否则按目录名匹配</span>
+          <span className="text-[0.8125rem] font-medium text-gray-900">{t('settings.indexing.excludeDirs')}</span>
+          <span className="text-[0.6875rem] text-gray-400">{t('settings.indexing.excludeDirsHint')}</span>
         </div>
         {skipDirsLoading ? (
-          <div className="text-[0.8125rem] text-gray-400 py-2">加载中...</div>
+          <div className="text-[0.8125rem] text-gray-400 py-2">{t('apps.settings.firewall.loading')}</div>
         ) : (
           <>
             <div className="flex flex-wrap gap-1.5 mb-3">
@@ -147,7 +149,7 @@ export default function IndexingTab() {
                 </span>
               ))}
               {skipDirs.length === 0 && (
-                <span className="text-[0.75rem] text-gray-400">暂无排除规则</span>
+                <span className="text-[0.75rem] text-gray-400">{t('settings.indexing.noExcludeRules')}</span>
               )}
             </div>
             <div className="flex gap-2">
@@ -156,7 +158,7 @@ export default function IndexingTab() {
                 value={skipDirInput}
                 onChange={(e) => setSkipDirInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') addSkipDir() }}
-                placeholder="输入目录名或绝对路径"
+                placeholder={t('settings.indexing.excludeDirPlaceholder')}
                 className="flex-1 px-2.5 py-1.5 text-[0.8125rem] bg-white border border-gray-200 rounded-md outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/30"
               />
               <button
@@ -164,7 +166,7 @@ export default function IndexingTab() {
                 disabled={!skipDirInput.trim()}
                 className="px-3 py-1.5 text-[0.8125rem] bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-md transition-colors"
               >
-                添加
+                {t('apps.settings.firewall.add')}
               </button>
             </div>
           </>
@@ -174,7 +176,7 @@ export default function IndexingTab() {
       {/* 索引说明 */}
       <div className="bg-[#f5f5f7] rounded-xl overflow-hidden mt-6 px-4 py-3">
         <p className="text-[0.75rem] text-gray-500 leading-relaxed">
-          索引默认每小时增量更新一次，可在「定时任务」中调整频率。日常文件操作（创建、删除、重命名、移动等）会自动更新索引，无需频繁全量索引。
+          {t('settings.indexing.description')}
         </p>
       </div>
     </div>

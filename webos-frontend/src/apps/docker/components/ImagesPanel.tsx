@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import { Search, Trash2, Download } from "lucide-react"
 import type { DockerImage } from "./types"
 import { formatBytes, formatTimeSince } from "./types"
@@ -12,6 +13,7 @@ interface ImagesPanelProps {
 }
 
 export function ImagesPanel({ images, searchQuery, setSearchQuery, onRemove, onPull }: ImagesPanelProps) {
+  const { t } = useTranslation()
   const [pullInput, setPullInput] = useState("")
 
   const handlePull = () => {
@@ -34,7 +36,7 @@ export function ImagesPanel({ images, searchQuery, setSearchQuery, onRemove, onP
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
           <input
             type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索镜像名、标签或 ID..."
+            placeholder={t('apps.docker.images.searchPlaceholder')}
             className="w-full pl-8 pr-3 py-1.5 text-[0.75rem] bg-white/70 border border-slate-200 rounded-lg outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all placeholder:text-slate-300"
           />
         </div>
@@ -44,7 +46,7 @@ export function ImagesPanel({ images, searchQuery, setSearchQuery, onRemove, onP
             value={pullInput}
             onChange={(e) => setPullInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handlePull()}
-            placeholder="nginx:latest"
+            placeholder={t('apps.docker.images.pullPlaceholder')}
             className="w-48 px-2.5 py-1.5 text-[0.75rem] bg-white/70 border border-slate-200 rounded-lg outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all placeholder:text-slate-300"
           />
           <button
@@ -53,7 +55,7 @@ export function ImagesPanel({ images, searchQuery, setSearchQuery, onRemove, onP
             className="flex items-center gap-1 px-2.5 py-1.5 text-[0.6875rem] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5" />
-            拉取
+            {t('apps.docker.images.pull')}
           </button>
         </div>
       </div>
@@ -61,12 +63,12 @@ export function ImagesPanel({ images, searchQuery, setSearchQuery, onRemove, onP
         <table className="w-full text-[0.6875rem]">
           <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 border-b border-slate-100">
             <tr>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">仓库</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">标签</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">ID</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">大小</th>
-              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">创建时间</th>
-              <th className="px-3 py-2 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider" style={{ width: 50 }}>操作</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.images.repository')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.images.tag')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.images.id')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.images.size')}</th>
+              <th className="px-3 py-2 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider">{t('apps.docker.images.createdAt')}</th>
+              <th className="px-3 py-2 text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider" style={{ width: 50 }}>{t('apps.docker.images.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -80,7 +82,7 @@ export function ImagesPanel({ images, searchQuery, setSearchQuery, onRemove, onP
                 <td className="px-3 py-1.5 text-slate-500">{formatBytes(img.size)}</td>
                 <td className="px-3 py-1.5 text-slate-400">{formatTimeSince(img.createdAt)}</td>
                 <td className="px-3 py-1.5 text-center">
-                  <button onClick={() => onRemove(img.id)} className="p-0.5 text-slate-300 hover:text-red-500 transition-colors rounded hover:bg-red-50" title="删除">
+                  <button onClick={() => onRemove(img.id)} className="p-0.5 text-slate-300 hover:text-red-500 transition-colors rounded hover:bg-red-50" title={t('apps.docker.images.delete')}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </td>
@@ -89,7 +91,7 @@ export function ImagesPanel({ images, searchQuery, setSearchQuery, onRemove, onP
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={6} className="text-center py-8 text-slate-400 text-[0.75rem]">
-                  {searchQuery ? "没有匹配的镜像" : "暂无镜像"}
+                  {searchQuery ? t('apps.docker.images.noMatches') : t('apps.docker.images.empty')}
                 </td>
               </tr>
             )}

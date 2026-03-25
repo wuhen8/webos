@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { useToast } from "@/hooks/use-toast"
 import { fsApi } from "@/lib/storageApi"
 import type { FileInfo, ContextMenuContext, ContextMenuConfig } from "@/types"
@@ -29,6 +30,7 @@ interface TabPanelProps {
 }
 
 export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange }: TabPanelProps) {
+  const { t } = useTranslation()
   const findOrCreateEditorWindow = useEditorStore((s) => s.findOrCreateEditorWindow)
   const updateFmTabState = useFileManagerStore((s) => s.updateFmTabState)
   const clipboard = useFileManagerStore((s) => s.clipboard)
@@ -143,7 +145,7 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
       const newCache = setPathCache(pathCacheRef.current, path, { files: fileList, scrollTop })
       updateFmTabState(windowId, tabIndex, { pathCache: newCache })
     } catch (error) {
-      console.error("加载文件列表失败:", error)
+      console.error("Failed to load file list:", error)
       setFiles([])
       filesRef.current = []
     } finally {
@@ -163,7 +165,7 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
       const newCache = setPathCache(pathCacheRef.current, path, { files: fileList, scrollTop })
       updateFmTabState(windowId, tabIndex, { pathCache: newCache })
     } catch (error) {
-      console.error("静默刷新失败:", error)
+      console.error("Silent refresh failed:", error)
     }
   }, [activeNodeId, windowId, tabIndex, updateFmTabState])
 
@@ -328,8 +330,8 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
     if (paths.length === 0) return
     fsApi.move(srcNodeId, paths, destPath, activeNodeId)
     setSelectedFiles(new Set())
-    toast({ title: "移动中", description: `正在移动 ${paths.length} 个项目` })
-  }, [activeNodeId, setSelectedFiles, toast])
+    toast({ title: t('apps.fileManager.actions.moveTaskSubmitted'), description: t('apps.fileManager.actions.moveTaskDescription', { count: paths.length }) })
+  }, [activeNodeId, setSelectedFiles, toast, t])
 
   const toggleMultiSelect = useCallback(() => {
     if (multiSelectMode) {
@@ -345,10 +347,10 @@ export function TabPanel({ windowId, tabIndex, tab, isActive, onFileCountChange 
 
   const handleMultiSelectDownload = useCallback(() => {
     const sel = files.filter(f => selectedFiles.has(f.path) && !f.isDir)
-    if (sel.length === 0) { toast({ title: "提示", description: "没有可下载的文件" }); return }
+    if (sel.length === 0) { toast({ title: t('apps.fileManager.actions.notice'), description: t('apps.fileManager.actions.folderDownloadUnsupported') }); return }
     sel.forEach(f => actions.handleDownload(f))
     setSelectedFiles(new Set())
-  }, [files, selectedFiles, actions, toast, setSelectedFiles])
+  }, [files, selectedFiles, actions, toast, setSelectedFiles, t])
 
   const handleMultiSelectCompress = useCallback(() => {
     const sel = files.filter(f => selectedFiles.has(f.path))

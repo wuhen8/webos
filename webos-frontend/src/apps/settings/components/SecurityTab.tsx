@@ -1,8 +1,10 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import request from "@/lib/request"
 import { SettingsIcon } from "./SettingsIcon"
 
 export default function SecurityTab() {
+  const { t } = useTranslation()
   const [newPassword, setNewPassword] = useState("")
 
   const savePassword = async () => {
@@ -19,18 +21,18 @@ export default function SecurityTab() {
         <div className="w-16 h-16 rounded-2xl bg-blue-500 flex items-center justify-center shadow-lg mb-3">
           <SettingsIcon type="security" className="w-10 h-10 text-white" />
         </div>
-        <h1 className="text-xl font-semibold text-gray-900">隐私与安全性</h1>
-        <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">管理服务配置和安全设置</p>
+        <h1 className="text-xl font-semibold text-gray-900">{t('settings.sidebar.security')}</h1>
+        <p className="text-[0.8125rem] text-gray-500 mt-1 text-center">{t('settings.security.subtitle')}</p>
       </div>
 
       <div className="bg-[#f5f5f7] rounded-xl overflow-hidden">
         <div className="px-4 py-3 flex items-center justify-between">
-          <span className="text-[0.8125rem] text-gray-900">锁屏密码</span>
+          <span className="text-[0.8125rem] text-gray-900">{t('settings.security.lockPassword')}</span>
           <input
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="输入新密码"
+            placeholder={t('settings.security.newPasswordPlaceholder')}
             className="w-28 h-7 px-2 text-[0.8125rem] bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
@@ -41,7 +43,7 @@ export default function SecurityTab() {
           onClick={savePassword}
           className="w-full py-2 text-[0.8125rem] bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors font-medium"
         >
-          修改密码
+          {t('settings.security.changePassword')}
         </button>
       </div>
     </div>

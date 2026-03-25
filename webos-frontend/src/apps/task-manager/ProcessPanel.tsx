@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import { Search, XCircle } from "lucide-react"
 import type { ProcessInfo, SortField } from "./types"
 import { formatBytes } from "./types"
@@ -21,6 +22,7 @@ export function ProcessPanel({
   SortIcon: React.FC<{ field: SortField }>
   onContextMenu: (e: React.MouseEvent, pid: number) => void
 }) {
+  const { t } = useTranslation()
   const [selectedPid, setSelectedPid] = useState<number | null>(null)
 
   const thClass = "px-2 py-1.5 text-left text-[0.625rem] font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-700 transition-colors select-none whitespace-nowrap"
@@ -34,7 +36,7 @@ export function ProcessPanel({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索进程名、用户或 PID..."
+            placeholder={t('apps.taskManager.processes.searchPlaceholder')}
             className="w-full pl-8 pr-3 py-1.5 text-[0.75rem] bg-white/70 border border-slate-200 rounded-lg outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 transition-all placeholder:text-slate-300"
           />
           {searchQuery && (
@@ -43,7 +45,7 @@ export function ProcessPanel({
             </button>
           )}
         </div>
-        <div className="text-[0.6875rem] text-slate-400 shrink-0">{processes.length} 条结果</div>
+        <div className="text-[0.6875rem] text-slate-400 shrink-0">{t('apps.taskManager.processes.resultCount', { count: processes.length })}</div>
       </div>
 
       <div className="flex-1 overflow-auto rounded-lg border border-slate-100 bg-white/50">
@@ -51,22 +53,22 @@ export function ProcessPanel({
           <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 border-b border-slate-100">
             <tr>
               <th className={thClass} onClick={() => handleSort("pid")} style={{ width: 60 }}>
-                <span className="flex items-center gap-1">PID <SortIcon field="pid" /></span>
+                <span className="flex items-center gap-1">{t('apps.taskManager.processes.pid')} <SortIcon field="pid" /></span>
               </th>
               <th className={thClass} onClick={() => handleSort("user")} style={{ width: 80 }}>
-                <span className="flex items-center gap-1">用户 <SortIcon field="user" /></span>
+                <span className="flex items-center gap-1">{t('apps.taskManager.processes.user')} <SortIcon field="user" /></span>
               </th>
               <th className={thClass} onClick={() => handleSort("cpu")} style={{ width: 70 }}>
-                <span className="flex items-center gap-1">CPU% <SortIcon field="cpu" /></span>
+                <span className="flex items-center gap-1">{t('apps.taskManager.processes.cpuPercent')} <SortIcon field="cpu" /></span>
               </th>
               <th className={thClass} onClick={() => handleSort("mem")} style={{ width: 70 }}>
-                <span className="flex items-center gap-1">内存% <SortIcon field="mem" /></span>
+                <span className="flex items-center gap-1">{t('apps.taskManager.processes.memoryPercent')} <SortIcon field="mem" /></span>
               </th>
               <th className={thClass} onClick={() => handleSort("rss")} style={{ width: 80 }}>
-                <span className="flex items-center gap-1">RSS <SortIcon field="rss" /></span>
+                <span className="flex items-center gap-1">{t('apps.taskManager.processes.rss')} <SortIcon field="rss" /></span>
               </th>
               <th className={thClass} onClick={() => handleSort("command")}>
-                <span className="flex items-center gap-1">命令 <SortIcon field="command" /></span>
+                <span className="flex items-center gap-1">{t('apps.taskManager.processes.command')} <SortIcon field="command" /></span>
               </th>
             </tr>
           </thead>
@@ -101,7 +103,7 @@ export function ProcessPanel({
             {processes.length === 0 && (
               <tr>
                 <td colSpan={6} className="text-center py-8 text-slate-400 text-[0.75rem]">
-                  {searchQuery ? "没有匹配的进程" : "加载中..."}
+                  {searchQuery ? t('apps.taskManager.processes.noMatches') : t('apps.taskManager.overview.loading')}
                 </td>
               </tr>
             )}

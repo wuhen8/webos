@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Trash2 } from 'lucide-react'
 import { loadSnippets, saveSnippets, type ShellSnippet } from './snippets'
 
 export default function SnippetManager() {
+  const { t } = useTranslation()
   const [snippets, setSnippets] = useState<ShellSnippet[]>(loadSnippets)
   const [name, setName] = useState('')
   const [command, setCommand] = useState('')
@@ -28,17 +30,17 @@ export default function SnippetManager() {
     <div className="h-full flex flex-col text-slate-700">
       {/* Add form */}
       <div className="p-3 border-b border-white/20 flex flex-col gap-2">
-        <div className="text-xs text-slate-500">添加快捷命令，将显示在终端工具栏中</div>
+        <div className="text-xs text-slate-500">{t('apps.terminal.snippets.description')}</div>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="名称，如：查看日志"
+          placeholder={t('apps.terminal.snippets.namePlaceholder')}
           className="w-full px-2 py-1.5 text-sm bg-white/20 border border-white/30 rounded text-slate-700 placeholder-slate-400 outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-400/30"
         />
         <input
           value={command}
           onChange={(e) => setCommand(e.target.value)}
-          placeholder="命令，如：tail -f /var/log/syslog"
+          placeholder={t('apps.terminal.snippets.commandPlaceholder')}
           onKeyDown={(e) => { if (e.key === 'Enter') add() }}
           className="w-full px-2 py-1.5 text-sm bg-white/20 border border-white/30 rounded text-slate-700 placeholder-slate-400 outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-400/30 font-mono"
         />
@@ -46,13 +48,13 @@ export default function SnippetManager() {
           onClick={add}
           className="w-full py-1.5 text-sm rounded bg-blue-500/80 text-white font-medium hover:bg-blue-500 transition-colors"
         >
-          添加
+          {t('apps.terminal.snippets.add')}
         </button>
       </div>
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {snippets.length === 0 && (
-          <div className="px-3 py-8 text-sm text-slate-400 text-center">暂无自定义命令</div>
+          <div className="px-3 py-8 text-sm text-slate-400 text-center">{t('apps.terminal.snippets.empty')}</div>
         )}
         {snippets.map((s) => (
           <div

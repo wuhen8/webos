@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { useTranslation } from 'react-i18next'
 import { FileText, Download, XCircle } from "lucide-react"
 
 interface LogsModalProps {
@@ -8,6 +9,7 @@ interface LogsModalProps {
 }
 
 export function LogsModal({ title, logs, onClose }: LogsModalProps) {
+  const { t } = useTranslation()
   const preRef = useRef<HTMLPreElement>(null)
   const autoScrollRef = useRef(true)
 
@@ -39,10 +41,10 @@ export function LogsModal({ title, logs, onClose }: LogsModalProps) {
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50">
           <span className="text-[0.8125rem] font-medium text-slate-700 flex items-center gap-2">
             <FileText className="w-4 h-4 text-slate-400" />
-            日志 - {title}
+            {t('apps.docker.logs.title', { title })}
           </span>
           <div className="flex items-center gap-2">
-            <button onClick={downloadLogs} className="text-slate-400 hover:text-slate-600" title="下载日志">
+            <button onClick={downloadLogs} className="text-slate-400 hover:text-slate-600" title={t('apps.docker.logs.download')}>
               <Download className="w-4 h-4" />
             </button>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-600">

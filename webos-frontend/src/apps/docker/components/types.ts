@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { getHostname } from '@/lib/env'
 
 export type TabType = "containers" | "images" | "compose" | "networks" | "volumes" | "settings"
@@ -75,11 +76,11 @@ export function formatBytes(bytes: number): string {
 export function formatTimeSince(unixSeconds: number): string {
   if (!unixSeconds) return ""
   const diff = Math.floor(Date.now() / 1000 - unixSeconds)
-  if (diff < 60) return "刚刚"
-  if (diff < 3600) return Math.floor(diff / 60) + " 分钟前"
-  if (diff < 86400) return Math.floor(diff / 3600) + " 小时前"
-  if (diff < 2592000) return Math.floor(diff / 86400) + " 天前"
-  return Math.floor(diff / 2592000) + " 个月前"
+  if (diff < 60) return i18n.t('apps.docker.common.time.justNow')
+  if (diff < 3600) return i18n.t('apps.docker.common.time.minutesAgo', { count: Math.floor(diff / 60) })
+  if (diff < 86400) return i18n.t('apps.docker.common.time.hoursAgo', { count: Math.floor(diff / 3600) })
+  if (diff < 2592000) return i18n.t('apps.docker.common.time.daysAgo', { count: Math.floor(diff / 86400) })
+  return i18n.t('apps.docker.common.time.monthsAgo', { count: Math.floor(diff / 2592000) })
 }
 
 /** Parse ports string like "0.0.0.0:8080->80/tcp, :::443->443/tcp" into clickable entries */

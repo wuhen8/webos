@@ -1,4 +1,5 @@
-import type { AppConfig, ContextMenuConfig } from '@/types'
+import type { AppConfig, ContextMenuConfig, MenuConfig, MenuItemConfig } from '@/types'
+import { resolveI18nText } from '@/i18n/resolve'
 import { request as wsRequest } from '@/stores/webSocketStore'
 export { iconMap, resolveIcon } from '@/lib/iconResolver'
 
@@ -54,11 +55,34 @@ export async function deleteAppOverride(appId: string): Promise<void> {
   }
 }
 
+function localizeMenuItem(item: MenuItemConfig): MenuItemConfig {
+  return {
+    ...item,
+    label: resolveI18nText(item.label),
+  }
+}
+
+function localizeMenu(menu: MenuConfig): MenuConfig {
+  return {
+    ...menu,
+    label: resolveI18nText(menu.label),
+    items: menu.items.map(localizeMenuItem),
+  }
+}
+
+function localizeAppConfig(app: AppConfig): AppConfig {
+  return {
+    ...app,
+    name: resolveI18nText(app.name),
+    menus: app.menus.map(localizeMenu),
+  }
+}
+
 // 获取 merge 后的应用配置（manifest 默认值 + 用户覆盖值）
 function getMergedConfig(app: AppConfig): AppConfig {
   const override = appOverrides[app.id]
-  if (!override) return app
-  return { ...app, ...override, id: app.id } // id 不可覆盖
+  const merged = override ? { ...app, ...override, id: app.id } : app
+  return localizeAppConfig(merged)
 }
 
 // Get dock items sorted by dockOrder (merge 后, including dynamic apps)

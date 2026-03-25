@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight, ArrowUp, FilePlus, FolderPlus, Upload, Download, Search, X, MoreHorizontal, List, LayoutGrid, ArrowDownAZ, Check, CheckSquare, Copy, Scissors, Trash2, Archive, XCircle, CheckCheck, ClipboardPaste } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -71,6 +72,7 @@ export function Toolbar({
   onSelectAll, onCopy, onCut, onDelete, onDownload, onCompress,
   hasClipboard, onPaste,
 }: ToolbarProps) {
+  const { t } = useTranslation()
   const [searchOpen, setSearchOpen] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const isTouch = isTouchDevice()
@@ -98,10 +100,10 @@ export function Toolbar({
           <Button variant="ghost" size="icon" onClick={() => navigateTo(getParentPath(currentPath))} disabled={isRootPath(currentPath)} className="h-9 w-9 rounded-xl hover:bg-white/20">
             <ArrowUp className="h-4 w-4" />
           </Button>
-          <span className="text-sm text-slate-700 font-medium ml-1">已选 {selectedCount} 项</span>
+          <span className="text-sm text-slate-700 font-medium ml-1">{t('apps.fileManager.toolbar.selectedCount', { count: selectedCount })}</span>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={onSelectAll} className="h-9 w-9 rounded-xl hover:bg-white/20 shrink-0" title="全选">
+          <Button variant="ghost" size="icon" onClick={onSelectAll} className="h-9 w-9 rounded-xl hover:bg-white/20 shrink-0" title={t('apps.fileManager.toolbar.selectAll')}>
             <CheckCheck className="h-4 w-4" />
           </Button>
           <DropdownMenu>
@@ -112,32 +114,32 @@ export function Toolbar({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onCopy} disabled={selectedCount === 0}>
-                <Copy className="h-4 w-4" /><span className="ml-2">复制</span>
+                <Copy className="h-4 w-4" /><span className="ml-2">{t('apps.fileManager.toolbar.copy')}</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onCut} disabled={selectedCount === 0}>
-                <Scissors className="h-4 w-4" /><span className="ml-2">剪切</span>
+                <Scissors className="h-4 w-4" /><span className="ml-2">{t('apps.fileManager.toolbar.cut')}</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onDownload} disabled={selectedCount === 0}>
-                <Download className="h-4 w-4" /><span className="ml-2">下载</span>
+                <Download className="h-4 w-4" /><span className="ml-2">{t('apps.fileManager.toolbar.download')}</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onCompress} disabled={selectedCount === 0}>
-                <Archive className="h-4 w-4" /><span className="ml-2">压缩</span>
+                <Archive className="h-4 w-4" /><span className="ml-2">{t('apps.fileManager.toolbar.compress')}</span>
               </DropdownMenuItem>
               {hasClipboard && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={onPaste}>
-                    <ClipboardPaste className="h-4 w-4" /><span className="ml-2">粘贴</span>
+                    <ClipboardPaste className="h-4 w-4" /><span className="ml-2">{t('apps.fileManager.toolbar.paste')}</span>
                   </DropdownMenuItem>
                 </>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onDelete} disabled={selectedCount === 0} className="text-red-600 focus:text-red-600">
-                <Trash2 className="h-4 w-4" /><span className="ml-2">移到回收站</span>
+                <Trash2 className="h-4 w-4" /><span className="ml-2">{t('apps.fileManager.toolbar.moveToTrash')}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="ghost" size="icon" onClick={onToggleMultiSelect} className="h-9 w-9 rounded-xl hover:bg-white/20 shrink-0" title="取消多选">
+          <Button variant="ghost" size="icon" onClick={onToggleMultiSelect} className="h-9 w-9 rounded-xl hover:bg-white/20 shrink-0" title={t('apps.fileManager.toolbar.cancelMultiSelect')}>
             <XCircle className="h-4 w-4" />
           </Button>
         </div>
@@ -166,7 +168,12 @@ export function Toolbar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {([["name", "名称"], ["size", "大小"], ["modifiedTime", "修改时间"], ["extension", "类型"]] as const).map(([field, label]) => (
+            {([
+              ["name", t('apps.fileManager.toolbar.sort.name')],
+              ["size", t('apps.fileManager.toolbar.sort.size')],
+              ["modifiedTime", t('apps.fileManager.toolbar.sort.modifiedTime')],
+              ["extension", t('apps.fileManager.toolbar.sort.extension')],
+            ] as const).map(([field, label]) => (
               <DropdownMenuItem key={field} onClick={() => onSortClick(field)}>
                 <span className="flex-1">{label}</span>
                 {sortField === field && <Check className="h-4 w-4 ml-2" />}
@@ -174,7 +181,7 @@ export function Toolbar({
             ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onSortClick(sortField)}>
-              {sortDirection === "asc" ? "升序 ↑" : "降序 ↓"}
+              {sortDirection === "asc" ? t('apps.fileManager.toolbar.sort.ascending') : t('apps.fileManager.toolbar.sort.descending')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -189,21 +196,21 @@ export function Toolbar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onNewFile}>
-              <FilePlus className="h-4 w-4" /><span className="ml-2">新建文件</span>
+              <FilePlus className="h-4 w-4" /><span className="ml-2">{t('apps.fileManager.toolbar.newFile')}</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onNewFolder}>
-              <FolderPlus className="h-4 w-4" /><span className="ml-2">新建文件夹</span>
+              <FolderPlus className="h-4 w-4" /><span className="ml-2">{t('apps.fileManager.toolbar.newFolder')}</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onUpload}>
-              <Upload className="h-4 w-4" /><span className="ml-2">上传</span>
+              <Upload className="h-4 w-4" /><span className="ml-2">{t('apps.fileManager.toolbar.upload')}</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onOfflineDownload}>
-              <Download className="h-4 w-4" /><span className="ml-2">离线下载</span>
+              <Download className="h-4 w-4" /><span className="ml-2">{t('apps.fileManager.toolbar.offlineDownload')}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         {isTouch && (
-          <Button variant="ghost" size="icon" onClick={onToggleMultiSelect} className="h-9 w-9 rounded-xl hover:bg-white/20 shrink-0" title="多选">
+          <Button variant="ghost" size="icon" onClick={onToggleMultiSelect} className="h-9 w-9 rounded-xl hover:bg-white/20 shrink-0" title={t('apps.fileManager.toolbar.multiSelect')}>
             <CheckSquare className="h-4 w-4" />
           </Button>
         )}
@@ -216,7 +223,7 @@ export function Toolbar({
               onChange={(e) => onSearchChange(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Escape') { onSearchChange(""); setSearchOpen(false) } }}
               onBlur={() => { if (!searchKeyword) setSearchOpen(false) }}
-              placeholder="搜索当前目录..."
+              placeholder={t('apps.fileManager.toolbar.searchPlaceholder')}
               className="h-9 w-48 px-3 pr-8 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-white/40 transition-all"
             />
             {searchKeyword && (

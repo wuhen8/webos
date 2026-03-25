@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Loader2, AlertCircle, Brain } from 'lucide-react'
 import type { ToolCall, ToolResult } from '../chatService'
 import { toolMeta } from './types'
 
 export function ShellResultBlock({ content, isError }: { content: string; isError: boolean }) {
+  const { t } = useTranslation()
   let stdout = '', stderr = '', exitCode = 0
   try {
     const parsed = JSON.parse(content)
@@ -34,13 +36,14 @@ export function ShellResultBlock({ content, isError }: { content: string; isErro
         <div className="text-xs text-red-500">exit code: {exitCode}</div>
       )}
       {!stdout && !stderr && (
-        <div className="text-xs opacity-50">（无输出）</div>
+        <div className="text-xs opacity-50">{t('apps.aiChat.messageBlocks.noOutput')}</div>
       )}
     </div>
   )
 }
 
 function ToolArgsDisplay({ args }: { args: string }) {
+  const { t } = useTranslation()
   let parsed: Record<string, unknown>
   try {
     parsed = JSON.parse(args)
@@ -50,7 +53,7 @@ function ToolArgsDisplay({ args }: { args: string }) {
 
   const entries = Object.entries(parsed)
   if (entries.length === 0) {
-    return <div className="text-xs opacity-50">（无参数）</div>
+    return <div className="text-xs opacity-50">{t('apps.aiChat.messageBlocks.noArgs')}</div>
   }
 
   return (
@@ -71,6 +74,7 @@ function ToolArgsDisplay({ args }: { args: string }) {
 }
 
 export function ToolCallBlock({ call, result, shellOutput }: { call: ToolCall; result?: ToolResult; shellOutput?: { stdout: string; stderr: string } }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const liveRef = useRef<HTMLDivElement>(null)
   const meta = toolMeta[call.function.name] || { icon: () => null, label: call.function.name, color: 'text-gray-600 bg-gray-50 border-gray-200' }
@@ -115,7 +119,7 @@ export function ToolCallBlock({ call, result, shellOutput }: { call: ToolCall; r
         )}
         <span className="truncate">{meta.label}</span>
         {isGenerating ? (
-          <span className="text-xs opacity-60">生成参数中...</span>
+          <span className="text-xs opacity-60">{t('apps.aiChat.messageBlocks.generatingArgs')}</span>
         ) : argsSummary ? (
           <span className="text-xs opacity-60 truncate">{argsSummary}</span>
         ) : null}
@@ -126,11 +130,11 @@ export function ToolCallBlock({ call, result, shellOutput }: { call: ToolCall; r
       {expanded && (
         <div className="border-t px-3 py-2 text-xs space-y-2 bg-white/60">
           <div>
-            <div className="font-medium mb-1 opacity-60">参数</div>
+            <div className="font-medium mb-1 opacity-60">{t('apps.aiChat.messageBlocks.params')}</div>
             {isGenerating ? (
               <div className="flex items-center gap-2 text-xs opacity-50 py-1">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                <span>AI 正在生成参数...</span>
+                <span>{t('apps.aiChat.messageBlocks.aiGeneratingArgs')}</span>
               </div>
             ) : (
               <ToolArgsDisplay args={call.function.arguments} />
@@ -138,7 +142,7 @@ export function ToolCallBlock({ call, result, shellOutput }: { call: ToolCall; r
           </div>
           {result && (
             <div>
-              <div className="font-medium mb-1 opacity-60">结果</div>
+              <div className="font-medium mb-1 opacity-60">{t('apps.aiChat.messageBlocks.result')}</div>
               {call.function.name === 'shell' ? (
                 <ShellResultBlock content={result.content} isError={!!result.is_error} />
               ) : (
@@ -165,6 +169,7 @@ export function ToolCallBlock({ call, result, shellOutput }: { call: ToolCall; r
 }
 
 export function ThinkingBlock({ content, isStreaming }: { content: string; isStreaming: boolean }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -178,7 +183,7 @@ export function ThinkingBlock({ content, isStreaming }: { content: string; isStr
         ) : (
           <Brain className="h-4 w-4 shrink-0 text-violet-500" />
         )}
-        <span>{isStreaming ? '思考中...' : '思考过程'}</span>
+        <span>{isStreaming ? t('apps.aiChat.messageBlocks.thinking') : t('apps.aiChat.messageBlocks.thoughtProcess')}</span>
         <span className="ml-auto shrink-0">
           {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         </span>

@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { useToast } from "@/hooks/use-toast"
 import { useSystemWebSocket } from "@/hooks/useSystemWebSocket"
 import { exec } from "@/lib/services"
@@ -22,6 +23,7 @@ import type {
 } from "./types"
 
 function DiskManagerContent() {
+  const { t } = useTranslation()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<TabType>("overview")
   const [disks, setDisks] = useState<DiskInfo[]>([])
@@ -59,7 +61,7 @@ function DiskManagerContent() {
 
   const execCmd = async (cmd: string, successMsg: string) => {
     exec(cmd, { background: true, title: successMsg, refreshChannels: diskRefreshChannels })
-    toast({ title: "已提交", description: `${successMsg}操作已提交到后台` })
+    toast({ title: t('apps.diskManager.feedback.submitted'), description: t('apps.diskManager.feedback.submittedDescription', { action: successMsg }) })
   }
 
   const handleFormat = (device: string, fsType: string, label: string) => {
@@ -67,22 +69,22 @@ function DiskManagerContent() {
       const mkfsMap: Record<string, string> = { ext4: "mkfs.ext4", xfs: "mkfs.xfs", btrfs: "mkfs.btrfs", zfs: "mkfs.ext4", fat32: "mkfs.vfat -F 32", exfat: "mkfs.exfat", ntfs: "mkfs.ntfs -f" }
       const mkfs = mkfsMap[fsType.toLowerCase()] || "mkfs.ext4"
       const labelFlag = label ? (fsType === "fat32" ? ` -n "${label}"` : ` -L "${label}"`) : ""
-      return execCmd(`${mkfs}${labelFlag} ${device}`, "格式化成功")
+      return execCmd(`${mkfs}${labelFlag} ${device}`, t('apps.diskManager.feedback.formatSuccess'))
     }
     const fsMap: Record<string, string> = { apfs: "APFS", "hfs+": "JHFS+", fat32: "FAT32", vfat: "FAT32", exfat: "ExFAT", ntfs: "NTFS" }
     const fs = fsMap[fsType.toLowerCase()] || "APFS"
     const vol = label || "Untitled"
-    execCmd(`diskutil eraseVolume ${fs} "${vol}" ${device}`, "格式化成功")
+    execCmd(`diskutil eraseVolume ${fs} "${vol}" ${device}`, t('apps.diskManager.feedback.formatSuccess'))
   }
 
   const handleCreatePartition = (device: string, size: string, fsType: string) => {
     if (osType === "linux") {
       const end = size === "100%" ? "100%" : size
-      return execCmd(`parted -s ${device} mklabel gpt && parted -s ${device} mkpart primary 0% ${end} && partprobe ${device}`, "分区创建成功")
+      return execCmd(`parted -s ${device} mklabel gpt && parted -s ${device} mkpart primary 0% ${end} && partprobe ${device}`, t('apps.diskManager.feedback.createPartitionSuccess'))
     }
     const fsMap: Record<string, string> = { apfs: "APFS", "hfs+": "JHFS+", fat32: "FAT32", vfat: "FAT32", exfat: "ExFAT" }
     const fs = fsMap[fsType.toLowerCase()] || "APFS"
-    execCmd(`diskutil partitionDisk ${device} 1 GPT ${fs} Untitled ${size}`, "分区创建成功")
+    execCmd(`diskutil partitionDisk ${device} 1 GPT ${fs} Untitled ${size}`, t('apps.diskManager.feedback.createPartitionSuccess'))
   }
 
   const handleDeletePartition = (device: string) => {
@@ -93,11 +95,11 @@ function DiskManagerContent() {
       if (match) {
         const parentDisk = match[1]
         const partNum = match[2]
-        return execCmd(`wipefs -a ${device} && parted -s ${parentDisk} rm ${partNum} && partprobe ${parentDisk}`, "分区删除成功")
+        return execCmd(`wipefs -a ${device} && parted -s ${parentDisk} rm ${partNum} && partprobe ${parentDisk}`, t('apps.diskManager.feedback.deletePartitionSuccess'))
       }
-      return execCmd(`wipefs -a ${device}`, "分区删除成功")
+      return execCmd(`wipefs -a ${device}`, t('apps.diskManager.feedback.deletePartitionSuccess'))
     }
-    execCmd(`diskutil eraseVolume free free ${device}`, "分区删除成功")
+    execCmd(`diskutil eraseVolume free free ${device}`, t('apps.diskManager.feedback.deletePartitionSuccess'))
   }
 
   const handleMountPartition = (device: string, mountPoint: string, fsType: string, persist: boolean, uuid: string) => {
@@ -108,9 +110,9 @@ function DiskManagerContent() {
         const fstabLine = `${fstabDev} ${mountPoint} ${fsType || "auto"} defaults 0 2`
         cmds.push(`grep -qsE '^\\s*${fstabDev.replace(/\//g, "\\\\/")}\\s|^\\s*${device.replace(/\//g, "\\\\/")}\\s' /etc/fstab || echo '${fstabLine}' >> /etc/fstab`)
       }
-      return execCmd(cmds.join(" && "), persist ? "挂载成功，已写入 fstab" : "挂载成功")
+      return execCmd(cmds.join(" && "), persist ? t('apps.diskManager.feedback.mountSuccessWithFstab') : t('apps.diskManager.feedback.mountSuccess'))
     }
-    execCmd(`diskutil mount ${device}`, "挂载成功")
+    execCmd(`diskutil mount ${device}`, t('apps.diskManager.feedback.mountSuccess'))
   }
 
   const handleUnmountPartition = (device: string, mountPoint: string, removeFstab: boolean) => {
@@ -119,9 +121,9 @@ function DiskManagerContent() {
       if (removeFstab && mountPoint) {
         cmds.push(`sed -i '\\|${mountPoint.replace(/\//g, "\\\\/")}|d' /etc/fstab`)
       }
-      return execCmd(cmds.join(" && "), removeFstab ? "卸载成功，已从 fstab 移除" : "卸载成功")
+      return execCmd(cmds.join(" && "), removeFstab ? t('apps.diskManager.feedback.unmountSuccessWithFstabRemoval') : t('apps.diskManager.feedback.unmountSuccess'))
     }
-    execCmd(`diskutil unmount ${device}`, "卸载成功")
+    execCmd(`diskutil unmount ${device}`, t('apps.diskManager.feedback.unmountSuccess'))
   }
 
   const tabClass = (tab: TabType) =>
@@ -136,13 +138,13 @@ function DiskManagerContent() {
       <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
         <div className="flex items-center gap-1 bg-slate-100/80 rounded-lg p-0.5 overflow-x-auto">
           <button className={tabClass("overview")} onClick={() => setActiveTab("overview")}>
-            <span className="flex items-center gap-1.5"><BarChart3 className="w-3.5 h-3.5" />概览</span>
+            <span className="flex items-center gap-1.5"><BarChart3 className="w-3.5 h-3.5" />{t('apps.diskManager.content.tabs.overview')}</span>
           </button>
           <button className={tabClass("pools")} onClick={() => setActiveTab("pools")}>
-            <span className="flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" />存储池</span>
+            <span className="flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" />{t('apps.diskManager.content.tabs.pools')}</span>
           </button>
           <button className={tabClass("advanced")} onClick={() => setActiveTab("advanced")}>
-            <span className="flex items-center gap-1.5"><Settings2 className="w-3.5 h-3.5" />高级</span>
+            <span className="flex items-center gap-1.5"><Settings2 className="w-3.5 h-3.5" />{t('apps.diskManager.content.tabs.advanced')}</span>
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -154,7 +156,7 @@ function DiskManagerContent() {
           </select>
           <button onClick={() => setAutoRefresh(!autoRefresh)}
             className={`p-1 rounded-md transition-colors ${autoRefresh ? connected ? "text-green-600 bg-green-50" : "text-amber-500 bg-amber-50" : "text-slate-400 hover:text-slate-600"}`}
-            title={autoRefresh ? (connected ? "已连接，推送中" : "连接中...") : "已暂停"}>
+            title={autoRefresh ? (connected ? t('apps.diskManager.content.connection.connected') : t('apps.diskManager.content.connection.connecting')) : t('apps.diskManager.content.connection.paused')}>
             {connected ? <Wifi className="w-3.5 h-3.5" /> : autoRefresh ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <WifiOff className="w-3.5 h-3.5" />}
           </button>
         </div>

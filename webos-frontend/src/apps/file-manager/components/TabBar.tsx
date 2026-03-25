@@ -1,4 +1,5 @@
 import { useRef, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { Folder, X, Plus } from "lucide-react"
 import { fmDragTabRef } from "@/stores"
 
@@ -15,6 +16,7 @@ interface TabBarProps {
 }
 
 export function TabBar({ fmTabs, activeFmTabIndex, windowId, addFmTab, closeFmTab, switchFmTab, reorderFmTabs }: TabBarProps) {
+  const { t } = useTranslation()
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hoverIndexRef = useRef<number | null>(null)
 
@@ -95,7 +97,7 @@ export function TabBar({ fmTabs, activeFmTabIndex, windowId, addFmTab, closeFmTa
       <button
         onClick={() => addFmTab(windowId)}
         className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-white/60 text-slate-400 hover:text-slate-600 transition-all"
-        title="新建标签页"
+        title={t('apps.fileManager.tabBar.newTab')}
       >
         <Plus className="h-4 w-4" />
       </button>

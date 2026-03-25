@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react"
+import { useTranslation } from 'react-i18next'
 import FmEdit from "@/components/FmEdit"
 import type { FmEditApi } from "@/components/FmEdit"
 import {
@@ -24,6 +25,7 @@ interface EditorContentProps {
 }
 
 function EditorContent({ win }: EditorContentProps) {
+  const { t } = useTranslation()
   const { toast } = useToast()
   const fontSize = useSettingsStore((s) => s.fontSize)
   const editorTheme = useSettingsStore((s) => s.editorTheme)
@@ -52,7 +54,7 @@ function EditorContent({ win }: EditorContentProps) {
     const currentWin = useWindowStore.getState().windows.find(w => w.id === win.id)
     if (!currentWin) return
     const proc = useProcessStore.getState().getProcess(currentWin.pid)
-    setEditFullPath((proc?.state as any)?.file?.path || "/Users/未命名.txt")
+    setEditFullPath((proc?.state as any)?.file?.path || "/Users/untitled.txt")
     setIsEditingPath(true)
     setTimeout(() => {
       pathInputRef.current?.focus()
@@ -78,8 +80,8 @@ function EditorContent({ win }: EditorContentProps) {
       startEditPath()
     } else {
       const ok = await useEditorStore.getState().saveEditorContent(currentWin.id)
-      if (ok) toast({ title: "成功", description: "保存成功" })
-      else toast({ title: "错误", description: "保存失败，请检查路径权限", variant: "destructive" })
+      if (ok) toast({ title: t('apps.editor.content.success'), description: t('apps.editor.content.saveSuccess') })
+      else toast({ title: t('apps.editor.content.error'), description: t('apps.editor.content.saveFailed'), variant: "destructive" })
     }
   }, [win.id, startEditPath, toast])
 
@@ -90,9 +92,9 @@ function EditorContent({ win }: EditorContentProps) {
       const success = await useEditorStore.getState().saveEditorContent(win.id, editFullPath.trim())
       if (success) {
         setIsEditingPath(false)
-        toast({ title: "成功", description: "保存成功" })
+        toast({ title: t('apps.editor.content.success'), description: t('apps.editor.content.saveSuccess') })
       } else {
-        toast({ title: "错误", description: "保存失败，请检查路径权限", variant: "destructive" })
+        toast({ title: t('apps.editor.content.error'), description: t('apps.editor.content.saveFailed'), variant: "destructive" })
       }
     }
   }
@@ -104,9 +106,9 @@ function EditorContent({ win }: EditorContentProps) {
       const success = await useEditorStore.getState().saveEditorContent(win.id, editFullPath.trim())
       if (success) {
         setIsEditingPath(false)
-        toast({ title: "成功", description: "保存成功" })
+        toast({ title: t('apps.editor.content.success'), description: t('apps.editor.content.saveSuccess') })
       } else {
-        toast({ title: "错误", description: "保存失败，请检查路径权限", variant: "destructive" })
+        toast({ title: t('apps.editor.content.error'), description: t('apps.editor.content.saveFailed'), variant: "destructive" })
       }
     } else if (editFullPath.trim() === file?.path) {
       setIsEditingPath(false)
@@ -115,8 +117,8 @@ function EditorContent({ win }: EditorContentProps) {
 
   const handleToggleWrap = () => {
     const result = useEditorStore.getState().toggleWordWrap(win.id)
-    if (result.ok) toast({ title: "切换换行", description: result.message })
-    else toast({ title: "提示", description: result.message, variant: "destructive" })
+    if (result.ok) toast({ title: t('apps.editor.content.toggleWrap'), description: result.message })
+    else toast({ title: t('apps.editor.content.notice'), description: result.message, variant: "destructive" })
   }
 
   // Handle application-level keyboard shortcuts
@@ -130,9 +132,9 @@ function EditorContent({ win }: EditorContentProps) {
         e.preventDefault()
         const result = await useEditorStore.getState().formatEditor(win.id)
         if (result.ok) {
-          toast({ title: "格式化", description: result.message })
+          toast({ title: t('apps.editor.content.format'), description: result.message })
         } else {
-          toast({ title: "格式化失败", description: result.message, variant: "destructive" })
+          toast({ title: t('apps.editor.content.formatFailed'), description: result.message, variant: "destructive" })
         }
         return
       }
@@ -189,7 +191,7 @@ function EditorContent({ win }: EditorContentProps) {
               <FileCode className={`h-3.5 w-3.5 flex-shrink-0 ${index === activeTabIndex ? "text-purple-500" : "text-slate-400"}`} />
               <span className="text-xs font-medium truncate flex-1">{tab.file.name}</span>
               {tab.isNew && (
-                <span className="px-1.5 py-0.5 text-[0.625rem] bg-blue-100 text-blue-600 rounded font-medium">新</span>
+                <span className="px-1.5 py-0.5 text-[0.625rem] bg-blue-100 text-blue-600 rounded font-medium">{t('apps.editor.content.newBadge')}</span>
               )}
               {tab.isModified && !tab.isNew && (
                 <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0 shadow-sm" />
@@ -205,7 +207,7 @@ function EditorContent({ win }: EditorContentProps) {
           <button
             onClick={() => useEditorStore.getState().addNewEditorTab(win.id)}
             className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-white/60 text-slate-400 hover:text-slate-600 transition-all"
-            title="新建文件"
+            title={t('apps.editor.content.newFile')}
           >
             <FilePlus className="h-4 w-4" />
           </button>
@@ -225,7 +227,7 @@ function EditorContent({ win }: EditorContentProps) {
               value={editFullPath}
               onChange={(e) => setEditFullPath(e.target.value)}
               className="h-8 text-sm bg-white border-slate-200 flex-1 font-mono"
-              placeholder="输入完整路径，如 /Users/xxx/Documents/index.js"
+              placeholder={t('apps.editor.content.enterFullPath')}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleSaveWithPath()
                 if (e.key === "Escape") cancelPathEdit()
@@ -238,7 +240,7 @@ function EditorContent({ win }: EditorContentProps) {
               className="h-8 px-3 bg-purple-500 hover:bg-purple-600 text-white"
             >
               <Save className="h-3.5 w-3.5 mr-1.5" />
-              保存
+              {t('apps.editor.content.save')}
             </Button>
             <Button
               size="sm"
@@ -254,11 +256,11 @@ function EditorContent({ win }: EditorContentProps) {
             <div
               className="flex-1 min-w-0 cursor-pointer group"
               onClick={startEditPath}
-              title="点击编辑路径"
+              title={t('apps.editor.content.clickToEditPath')}
             >
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-slate-800 truncate">
-                  {file?.path || "未保存"}
+                  {file?.path || t('apps.editor.content.unsaved')}
                 </span>
                 <Edit3 className="h-3.5 w-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
@@ -275,14 +277,14 @@ function EditorContent({ win }: EditorContentProps) {
                 }`}
               >
                 <Save className="h-3.5 w-3.5 mr-1.5" />
-                保存
+                {t('apps.editor.content.save')}
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 className="h-8 w-8 p-0 hover:bg-slate-100"
                 onClick={handleToggleWrap}
-                title="切换自动换行"
+                title={t('apps.editor.content.toggleWordWrap')}
               >
                 <Type className="h-4 w-4" />
               </Button>
@@ -291,7 +293,7 @@ function EditorContent({ win }: EditorContentProps) {
                 variant="ghost"
                 className="h-8 w-8 p-0 hover:bg-slate-100"
                 onClick={() => setEditorTheme(editorTheme === "vs" ? "vs-dark" : "vs")}
-                title={`切换到${editorTheme === "vs" ? "深色" : "浅色"}主题`}
+                title={t(editorTheme === "vs" ? 'apps.editor.content.switchToDarkTheme' : 'apps.editor.content.switchToLightTheme')}
               >
                 {editorTheme === "vs" ? (
                   <div className="h-4 w-4 bg-black rounded-sm" />
@@ -342,23 +344,23 @@ function EditorContent({ win }: EditorContentProps) {
             {isNewFile ? (
               <>
                 <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                <span className="text-blue-600 font-medium">新文件</span>
+                <span className="text-blue-600 font-medium">{t('apps.editor.content.newFileStatus')}</span>
               </>
             ) : isModified ? (
               <>
                 <span className="w-2 h-2 rounded-full bg-amber-400" />
-                <span className="text-amber-600">未保存</span>
+                <span className="text-amber-600">{t('apps.editor.content.unsavedStatus')}</span>
               </>
             ) : (
               <>
                 <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span className="text-emerald-600">已保存</span>
+                <span className="text-emerald-600">{t('apps.editor.content.savedStatus')}</span>
               </>
             )}
           </div>
           <span className="text-slate-400">|</span>
           <span className="text-slate-500">
-            {tabs.length} 个文件
+            {t('apps.editor.content.fileCount', { count: tabs.length })}
           </span>
         </div>
         <div className="flex items-center gap-4 text-slate-500">
@@ -366,7 +368,7 @@ function EditorContent({ win }: EditorContentProps) {
             {file ? getFileType(file.name).toUpperCase() : "TXT"}
           </span>
           <span>UTF-8</span>
-          <span>字号 {fontSize}</span>
+          <span>{t('apps.editor.content.fontSize', { size: fontSize })}</span>
         </div>
       </div>
     </div>

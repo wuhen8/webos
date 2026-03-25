@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import { Settings, Plus, Trash2 } from "lucide-react"
 import { addStorageNode, updateStorageNode, deleteStorageNode } from "@/lib/storageApi"
 import type { StorageNodeConfig } from "@/types"
@@ -6,6 +7,7 @@ import { SettingsIcon } from "./SettingsIcon"
 import { useDataStore } from "@/stores/dataStore"
 
 export default function StorageTab() {
+  const { t } = useTranslation()
   const storageNodes = useDataStore((s) => s.storageNodes)
   const storageLoading = useDataStore((s) => s.storageNodesLoading)
   const [storageShowAdd, setStorageShowAdd] = useState(false)
@@ -75,8 +77,8 @@ export default function StorageTab() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h2 className="text-xl font-semibold text-gray-900 mb-1">存储节点</h2>
-      <p className="text-[0.8125rem] text-gray-500 mb-6">管理本地和 S3 兼容的对象存储节点</p>
+      <h2 className="text-xl font-semibold text-gray-900 mb-1">{t('settings.sidebar.storage')}</h2>
+      <p className="text-[0.8125rem] text-gray-500 mb-6">{t('settings.storage.subtitle')}</p>
 
       {/* 节点列表 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200/60 overflow-hidden mb-4">
@@ -85,7 +87,7 @@ export default function StorageTab() {
             <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
           </div>
         ) : storageNodes.length === 0 ? (
-          <div className="text-center py-8 text-[0.8125rem] text-gray-400">暂无存储节点</div>
+          <div className="text-center py-8 text-[0.8125rem] text-gray-400">{t('settings.storage.empty')}</div>
         ) : (
           storageNodes.map((node, idx) => (
             <div key={node.id} className={`flex items-center px-4 py-3 ${idx > 0 ? 'border-t border-gray-100' : ''}`}>
@@ -95,7 +97,7 @@ export default function StorageTab() {
               <div className="flex-1 min-w-0">
                 <div className="text-[0.8125rem] font-medium text-gray-900 truncate">{node.name}</div>
                 <div className="text-[0.6875rem] text-gray-400">
-                  {node.type === 's3' ? `S3 · ${node.config?.endpoint || ''} / ${node.config?.bucket || ''}` : `本地存储`}
+                  {node.type === 's3' ? `S3 · ${node.config?.endpoint || ''} / ${node.config?.bucket || ''}` : t('settings.storage.localType')}
                 </div>
               </div>
               <div className="flex items-center gap-1 ml-2">
@@ -122,29 +124,29 @@ export default function StorageTab() {
       {/* 添加/编辑表单 */}
       {storageShowAdd ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200/60 p-4 mb-4">
-          <h3 className="text-[0.875rem] font-medium text-gray-900 mb-3">{storageEditId ? '编辑节点' : '添加节点'}</h3>
+          <h3 className="text-[0.875rem] font-medium text-gray-900 mb-3">{storageEditId ? t('settings.storage.editNode') : t('settings.storage.addNode')}</h3>
           <div className="space-y-3">
             <div className="flex gap-2">
               <button
                 onClick={() => setStorageForm(f => ({ ...f, type: 'local' }))}
                 className={`flex-1 py-2 rounded-lg text-[0.8125rem] font-medium border ${storageForm.type === 'local' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
               >
-                本地存储
+                {t('settings.storage.localOption')}
               </button>
               <button
                 onClick={() => setStorageForm(f => ({ ...f, type: 's3' }))}
                 className={`flex-1 py-2 rounded-lg text-[0.8125rem] font-medium border ${storageForm.type === 's3' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
               >
-                S3 对象存储
+                {t('settings.storage.s3Option')}
               </button>
             </div>
 
             <div>
-              <label className="block text-[0.75rem] text-gray-500 mb-1">名称</label>
+              <label className="block text-[0.75rem] text-gray-500 mb-1">{t('settings.storage.displayName')}</label>
               <input
                 value={storageForm.name}
                 onChange={e => setStorageForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="显示名称"
+                placeholder={t('settings.storage.displayNamePlaceholder')}
                 className="w-full h-8 px-3 rounded-lg border border-gray-200 text-[0.8125rem] focus:outline-none focus:ring-1 focus:ring-blue-500/40"
               />
             </div>
@@ -153,7 +155,7 @@ export default function StorageTab() {
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[0.75rem] text-gray-500 mb-1">Endpoint</label>
+                    <label className="block text-[0.75rem] text-gray-500 mb-1">{t('settings.storage.endpoint')}</label>
                     <input
                       value={storageForm.endpoint}
                       onChange={e => setStorageForm(f => ({ ...f, endpoint: e.target.value }))}
@@ -162,7 +164,7 @@ export default function StorageTab() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[0.75rem] text-gray-500 mb-1">Bucket</label>
+                    <label className="block text-[0.75rem] text-gray-500 mb-1">{t('settings.storage.bucket')}</label>
                     <input
                       value={storageForm.bucket}
                       onChange={e => setStorageForm(f => ({ ...f, bucket: e.target.value }))}
@@ -172,7 +174,7 @@ export default function StorageTab() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[0.75rem] text-gray-500 mb-1">Region</label>
+                  <label className="block text-[0.75rem] text-gray-500 mb-1">{t('settings.storage.region')}</label>
                   <input
                     value={storageForm.region}
                     onChange={e => setStorageForm(f => ({ ...f, region: e.target.value }))}
@@ -182,7 +184,7 @@ export default function StorageTab() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[0.75rem] text-gray-500 mb-1">Access Key</label>
+                    <label className="block text-[0.75rem] text-gray-500 mb-1">{t('settings.storage.accessKey')}</label>
                     <input
                       value={storageForm.accessKey}
                       onChange={e => setStorageForm(f => ({ ...f, accessKey: e.target.value }))}
@@ -191,7 +193,7 @@ export default function StorageTab() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[0.75rem] text-gray-500 mb-1">Secret Key</label>
+                    <label className="block text-[0.75rem] text-gray-500 mb-1">{t('settings.storage.secretKey')}</label>
                     <input
                       type="password"
                       value={storageForm.secretKey}
@@ -208,20 +210,20 @@ export default function StorageTab() {
                     onChange={e => setStorageForm(f => ({ ...f, useSSL: e.target.checked }))}
                     className="rounded"
                   />
-                  <label className="text-[0.8125rem] text-gray-600">使用 SSL</label>
+                  <label className="text-[0.8125rem] text-gray-600">{t('settings.storage.useSsl')}</label>
                 </div>
               </>
             ) : null}
 
             <div>
-              <label className="block text-[0.75rem] text-gray-500 mb-1">外部访问地址</label>
+              <label className="block text-[0.75rem] text-gray-500 mb-1">{t('settings.storage.externalHost')}</label>
               <input
                 value={storageForm.externalHost}
                 onChange={e => setStorageForm(f => ({ ...f, externalHost: e.target.value }))}
                 placeholder="https://files.example.com"
                 className="w-full h-8 px-3 rounded-lg border border-gray-200 text-[0.8125rem] focus:outline-none focus:ring-1 focus:ring-blue-500/40"
               />
-              <p className="text-[0.6875rem] text-gray-400 mt-1">用于生成分享链接和 Office 在线预览</p>
+              <p className="text-[0.6875rem] text-gray-400 mt-1">{t('settings.storage.externalHostHint')}</p>
             </div>
 
             <div className="flex justify-end gap-2 pt-1">
@@ -229,14 +231,14 @@ export default function StorageTab() {
                 onClick={resetStorageForm}
                 className="px-4 py-1.5 rounded-lg text-[0.8125rem] text-gray-600 hover:bg-gray-100"
               >
-                取消
+                {t('apps.settings.firewall.cancel')}
               </button>
               <button
                 onClick={handleSaveStorageNode}
                 disabled={!storageForm.name}
                 className="px-4 py-1.5 rounded-lg text-[0.8125rem] font-medium text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {storageEditId ? '保存' : '添加'}
+                {storageEditId ? t('settings.storage.save') : t('settings.storage.add')}
               </button>
             </div>
           </div>
@@ -247,7 +249,7 @@ export default function StorageTab() {
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-[0.8125rem] font-medium text-blue-600 hover:bg-blue-50 border border-blue-200"
         >
           <Plus className="w-4 h-4" />
-          添加存储节点
+          {t('settings.storage.addNode')}
         </button>
       )}
     </div>

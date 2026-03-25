@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { Search, Wifi, Volume2, MoreHorizontal } from "lucide-react"
 import {
   DropdownMenu,
@@ -13,6 +14,7 @@ import { TaskIndicator } from "@/components/TaskIndicator"
 
 
 export function TopMenuBar() {
+  const { t, i18n } = useTranslation()
   const windows = useWindowStore((s) => s.windows)
   const openWindow = useWindowStore((s) => s.openWindow)
   const activateWindow = useWindowStore((s) => s.activateWindow)
@@ -31,6 +33,13 @@ export function TopMenuBar() {
   const activeType = activeWindow?.appId || activeWindow?.type || 'fileManager'
   const appConfig = getAppConfig(activeType)
   const appName = appConfig.name
+  const formattedTime = new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language, {
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(time)
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000)
@@ -184,28 +193,28 @@ export function TopMenuBar() {
           </DropdownMenuTrigger>
           <DropdownMenuContent side="bottom" align="start" sideOffset={5} className={menuContentClass}>
             <DropdownMenuItem onClick={() => { openWindow('about'); setTopMenuOpen(false) }} className={menuItemClass}>
-              关于本机
+              {t('menu.apple.aboutThisMachine')}
             </DropdownMenuItem>
             <div className={menuDividerClass} />
             <DropdownMenuItem onClick={() => { openWindow('settings'); setTopMenuOpen(false) }} className={menuItemClass}>
-              系统设置...<span className={shortcutClass}>⌘,</span>
+              {t('menu.apple.systemSettings')}<span className={shortcutClass}>⌘,</span>
             </DropdownMenuItem>
             <div className={menuDividerClass} />
             <DropdownMenuItem className={`${menuItemClass} opacity-40`} disabled>
-              睡眠
+              {t('menu.apple.sleep')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => { dispatchMenuAction('system.restart'); setTopMenuOpen(false) }} className={menuItemClass}>
-              重新启动...
+              {t('menu.apple.restart')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => { dispatchMenuAction('system.shutdown'); setTopMenuOpen(false) }} className={menuItemClass}>
-              关机...
+              {t('menu.apple.shutdown')}
             </DropdownMenuItem>
             <div className={menuDividerClass} />
             <DropdownMenuItem onClick={() => { logout(); setTopMenuOpen(false) }} className={menuItemClass}>
-              锁定屏幕<span className={shortcutClass}>⌃⌘Q</span>
+              {t('menu.apple.lockScreen')}<span className={shortcutClass}>⌃⌘Q</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => { logout(); setTopMenuOpen(false) }} className={menuItemClass}>
-              退出登录...<span className={shortcutClass}>⇧⌘Q</span>
+              {t('menu.apple.logout')}<span className={shortcutClass}>⇧⌘Q</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -322,7 +331,7 @@ export function TopMenuBar() {
                     onMouseEnter={() => handleMenuHover(setWindowMenuOpen)}
                     className={`${menuBtnBase} shrink-0 whitespace-nowrap`}
                     style={visible ? undefined : { position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}
-                  >窗口</button>
+                  >{t('menu.window.title')}</button>
                 </DropdownMenuTrigger>
                 {visible && (
                   <DropdownMenuContent side="bottom" align="start" sideOffset={5} className={menuContentClass}>
@@ -331,19 +340,19 @@ export function TopMenuBar() {
                       disabled={!activeWindow}
                       onClick={() => { if (activeWindow) { dispatchMenuAction('minimize'); setWindowMenuOpen(false) } }}
                     >
-                      最小化<span className={shortcutClass}>⌘M</span>
+                      {t('menu.window.minimize')}<span className={shortcutClass}>⌘M</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className={activeWindow ? menuItemClass : `${menuItemClass} opacity-40`}
                       disabled={!activeWindow}
                       onClick={() => { if (activeWindow) { dispatchMenuAction('zoom'); setWindowMenuOpen(false) } }}
                     >
-                      缩放
+                      {t('menu.window.zoom')}
                     </DropdownMenuItem>
                     <div className={menuDividerClass} />
                     {windows.length > 0 && (
                       <>
-                        <div className="px-3 py-[0.1875rem] text-[0.6875rem] text-black/35 font-medium">已打开的窗口</div>
+                        <div className="px-3 py-[0.1875rem] text-[0.6875rem] text-black/35 font-medium">{t('menu.window.openWindows')}</div>
                         {windows.map(win => (
                           <DropdownMenuItem
                             key={win.id}
@@ -357,7 +366,7 @@ export function TopMenuBar() {
                                 </svg>
                               )}
                               {(!win.isActive || win.isMinimized) && <span className="w-[0.625rem]" />}
-                              {win.title}{win.isMinimized ? '（已最小化）' : ''}
+                              {win.title}{win.isMinimized ? t('menu.window.minimizedSuffix') : ''}
                             </span>
                           </DropdownMenuItem>
                         ))}
@@ -369,20 +378,20 @@ export function TopMenuBar() {
             ),
             renderInMore: () => (
               <div key="more-window">
-                <div className="px-3 py-[0.1875rem] text-[0.6875rem] text-black/35 font-medium">窗口</div>
+                <div className="px-3 py-[0.1875rem] text-[0.6875rem] text-black/35 font-medium">{t('menu.window.title')}</div>
                 <DropdownMenuItem
                   className={activeWindow ? menuItemClass : `${menuItemClass} opacity-40`}
                   disabled={!activeWindow}
                   onClick={() => { if (activeWindow) { dispatchMenuAction('minimize'); setMoreMenuOpen(false) } }}
                 >
-                  最小化<span className={shortcutClass}>⌘M</span>
+                  {t('menu.window.minimize')}<span className={shortcutClass}>⌘M</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className={activeWindow ? menuItemClass : `${menuItemClass} opacity-40`}
                   disabled={!activeWindow}
                   onClick={() => { if (activeWindow) { dispatchMenuAction('zoom'); setMoreMenuOpen(false) } }}
                 >
-                  缩放
+                  {t('menu.window.zoom')}
                 </DropdownMenuItem>
                 {windows.length > 0 && (
                   <>
@@ -393,7 +402,7 @@ export function TopMenuBar() {
                         className={menuItemClass}
                         onClick={() => { activateWindow(win.id); setMoreMenuOpen(false) }}
                       >
-                        {win.title}{win.isMinimized ? '（已最小化）' : ''}
+                        {win.title}{win.isMinimized ? t('menu.window.minimizedSuffix') : ''}
                       </DropdownMenuItem>
                     ))}
                   </>
@@ -416,19 +425,19 @@ export function TopMenuBar() {
                     onMouseEnter={() => handleMenuHover(setHelpMenuOpen)}
                     className={`${menuBtnBase} shrink-0 whitespace-nowrap`}
                     style={visible ? undefined : { position: 'absolute', visibility: 'hidden', pointerEvents: 'none' }}
-                  >帮助</button>
+                  >{t('menu.help.title')}</button>
                 </DropdownMenuTrigger>
                 {visible && (
                   <DropdownMenuContent side="bottom" align="start" sideOffset={5} className={menuContentClass}>
                     <div className="px-2 py-[0.3125rem]">
                       <div className="flex items-center gap-2 px-2 py-[0.25rem] bg-black/[0.04] rounded-[0.375rem] border border-black/[0.06]">
                         <Search className="w-[0.75rem] h-[0.75rem] text-black/30 shrink-0" />
-                        <span className="text-[0.8125rem] text-black/30">搜索</span>
+                        <span className="text-[0.8125rem] text-black/30">{t('menu.help.search')}</span>
                       </div>
                     </div>
                     <div className={menuDividerClass} />
                     <DropdownMenuItem onClick={() => { openWindow('about'); setHelpMenuOpen(false) }} className={menuItemClass}>
-                      关于 WebOS
+                      {t('menu.help.aboutWebOS')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 )}
@@ -436,9 +445,9 @@ export function TopMenuBar() {
             ),
             renderInMore: () => (
               <div key="more-help">
-                <div className="px-3 py-[0.1875rem] text-[0.6875rem] text-black/35 font-medium">帮助</div>
+                <div className="px-3 py-[0.1875rem] text-[0.6875rem] text-black/35 font-medium">{t('menu.help.title')}</div>
                 <DropdownMenuItem onClick={() => { openWindow('about'); setMoreMenuOpen(false) }} className={menuItemClass}>
-                  关于 WebOS
+                  {t('menu.help.aboutWebOS')}
                 </DropdownMenuItem>
               </div>
             ),
@@ -505,7 +514,7 @@ export function TopMenuBar() {
         </button>
         <button className="flex items-center h-[1.125rem] px-[0.5rem] rounded-[0.25rem] hover:bg-black/[0.06] active:bg-black/[0.1] transition-colors duration-100 gap-[0.375rem]">
           <span className="text-[0.8125rem] text-black/80 font-medium tabular-nums whitespace-nowrap">
-            {`${time.getMonth() + 1}月${time.getDate()}日 周${'日一二三四五六'[time.getDay()]} ${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`}
+            {formattedTime}
           </span>
         </button>
       </div>

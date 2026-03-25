@@ -2,7 +2,7 @@ import type { AppConfig } from '@/types'
 
 export const manifest: AppConfig = {
   id: 'docker',
-  name: '容器管理',
+  name: 'i18n:apps.docker.name',
   icon: 'Container',
   gradient: 'from-sky-400 to-blue-600',
   shadow: 'shadow-sky-500/30',

@@ -2,7 +2,7 @@ import type { AppConfig } from '@/types'
 
 export const manifest: AppConfig = {
   id: 'about',
-  name: '关于本机',
+  name: 'i18n:apps.about.name',
   icon: 'Monitor',
   gradient: 'from-cyan-400 to-cyan-600',
   shadow: 'shadow-cyan-500/30',

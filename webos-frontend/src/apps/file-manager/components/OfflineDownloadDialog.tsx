@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from 'react-i18next'
 import { Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,6 +16,7 @@ interface OfflineDownloadDialogProps {
 }
 
 export function OfflineDownloadDialog({ open, onOpenChange, activeNodeId, currentPath, toast }: OfflineDownloadDialogProps) {
+  const { t } = useTranslation()
   const [urls, setUrls] = useState("")
   const [urlError, setUrlError] = useState("")
 
@@ -25,7 +27,7 @@ export function OfflineDownloadDialog({ open, onOpenChange, activeNodeId, curren
       try {
         new URL(lines[i])
       } catch {
-        return { valid: false, error: `第 ${i + 1} 行：无效的 URL 格式` }
+        return { valid: false, error: t('apps.fileManager.offlineDownload.invalidUrl', { line: i + 1 }) }
       }
     }
 
@@ -44,12 +46,12 @@ export function OfflineDownloadDialog({ open, onOpenChange, activeNodeId, curren
 
     try {
       await fsApi.offlineDownload(activeNodeId, currentPath, urlList)
-      toast({ title: "已开始下载", description: `${urlList.length} 个文件正在后台下载` })
+      toast({ title: t('apps.fileManager.offlineDownload.started'), description: t('apps.fileManager.offlineDownload.startedDescription', { count: urlList.length }) })
       setUrls("")
       setUrlError("")
       onOpenChange(false)
     } catch (e: any) {
-      toast({ title: "提交失败", description: e?.message || "请求失败", variant: "destructive" })
+      toast({ title: t('apps.fileManager.offlineDownload.submitFailed'), description: e?.message || t('apps.fileManager.offlineDownload.requestFailed'), variant: "destructive" })
     }
   }
 
@@ -57,8 +59,8 @@ export function OfflineDownloadDialog({ open, onOpenChange, activeNodeId, curren
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent draggable className="rounded-2xl border border-white/30 bg-white/15 backdrop-blur-2xl max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-slate-900">离线下载</DialogTitle>
-          <DialogDescription className="text-sm text-slate-700">输入下载链接，每行一个 URL，文件将下载到当前目录</DialogDescription>
+          <DialogTitle className="text-lg font-semibold text-slate-900">{t('apps.fileManager.offlineDownload.title')}</DialogTitle>
+          <DialogDescription className="text-sm text-slate-700">{t('apps.fileManager.offlineDownload.description')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <textarea
@@ -82,7 +84,7 @@ export function OfflineDownloadDialog({ open, onOpenChange, activeNodeId, curren
             className="rounded-xl transition-transform hover:scale-105 active:scale-95 bg-white/20 hover:bg-white/30 border-white/30 text-slate-900"
             onClick={() => onOpenChange(false)}
           >
-            取消
+            {t('apps.fileManager.offlineDownload.cancel')}
           </Button>
           <Button
             variant="outline"
@@ -91,7 +93,7 @@ export function OfflineDownloadDialog({ open, onOpenChange, activeNodeId, curren
             onClick={handleDownload}
           >
             <Download className="h-4 w-4 mr-2" />
-            开始下载
+            {t('apps.fileManager.offlineDownload.start')}
           </Button>
         </DialogFooter>
       </DialogContent>

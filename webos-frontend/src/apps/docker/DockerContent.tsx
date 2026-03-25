@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { useTranslation } from 'react-i18next'
 import { useToast } from "@/hooks/use-toast"
 import { useDataStore } from "@/stores/dataStore"
 import { useWindowStore } from "@/stores/windowStore"
@@ -16,6 +17,7 @@ import {
 } from "./components"
 
 function DockerContent() {
+  const { t } = useTranslation()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<TabType>("compose")
 
@@ -93,48 +95,58 @@ function DockerContent() {
   const dockerRefreshChannels = ['sub.docker_containers', 'sub.docker_images', 'sub.docker_compose', 'sub.docker_networks', 'sub.docker_volumes']
 
   const containerAction = (id: string, action: string) => {
-    const actionMap: Record<string, string> = { start: '启动', stop: '停止', restart: '重启' }
+    const actionMap: Record<string, string> = {
+      start: t('apps.docker.content.actions.start'),
+      stop: t('apps.docker.content.actions.stop'),
+      restart: t('apps.docker.content.actions.restart'),
+    }
     const label = actionMap[action] || action
-    exec(`docker ${action} ${id}`, { background: true, title: `容器${label}`, refreshChannels: dockerRefreshChannels })
-    toast({ title: "已提交", description: `容器${label}操作已提交到后台` })
+    exec(`docker ${action} ${id}`, { background: true, title: t('apps.docker.content.exec.containerActionTitle', { action: label }), refreshChannels: dockerRefreshChannels })
+    toast({ title: t('apps.docker.content.feedback.submitted'), description: t('apps.docker.content.feedback.containerActionSubmitted', { action: label }) })
   }
 
   const removeContainer = (id: string, force = false) => {
-    exec(`docker rm ${force ? "-f " : ""}${id}`, { background: true, title: `删除容器`, refreshChannels: dockerRefreshChannels })
-    toast({ title: "已提交", description: "容器删除操作已提交到后台" })
+    exec(`docker rm ${force ? "-f " : ""}${id}`, { background: true, title: t('apps.docker.content.exec.removeContainerTitle'), refreshChannels: dockerRefreshChannels })
+    toast({ title: t('apps.docker.content.feedback.submitted'), description: t('apps.docker.content.feedback.containerRemoveSubmitted') })
   }
 
   const removeImage = (id: string, force = false) => {
-    exec(`docker rmi ${force ? "-f " : ""}${id}`, { background: true, title: `删除镜像`, refreshChannels: dockerRefreshChannels })
-    toast({ title: "已提交", description: "镜像删除操作已提交到后台" })
+    exec(`docker rmi ${force ? "-f " : ""}${id}`, { background: true, title: t('apps.docker.content.exec.removeImageTitle'), refreshChannels: dockerRefreshChannels })
+    toast({ title: t('apps.docker.content.feedback.submitted'), description: t('apps.docker.content.feedback.imageRemoveSubmitted') })
   }
 
   const pullImage = (imageName: string) => {
     const name = imageName.trim()
-    if (name) { dockerService.pull(name); toast({ title: "已提交", description: `正在后台拉取 ${name}` }) }
+    if (name) { dockerService.pull(name); toast({ title: t('apps.docker.content.feedback.submitted'), description: t('apps.docker.content.feedback.imagePullSubmitted', { name }) }) }
   }
 
   const viewLogs = (id: string, name: string) => {
     logsUnsubRef.current?.()
-    setLogsModal({ title: name, logs: "加载中..." })
+    setLogsModal({ title: name, logs: t('apps.docker.content.logs.loading') })
     logsUnsubRef.current = dockerService.logsSubscribe(id, "200", (chunk, isFirst) => {
-      setLogsModal((prev) => prev ? { ...prev, logs: isFirst ? (chunk || "无日志") : prev.logs + chunk } : null)
+      setLogsModal((prev) => prev ? { ...prev, logs: isFirst ? (chunk || t('apps.docker.content.logs.empty')) : prev.logs + chunk } : null)
     })
   }
 
   const doComposeAction = (configFile: string, action: string) => {
-    const actionMap: Record<string, string> = { up: '启动', down: '停止', restart: '重启', pull: '拉取', stop: '停止' }
+    const actionMap: Record<string, string> = {
+      up: t('apps.docker.content.actions.start'),
+      down: t('apps.docker.content.actions.stop'),
+      restart: t('apps.docker.content.actions.restart'),
+      pull: t('apps.docker.content.actions.pull'),
+      stop: t('apps.docker.content.actions.pause'),
+    }
     const label = actionMap[action] || action
     const cmd = action === "up" ? `docker compose -f ${configFile} up -d` : `docker compose -f ${configFile} ${action}`
-    exec(cmd, { background: true, title: `Compose ${label}`, refreshChannels: dockerRefreshChannels })
-    toast({ title: "已提交", description: `Compose ${label}操作已提交到后台` })
+    exec(cmd, { background: true, title: t('apps.docker.content.exec.composeActionTitle', { action: label }), refreshChannels: dockerRefreshChannels })
+    toast({ title: t('apps.docker.content.feedback.submitted'), description: t('apps.docker.content.feedback.composeActionSubmitted', { action: label }) })
   }
 
   const createComposeProject = async (projectDir: string, yamlContent: string, autoUp: boolean) => {
     try {
       await dockerService.composeCreate(projectDir, yamlContent, autoUp)
-      if (!autoUp) toast({ title: "成功", description: "项目创建成功" })
-    } catch (err: any) { toast({ title: "失败", description: err?.message || "创建失败", variant: "destructive" }) }
+      if (!autoUp) toast({ title: t('apps.docker.content.feedback.success'), description: t('apps.docker.content.feedback.composeCreateSuccess') })
+    } catch (err: any) { toast({ title: t('apps.docker.content.feedback.failed'), description: err?.message || t('apps.docker.content.feedback.createFailed'), variant: "destructive" }) }
   }
 
   const closeLogsModal = () => { logsUnsubRef.current?.(); logsUnsubRef.current = null; setLogsModal(null) }
@@ -142,48 +154,48 @@ function DockerContent() {
   const createNetwork = async (name: string, driver: string) => {
     try {
       await dockerService.networkCreate(name, driver)
-      toast({ title: "成功", description: `网络 ${name} 创建成功` })
-    } catch (err: any) { toast({ title: "失败", description: err?.message || "创建失败", variant: "destructive" }) }
+      toast({ title: t('apps.docker.content.feedback.success'), description: t('apps.docker.content.feedback.networkCreateSuccess', { name }) })
+    } catch (err: any) { toast({ title: t('apps.docker.content.feedback.failed'), description: err?.message || t('apps.docker.content.feedback.createFailed'), variant: "destructive" }) }
   }
 
   const removeNetwork = async (id: string) => {
     try {
       await dockerService.networkRemove(id)
-      toast({ title: "成功", description: "网络已删除" })
-    } catch (err: any) { toast({ title: "失败", description: err?.message || "删除失败", variant: "destructive" }) }
+      toast({ title: t('apps.docker.content.feedback.success'), description: t('apps.docker.content.feedback.networkRemoveSuccess') })
+    } catch (err: any) { toast({ title: t('apps.docker.content.feedback.failed'), description: err?.message || t('apps.docker.content.feedback.deleteFailed'), variant: "destructive" }) }
   }
 
   const inspectNetwork = async (id: string, name: string) => {
     try {
       const data = await dockerService.networkInspect(id)
-      setInspectModal({ title: `网络 - ${name}`, data: JSON.stringify(data, null, 2) })
-    } catch (err: any) { toast({ title: "失败", description: err?.message || "查看失败", variant: "destructive" }) }
+      setInspectModal({ title: t('apps.docker.content.inspect.networkTitle', { name }), data: JSON.stringify(data, null, 2) })
+    } catch (err: any) { toast({ title: t('apps.docker.content.feedback.failed'), description: err?.message || t('apps.docker.content.feedback.inspectFailed'), variant: "destructive" }) }
   }
 
   const createVolume = async (name: string, driver: string) => {
     try {
       await dockerService.volumeCreate(name, driver)
-      toast({ title: "成功", description: `卷 ${name} 创建成功` })
-    } catch (err: any) { toast({ title: "失败", description: err?.message || "创建失败", variant: "destructive" }) }
+      toast({ title: t('apps.docker.content.feedback.success'), description: t('apps.docker.content.feedback.volumeCreateSuccess', { name }) })
+    } catch (err: any) { toast({ title: t('apps.docker.content.feedback.failed'), description: err?.message || t('apps.docker.content.feedback.createFailed'), variant: "destructive" }) }
   }
 
   const removeVolume = async (name: string) => {
     try {
       await dockerService.volumeRemove(name, true)
-      toast({ title: "成功", description: "卷已删除" })
-    } catch (err: any) { toast({ title: "失败", description: err?.message || "删除失败", variant: "destructive" }) }
+      toast({ title: t('apps.docker.content.feedback.success'), description: t('apps.docker.content.feedback.volumeRemoveSuccess') })
+    } catch (err: any) { toast({ title: t('apps.docker.content.feedback.failed'), description: err?.message || t('apps.docker.content.feedback.deleteFailed'), variant: "destructive" }) }
   }
 
   const inspectVolume = async (name: string) => {
     try {
       const data = await dockerService.volumeInspect(name)
-      setInspectModal({ title: `卷 - ${name}`, data: JSON.stringify(data, null, 2) })
-    } catch (err: any) { toast({ title: "失败", description: err?.message || "查看失败", variant: "destructive" }) }
+      setInspectModal({ title: t('apps.docker.content.inspect.volumeTitle', { name }), data: JSON.stringify(data, null, 2) })
+    } catch (err: any) { toast({ title: t('apps.docker.content.feedback.failed'), description: err?.message || t('apps.docker.content.feedback.inspectFailed'), variant: "destructive" }) }
   }
 
   const editComposeProject = async (projectDir: string) => {
     try { const data = await dockerService.composeRead(projectDir); setEditingCompose({ projectDir, yaml: data.content }) }
-    catch (err: any) { toast({ title: "失败", description: err?.message || "读取失败", variant: "destructive" }) }
+    catch (err: any) { toast({ title: t('apps.docker.content.feedback.failed'), description: err?.message || t('apps.docker.content.feedback.readFailed'), variant: "destructive" }) }
   }
 
   const openContainerTerminal = (containerId: string, _name: string) => {
@@ -195,17 +207,26 @@ function DockerContent() {
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => { setImportedYaml(reader.result as string); setShowComposeCreator(true) }
-    reader.onerror = () => { toast({ title: "失败", description: "文件读取失败", variant: "destructive" }) }
+    reader.onerror = () => { toast({ title: t('apps.docker.content.feedback.failed'), description: t('apps.docker.content.feedback.fileReadFailed'), variant: "destructive" }) }
     reader.readAsText(file)
     e.target.value = ""
+  }
+
+  const confirmDelete = (title: string, onConfirm: () => void) => {
+    useUIStore.getState().showConfirm({
+      title,
+      description: t('apps.docker.content.confirm.deleteDescription'),
+      variant: 'destructive',
+      onConfirm,
+    })
   }
 
   if (available === false) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-gradient-to-b from-slate-50/80 to-white/60 text-slate-500 gap-3">
         <AlertCircle className="w-12 h-12 text-slate-300" />
-        <div className="text-[0.875rem] font-medium">Docker 不可用</div>
-        <div className="text-[0.75rem] text-slate-400">请确认 Docker 已安装并正在运行</div>
+        <div className="text-[0.875rem] font-medium">{t('apps.docker.content.unavailable.title')}</div>
+        <div className="text-[0.75rem] text-slate-400">{t('apps.docker.content.unavailable.description')}</div>
       </div>
     )
   }
@@ -224,19 +245,19 @@ function DockerContent() {
             <span className="flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" /> Compose <span className="text-[0.625rem] opacity-60">({composeProjects.length})</span></span>
           </button>
           <button className={tabClass("containers")} onClick={() => setActiveTab("containers")}>
-            <span className="flex items-center gap-1.5"><Box className="w-3.5 h-3.5" /> 容器 <span className="text-[0.625rem] opacity-60">({containers.length})</span></span>
+            <span className="flex items-center gap-1.5"><Box className="w-3.5 h-3.5" /> {t('apps.docker.content.tabs.containers')} <span className="text-[0.625rem] opacity-60">({containers.length})</span></span>
           </button>
           <button className={tabClass("images")} onClick={() => setActiveTab("images")}>
-            <span className="flex items-center gap-1.5"><Image className="w-3.5 h-3.5" /> 镜像 <span className="text-[0.625rem] opacity-60">({images.length})</span></span>
+            <span className="flex items-center gap-1.5"><Image className="w-3.5 h-3.5" /> {t('apps.docker.content.tabs.images')} <span className="text-[0.625rem] opacity-60">({images.length})</span></span>
           </button>
           <button className={tabClass("networks")} onClick={() => setActiveTab("networks")}>
-            <span className="flex items-center gap-1.5"><Network className="w-3.5 h-3.5" /> 网络 <span className="text-[0.625rem] opacity-60">({networks.length})</span></span>
+            <span className="flex items-center gap-1.5"><Network className="w-3.5 h-3.5" /> {t('apps.docker.content.tabs.networks')} <span className="text-[0.625rem] opacity-60">({networks.length})</span></span>
           </button>
           <button className={tabClass("volumes")} onClick={() => setActiveTab("volumes")}>
-            <span className="flex items-center gap-1.5"><HardDrive className="w-3.5 h-3.5" /> 卷 <span className="text-[0.625rem] opacity-60">({volumes.length})</span></span>
+            <span className="flex items-center gap-1.5"><HardDrive className="w-3.5 h-3.5" /> {t('apps.docker.content.tabs.volumes')} <span className="text-[0.625rem] opacity-60">({volumes.length})</span></span>
           </button>
           <button className={tabClass("settings")} onClick={() => setActiveTab("settings")}>
-            <span className="flex items-center gap-1.5"><Settings className="w-3.5 h-3.5" /> 设置</span>
+            <span className="flex items-center gap-1.5"><Settings className="w-3.5 h-3.5" /> {t('apps.docker.content.tabs.settings')}</span>
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -246,7 +267,7 @@ function DockerContent() {
           </select>
           <button onClick={() => setAutoRefresh(!autoRefresh)}
             className={`p-1 rounded-md transition-colors ${autoRefresh ? connected ? "text-green-600 bg-green-50" : "text-amber-500 bg-amber-50" : "text-slate-400 hover:text-slate-600"}`}
-            title={autoRefresh ? (connected ? "已连接，推送中" : "连接中...") : "已暂停"}>
+            title={autoRefresh ? (connected ? t('apps.docker.content.connection.connected') : t('apps.docker.content.connection.connecting')) : t('apps.docker.content.connection.paused')}>
             {connected ? <Wifi className="w-3.5 h-3.5" /> : autoRefresh ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <WifiOff className="w-3.5 h-3.5" />}
           </button>
         </div>
@@ -257,12 +278,12 @@ function DockerContent() {
         {activeTab === "containers" && (
           <ContainersPanel containers={containers} searchQuery={searchQuery} setSearchQuery={setSearchQuery}
             onAction={containerAction}
-            onRemove={(id) => useUIStore.getState().showConfirm({ title: `删除容器 ${id.slice(0, 12)}`, description: '此操作不可撤销', variant: 'destructive', onConfirm: () => removeContainer(id, true) })}
+            onRemove={(id) => confirmDelete(t('apps.docker.content.confirm.deleteContainerTitle', { id: id.slice(0, 12) }), () => removeContainer(id, true))}
             onViewLogs={viewLogs} onTerminal={openContainerTerminal} />
         )}
         {activeTab === "images" && (
           <ImagesPanel images={images} searchQuery={searchQuery} setSearchQuery={setSearchQuery}
-            onRemove={(id) => useUIStore.getState().showConfirm({ title: `删除镜像 ${id.slice(0, 12)}`, description: '此操作不可撤销', variant: 'destructive', onConfirm: () => removeImage(id, true) })}
+            onRemove={(id) => confirmDelete(t('apps.docker.content.confirm.deleteImageTitle', { id: id.slice(0, 12) }), () => removeImage(id, true))}
             onPull={pullImage} />
         )}
         {activeTab === "compose" && (
@@ -272,12 +293,12 @@ function DockerContent() {
         )}
         {activeTab === "networks" && (
           <NetworksPanel networks={networks} containers={containers} searchQuery={searchQuery} setSearchQuery={setSearchQuery}
-            onRemove={(id) => useUIStore.getState().showConfirm({ title: `删除网络 ${id.slice(0, 12)}`, description: '此操作不可撤销', variant: 'destructive', onConfirm: () => removeNetwork(id) })}
+            onRemove={(id) => confirmDelete(t('apps.docker.content.confirm.deleteNetworkTitle', { id: id.slice(0, 12) }), () => removeNetwork(id))}
             onCreate={createNetwork} onInspect={inspectNetwork} />
         )}
         {activeTab === "volumes" && (
           <VolumesPanel volumes={volumes} containers={containers} searchQuery={searchQuery} setSearchQuery={setSearchQuery}
-            onRemove={(name) => useUIStore.getState().showConfirm({ title: `删除卷 ${name}`, description: '此操作不可撤销', variant: 'destructive', onConfirm: () => removeVolume(name) })}
+            onRemove={(name) => confirmDelete(t('apps.docker.content.confirm.deleteVolumeTitle', { name }), () => removeVolume(name))}
             onCreate={createVolume} onInspect={inspectVolume} />
         )}
         {activeTab === "settings" && <DockerSettings />}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { Search } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { getAllApps, resolveIcon, getAppConfig } from "@/config/appRegistry"
@@ -33,6 +34,7 @@ function useGridLayout() {
 }
 
 export default function Launchpad({ open, onClose }: LaunchpadProps) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -200,7 +202,7 @@ export default function Launchpad({ open, onClose }: LaunchpadProps) {
                   setQuery((e.target as HTMLInputElement).value)
                   setCurrentPage(0)
                 }}
-                placeholder="搜索"
+                placeholder={t('launchpad.placeholder')}
                 className="flex-1 bg-transparent text-[0.8125rem] text-white placeholder:text-white/40 outline-none"
               />
             </div>

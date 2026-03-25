@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
+import { useTranslation } from 'react-i18next'
 import { useToast } from "@/hooks/use-toast"
 import type { FileInfo } from "@/types"
 import { Sidebar } from "./Sidebar"
@@ -9,6 +10,7 @@ import { useFileManagerStore } from "./store"
 import { TabBar, TabPanel, TrashView } from "./components"
 
 export function FileManagerContent({ windowId }: { windowId: string }) {
+  const { t } = useTranslation()
   const addFmTab = useFileManagerStore((s) => s.addFmTab)
   const closeFmTab = useFileManagerStore((s) => s.closeFmTab)
   const switchFmTab = useFileManagerStore((s) => s.switchFmTab)
@@ -28,12 +30,12 @@ export function FileManagerContent({ windowId }: { windowId: string }) {
   const [showTrash, setShowTrash] = useState(() => !!(procState.showTrash))
   const [fileCounts, setFileCounts] = useState({ total: 0, selected: 0 })
 
-  // Set window title to 回收站 if opened in trash mode
+  // Set window title to Trash if opened in trash mode
   useEffect(() => {
     if (showTrash) {
-      useWindowStore.getState().updateWindowTitle(windowId, '回收站')
+      useWindowStore.getState().updateWindowTitle(windowId, t('apps.fileManager.trash.title'))
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showTrash, windowId, t])
 
   // Derive active tab info for sidebar
   const activeTab = fmTabs[activeFmTabIndex]
@@ -64,7 +66,7 @@ export function FileManagerContent({ windowId }: { windowId: string }) {
   }, [windowId, activeFmTabIndex, updateFmTabState])
 
   const addFavorite = (file: FileInfo) => {
-    toast({ title: "已添加", description: `已将 "${file.name}" 添加到个人收藏` })
+    toast({ title: t('apps.fileManager.content.favoriteAdded'), description: t('apps.fileManager.content.favoriteAddedDescription', { name: file.name }) })
     window.dispatchEvent(new CustomEvent('sidebar:addFavorite', { detail: file }))
   }
 
