@@ -56,8 +56,8 @@ func TestInitAndSeed(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_version").Scan(&ver); err != nil {
 		t.Fatalf("query schema_version: %v", err)
 	}
-	if ver != 1 {
-		t.Errorf("expected schema version 1, got %d", ver)
+	if ver != 3 {
+		t.Errorf("expected schema version 3, got %d", ver)
 	}
 
 	// 验证空表存在

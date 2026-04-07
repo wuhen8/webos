@@ -17,6 +17,7 @@ const fileManager = {
           content: {
             favoriteAdded: '已添加',
             favoriteAddedDescription: '已将 "{{name}}" 添加到个人收藏',
+            favoriteAddedDescriptionMany: '已将 {{count}} 个文件夹添加到个人收藏',
             windowTitles: {
               share: '分享 - {{name}}',
               info: '详细信息 - {{name}}',

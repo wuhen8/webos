@@ -17,6 +17,7 @@ const fileManager = {
           content: {
             favoriteAdded: 'Added',
             favoriteAddedDescription: '"{{name}}" has been added to Favorites',
+            favoriteAddedDescriptionMany: '{{count}} folders have been added to Favorites',
             windowTitles: {
               share: 'Share - {{name}}',
               info: 'Get Info - {{name}}',

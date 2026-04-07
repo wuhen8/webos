@@ -12,16 +12,124 @@ import (
 	"unsafe"
 )
 
+const scheduledAIConversationID = "scheduled_ai"
+
 var (
-	token          string
-	allowedChatIDs map[int]bool // 授权的 chat_id 集合
-	activeChatID   int          // 当前活跃的 chat_id（AI 回复发到这里）
-	initialized    bool
-	polling        bool // 防止重复轮询
-	nextPollAt     time.Time
-	pollFailCount  int
-	lastUpdateID   int
+	token             string
+	allowedChatIDs    map[int]bool // 授权的 chat_id 集合
+	chatConversations map[int]string
+	conversationChats map[string]int
+	activeChatID      int // 当前活跃的 chat_id（作为缺少 conversationId 时的兜底路由）
+	initialized       bool
+	polling           bool // 防止重复轮询
+	nextPollAt        time.Time
+	pollFailCount     int
+	lastUpdateID      int
 )
+
+func telegramConversationKVKey(chatID int) string {
+	return fmt.Sprintf("telegram_conv:%d", chatID)
+}
+
+func getCurrentConversationID(chatID int) string {
+	if chatID == 0 {
+		return ""
+	}
+	if convID := strings.TrimSpace(chatConversations[chatID]); convID != "" {
+		return convID
+	}
+	convID := strings.TrimSpace(kvGet(telegramConversationKVKey(chatID)))
+	if convID != "" {
+		chatConversations[chatID] = convID
+		conversationChats[convID] = chatID
+	}
+	return convID
+}
+
+func setCurrentConversationID(chatID int, convID string) {
+	if chatID == 0 {
+		return
+	}
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return
+	}
+	if prev := strings.TrimSpace(chatConversations[chatID]); prev != "" && prev != convID {
+		delete(conversationChats, prev)
+	}
+	if chatConversations[chatID] == convID {
+		conversationChats[convID] = chatID
+		return
+	}
+	chatConversations[chatID] = convID
+	conversationChats[convID] = chatID
+	kvSet(telegramConversationKVKey(chatID), convID)
+}
+
+func bindActiveChat(chatID int) string {
+	activeChatID = chatID
+	return getCurrentConversationID(chatID)
+}
+
+func conversationChatID(convID string) int {
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return activeChatID
+	}
+	if chatID := lookupConversationChatID(convID); chatID != 0 {
+		return chatID
+	}
+	return activeChatID
+}
+
+func lookupConversationChatID(convID string) int {
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return 0
+	}
+	return conversationChats[convID]
+}
+
+func ensureConversationID(chatID int, userText string) string {
+	convID := bindActiveChat(chatID)
+	if convID != "" {
+		return convID
+	}
+	placeholder := strings.TrimSpace(userText)
+	if placeholder == "" {
+		placeholder = "[Telegram 会话初始化]"
+	}
+	resp := request("chat.send", map[string]interface{}{
+		"conversationId": "",
+		"messageContent": placeholder,
+		"clientId":       "telegram-ai-bot",
+	})
+	var result struct {
+		Accepted       bool   `json:"accepted"`
+		Reason         string `json:"reason"`
+		ConversationID string `json:"conversationId"`
+	}
+	_ = json.Unmarshal([]byte(resp), &result)
+	if !result.Accepted {
+		if strings.TrimSpace(result.Reason) != "" {
+			logMsg(fmt.Sprintf("ERROR: 创建 Telegram 会话失败 chat=%d reason=%s", chatID, result.Reason))
+		} else {
+			logMsg(fmt.Sprintf("ERROR: 创建 Telegram 会话失败 chat=%d", chatID))
+		}
+		return ""
+	}
+	convID = strings.TrimSpace(result.ConversationID)
+	if convID != "" {
+		setCurrentConversationID(chatID, convID)
+		activeChatID = chatID
+		return convID
+	}
+	convID = bindActiveChat(chatID)
+	if convID == "" {
+		logMsg(fmt.Sprintf("WARN: Telegram 会话初始化已提交但尚未拿到会话ID chat=%d", chatID))
+	}
+	return convID
+}
 
 func main() {}
 
@@ -38,6 +146,8 @@ func ensureInit() {
 
 	// 加载授权 chat_id 列表（支持逗号分隔多个）
 	allowedChatIDs = make(map[int]bool)
+	chatConversations = make(map[int]string)
+	conversationChats = make(map[string]int)
 	loadAllowedChatIDs()
 
 	if len(allowedChatIDs) == 0 {
@@ -122,7 +232,7 @@ func on_event(ptr uint32, size uint32) uint32 {
 	case "chat.delta":
 		onChatDelta(ev.Params)
 	case "chat.done":
-		onChatDone()
+		onChatDone(ev.Params)
 	case "chat.error":
 		onChatError(ev.Params)
 	case "chat.command_result":
@@ -138,53 +248,95 @@ func on_event(ptr uint32, size uint32) uint32 {
 	return 0
 }
 
+func shouldBindConversation(convID string) bool {
+	convID = strings.TrimSpace(convID)
+	return convID != "" && convID != scheduledAIConversationID
+}
+
 func onChatDelta(data json.RawMessage) {
-	if activeChatID == 0 {
-		return
-	}
 	var d struct {
-		Content string `json:"content"`
+		ConversationID string `json:"conversationId"`
+		Content        string `json:"content"`
 	}
 	json.Unmarshal(data, &d)
+	chatID := conversationChatID(d.ConversationID)
+	if chatID == 0 {
+		return
+	}
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(chatID, d.ConversationID)
+	}
 	if d.Content == "" {
 		return
 	}
-	noteReplyStreamDelta(activeChatID, d.Content)
+	noteReplyStreamDelta(chatID, d.Content)
 }
 
-func onChatDone() {
-	if activeChatID == 0 {
+func onChatDone(data json.RawMessage) {
+	var d struct {
+		ConversationID string `json:"conversationId"`
+	}
+	json.Unmarshal(data, &d)
+	chatID := conversationChatID(d.ConversationID)
+	if chatID == 0 {
 		return
 	}
-	finishReplyStream(activeChatID)
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(chatID, d.ConversationID)
+	}
+	finishReplyStream(chatID)
 }
 
 func onChatError(data json.RawMessage) {
-	if activeChatID == 0 {
-		return
-	}
 	var d struct {
-		Error string `json:"error"`
+		ConversationID string `json:"conversationId"`
+		Error          string `json:"error"`
 	}
 	json.Unmarshal(data, &d)
-	finishReplyStream(activeChatID)
-	sendTelegramAsync(activeChatID, "AI 错误: "+d.Error, nil)
+	chatID := conversationChatID(d.ConversationID)
+	if chatID == 0 {
+		return
+	}
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(chatID, d.ConversationID)
+	}
+	finishReplyStream(chatID)
+	sendTelegramAsync(chatID, "AI 错误: "+d.Error, nil)
 }
 func onCommandResult(data json.RawMessage) {
-	if activeChatID == 0 {
-		return
-	}
 	var d struct {
-		Text    string `json:"text"`
-		IsError bool   `json:"isError"`
+		ConversationID       string `json:"conversationId"`
+		Text                 string `json:"text"`
+		IsError              bool   `json:"isError"`
+		TargetConversationID string `json:"targetConversationId"`
+		ConversationAction   string `json:"conversationAction"`
+		SwitchConversation   bool   `json:"switchConversation"`
+		RoutePolicy          string `json:"routePolicy"`
+		OwnerClientID        string `json:"ownerClientId"`
 	}
 	json.Unmarshal(data, &d)
+	chatID := lookupConversationChatID(d.ConversationID)
+	if chatID == 0 && strings.TrimSpace(d.TargetConversationID) != "" {
+		chatID = lookupConversationChatID(d.TargetConversationID)
+	}
+	if chatID == 0 && d.SwitchConversation && d.RoutePolicy == "directed" && d.OwnerClientID == currentAppID {
+		chatID = activeChatID
+	}
+	if chatID == 0 {
+		return
+	}
+	if d.SwitchConversation && !d.IsError && strings.TrimSpace(d.TargetConversationID) != "" && d.RoutePolicy == "directed" && d.OwnerClientID == currentAppID {
+		setCurrentConversationID(chatID, d.TargetConversationID)
+	}
 	if d.Text != "" {
 		prefix := "📋 "
 		if d.IsError {
 			prefix = "❌ "
 		}
-		sendTelegramAsync(activeChatID, prefix+d.Text, nil)
+		if d.ConversationAction != "" && strings.TrimSpace(d.TargetConversationID) != "" {
+			d.Text += fmt.Sprintf("\n\n当前会话: `%s`", d.TargetConversationID)
+		}
+		sendTelegramAsync(chatID, prefix+d.Text, nil)
 	}
 }
 
@@ -229,7 +381,7 @@ func onSystemNotify(data json.RawMessage) {
 }
 
 // startTelegramDownload 第一步：调 getFile 获取文件路径，然后异步下载
-func startTelegramDownload(fileID, fileName string, chatID int, userName, userText string) {
+func startTelegramDownload(fileID, fileName string, chatID int, convID string, userName, userText string) {
 	getFileURL := fmt.Sprintf("https://api.telegram.org/bot%s/getFile?file_id=%s", token, fileID)
 	httpRequestAsync("GET", getFileURL, "", "", func(resp string) {
 		var r struct {
@@ -243,10 +395,16 @@ func startTelegramDownload(fileID, fileName string, chatID int, userName, userTe
 			// 降级：只发文本
 			if userText != "" {
 				beginReplyStream(chatID)
-				request("chat.send", map[string]interface{}{
-					"messageContent": userText,
-					"clientId":       "telegram-ai-bot",
-				})
+				if convID == "" {
+					convID = ensureConversationID(chatID, userText)
+				}
+				if convID != "" {
+					request("chat.send", map[string]interface{}{
+						"conversationId": convID,
+						"messageContent": userText,
+						"clientId":       "telegram-ai-bot",
+					})
+				}
 			}
 			return
 		}
@@ -262,6 +420,7 @@ func startTelegramDownload(fileID, fileName string, chatID int, userName, userTe
 		}
 		pendingDownloads[reqID] = &PendingDownload{
 			ChatID:   chatID,
+			ConvID:   convID,
 			UserName: userName,
 			UserText: userText,
 			FileName: fileName,
@@ -277,10 +436,17 @@ func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 		// 降级：只发文本
 		if pd.UserText != "" {
 			beginReplyStream(pd.ChatID)
-			request("chat.send", map[string]interface{}{
-				"messageContent": pd.UserText,
-				"clientId":       "telegram-ai-bot",
-			})
+			convID := strings.TrimSpace(pd.ConvID)
+			if convID == "" {
+				convID = ensureConversationID(pd.ChatID, pd.UserText)
+			}
+			if convID != "" {
+				request("chat.send", map[string]interface{}{
+					"conversationId": convID,
+					"messageContent": pd.UserText,
+					"clientId":       "telegram-ai-bot",
+				})
+			}
 		}
 		return
 	}
@@ -303,7 +469,15 @@ func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 
 	beginReplyStream(pd.ChatID)
 	logMsg(fmt.Sprintf("[chat:%d] %s", pd.ChatID, userText[:min(len(userText), 100)]))
+	convID := strings.TrimSpace(pd.ConvID)
+	if convID == "" {
+		convID = ensureConversationID(pd.ChatID, userText)
+	}
+	if convID == "" {
+		return
+	}
 	request("chat.send", map[string]interface{}{
+		"conversationId": convID,
 		"messageContent": userText,
 		"clientId":       "telegram-ai-bot",
 	})
@@ -402,9 +576,10 @@ func pollOnce() {
 			if len(msg.Photo) > 0 {
 				// 取最大尺寸的图片
 				best := msg.Photo[len(msg.Photo)-1]
+				convID := bindActiveChat(incomingCID)
 				logMsg(fmt.Sprintf("[chat:%d] %s: [图片 %dx%d]", incomingCID, userName, best.Width, best.Height))
 				sendTypingAction(incomingCID)
-				startTelegramDownload(best.FileID, best.FileUniqueID+".jpg", incomingCID, userName, userText)
+				startTelegramDownload(best.FileID, best.FileUniqueID+".jpg", incomingCID, convID, userName, userText)
 				continue
 			}
 
@@ -414,9 +589,10 @@ func pollOnce() {
 				if fileName == "" {
 					fileName = msg.Document.FileID
 				}
+				convID := bindActiveChat(incomingCID)
 				logMsg(fmt.Sprintf("[chat:%d] %s: [文件 %s]", incomingCID, userName, fileName))
 				sendTypingAction(incomingCID)
-				startTelegramDownload(msg.Document.FileID, fileName, incomingCID, userName, userText)
+				startTelegramDownload(msg.Document.FileID, fileName, incomingCID, convID, userName, userText)
 				continue
 			}
 
@@ -431,7 +607,16 @@ func pollOnce() {
 			}
 			beginReplyStream(incomingCID)
 			sendTypingAction(incomingCID)
+			convID := bindActiveChat(incomingCID)
+			if convID == "" {
+				convID = ensureConversationID(incomingCID, userText)
+				if convID == "" {
+					sendTelegramAsync(incomingCID, "当前会话正在初始化，请稍后重新发送一次命令。", nil)
+					continue
+				}
+			}
 			request("chat.send", map[string]interface{}{
+				"conversationId": convID,
 				"messageContent": userText,
 				"clientId":       "telegram-ai-bot",
 			})
@@ -461,11 +646,9 @@ func schedulePollRetry(retryAfterSec int, reason string) {
 
 // onMediaAttachment 处理 AI 发送的文件/图片附件
 func onMediaAttachment(data json.RawMessage) {
-	if activeChatID == 0 {
-		return
-	}
 	var d struct {
-		Attachment struct {
+		ConversationID string `json:"conversationId"`
+		Attachment     struct {
 			NodeID   string `json:"nodeId"`
 			Path     string `json:"path"`
 			FileName string `json:"fileName"`
@@ -476,6 +659,13 @@ func onMediaAttachment(data json.RawMessage) {
 	}
 	if json.Unmarshal(data, &d) != nil {
 		return
+	}
+	chatID := conversationChatID(d.ConversationID)
+	if chatID == 0 {
+		return
+	}
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(chatID, d.ConversationID)
 	}
 	a := d.Attachment
 
@@ -491,7 +681,7 @@ func onMediaAttachment(data json.RawMessage) {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/%s", token, apiMethod)
 
 	fields := map[string]interface{}{
-		"chat_id": strconv.Itoa(activeChatID),
+		"chat_id": strconv.Itoa(chatID),
 	}
 	if a.Caption != "" {
 		fields["caption"] = a.Caption
@@ -516,11 +706,11 @@ func onMediaAttachment(data json.RawMessage) {
 	json.Unmarshal([]byte(resp), &result)
 	if result.Error != "" {
 		logMsg("ERROR: http.request failed: " + result.Error)
-		sendTelegramAsync(activeChatID, fmt.Sprintf("📎 %s (发送失败: %s)", a.FileName, result.Error), nil)
+		sendTelegramAsync(chatID, fmt.Sprintf("📎 %s (发送失败: %s)", a.FileName, result.Error), nil)
 		return
 	}
 	if result.RequestID != "" {
-		cid := activeChatID
+		cid := chatID
 		httpCallbacks[result.RequestID] = func(resp string) {
 			if strings.Contains(resp, `"ok":false`) || strings.Contains(resp, `"error"`) {
 				logMsg("ERROR: file upload failed: " + resp)

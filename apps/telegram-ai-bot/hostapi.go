@@ -25,6 +25,7 @@ var hostCallbacks = map[string]func(success bool, data interface{}, err string){
 
 type PendingDownload struct {
 	ChatID   int
+	ConvID   string
 	UserName string
 	UserText string
 	FileName string

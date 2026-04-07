@@ -25,15 +25,16 @@ var hostCallbacks = map[string]func(success bool, data interface{}, err string){
 type PendingDownload struct {
 	ChatID      string
 	SenderID    string
+	ConvID      string
 	FileName    string
 	MediaType   string
 	DisplayName string
 }
 
-var pendingDownloads = map[string]PendingDownload{}
-var onDownloadComplete func(PendingDownload, string)
+var pendingDownloads = map[string]*PendingDownload{}
+var onDownloadComplete func(*PendingDownload, string)
 
-func SetDownloadCallback(cb func(PendingDownload, string)) { onDownloadComplete = cb }
+func SetDownloadCallback(cb func(*PendingDownload, string)) { onDownloadComplete = cb }
 
 func logMsg(msg string) { _, _ = requestJSON("system.log", map[string]interface{}{"message": msg}) }
 

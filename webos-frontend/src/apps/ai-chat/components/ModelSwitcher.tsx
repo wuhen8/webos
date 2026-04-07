@@ -8,35 +8,54 @@ interface AIProvider {
   baseUrl: string
   apiKey: string
   models: string[]
-  apiFormat?: 'openai' | 'anthropic'
+  apiFormat?: 'openai' | 'anthropic' | 'responses'
 }
 
-interface AIMultiConfig {
+interface ConversationConfig {
+  conversationId?: string
   providers: AIProvider[]
-  activeProvider: string
-  activeModel: string
-  maxTokens: number
-  maxInputTokens: number
-  maxToolRounds: number
-  skillsDir: string
-  rpm: number
-  recentMessages: number
+  providerId: string
+  model: string
+  draft: boolean
 }
 
-export function ModelSwitcher({ configVer }: { configVer: number }) {
+interface ModelSwitcherProps {
+  conversationId: string
+  configVer: number
+  draftConfig: { providerId: string; model: string } | null
+  onDraftConfigChange: (cfg: { providerId: string; model: string }) => void
+}
+
+export function ModelSwitcher({ conversationId, configVer, draftConfig, onDraftConfigChange }: ModelSwitcherProps) {
   const [open, setOpen] = useState(false)
-  const [cfg, setCfg] = useState<AIMultiConfig | null>(null)
+  const [cfg, setCfg] = useState<ConversationConfig | null>(null)
+  const [loading, setLoading] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    request('config.get', { key: 'ai_config' }).then((data: any) => {
-      const value = data?.value
-      if (value) {
-        const raw = typeof value === 'string' ? JSON.parse(value) : value
-        if (raw.providers) setCfg(raw as AIMultiConfig)
+    let cancelled = false
+    setLoading(true)
+    request('chat.conversation_config_get', { conversationId }).then((data: any) => {
+      if (cancelled) return
+      if (data?.providers) {
+        const nextCfg: ConversationConfig = {
+          conversationId: data.conversationId,
+          providers: Array.isArray(data.providers) ? data.providers : [],
+          providerId: draftConfig?.providerId || data.providerId || '',
+          model: draftConfig?.model || data.model || '',
+          draft: !conversationId,
+        }
+        setCfg(nextCfg)
+      } else {
+        setCfg(null)
       }
-    }).catch(() => {})
-  }, [configVer])
+    }).catch(() => {
+      if (!cancelled) setCfg(null)
+    }).finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [conversationId, configVer, draftConfig?.providerId, draftConfig?.model])
 
   useEffect(() => {
     if (!open) return
@@ -47,20 +66,35 @@ export function ModelSwitcher({ configVer }: { configVer: number }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  if (!cfg || cfg.providers.length === 0) return null
+  if (loading || !cfg || cfg.providers.length === 0) return null
 
-  const activeP = cfg.providers.find(p => p.id === cfg.activeProvider) || cfg.providers[0]
-  const label = `${activeP.name || activeP.id} / ${cfg.activeModel || '?'}`
+  const selectedProvider = cfg.providers.find(p => p.id === cfg.providerId) || cfg.providers[0]
+  const selectedModel = cfg.model || selectedProvider.models[0] || '?'
+  const label = `${selectedProvider.name || selectedProvider.id} / ${selectedModel}`
 
   const handleSelect = async (providerId: string, model: string) => {
-    const updated = { ...cfg, activeProvider: providerId, activeModel: model }
+    const updated = { ...cfg, providerId, model }
     setCfg(updated)
     setOpen(false)
+    if (!conversationId) {
+      onDraftConfigChange({ providerId, model })
+      return
+    }
     try {
-      await request('config.set', {
-        key: 'ai_config',
-        value: JSON.stringify(updated)
+      const data = await request('chat.conversation_config_set', {
+        conversationId,
+        providerId,
+        model,
       })
+      if (data?.providers) {
+        setCfg({
+          conversationId: data.conversationId,
+          providers: Array.isArray(data.providers) ? data.providers : cfg.providers,
+          providerId: data.providerId || providerId,
+          model: data.model || model,
+          draft: false,
+        })
+      }
     } catch { /* ignore */ }
   }
 
@@ -68,7 +102,7 @@ export function ModelSwitcher({ configVer }: { configVer: number }) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-slate-500 hover:bg-slate-100 transition-colors max-w-[200px]"
+        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-slate-500 hover:bg-slate-100 transition-colors max-w-[220px]"
       >
         <span className="truncate">{label}</span>
         <ChevronDown className="h-3 w-3 shrink-0" />
@@ -83,7 +117,7 @@ export function ModelSwitcher({ configVer }: { configVer: number }) {
                   key={`${p.id}-${m}`}
                   onClick={() => handleSelect(p.id, m)}
                   className={`w-full text-left px-3 py-1.5 text-xs hover:bg-violet-50 transition-colors ${
-                    p.id === cfg.activeProvider && m === cfg.activeModel ? 'text-violet-600 bg-violet-50 font-medium' : 'text-slate-600'
+                    p.id === selectedProvider.id && m === selectedModel ? 'text-violet-600 bg-violet-50 font-medium' : 'text-slate-600'
                   }`}
                 >
                   {m}

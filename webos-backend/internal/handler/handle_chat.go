@@ -86,16 +86,19 @@ func init() {
 		"chat.commands":        handleChatCommands,
 		"chat.cleanup":         handleChatCleanup,
 		"chat.status":          handleChatStatus,
+		"chat.stop":            handleChatStop,
 		"chat.executor_status": asyncHandler[struct{ baseReq }]("chat.executor_status", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return chatSvc.ExecutorStatus(), nil
 		}),
 		"chat.history": asyncHandler[struct{ baseReq }]("chat.history", func(c *WSConn, p struct{ baseReq }) (interface{}, error) {
 			return chatSvc.ListConversations()
 		}),
-		"chat.messages": handleChatMessages,
-		"chat.delete":   handleChatDelete,
-		"config.get":    handleChatConfigGet,
-		"config.set":    handleChatConfigSave,
+		"chat.messages":                 handleChatMessages,
+		"chat.delete":                   handleChatDelete,
+		"chat.conversation_config_get":  handleConversationConfigGet,
+		"chat.conversation_config_set":  handleConversationConfigSet,
+		"config.get":                    handleChatConfigGet,
+		"config.set":                    handleChatConfigSave,
 	})
 }
 
@@ -104,6 +107,8 @@ func handleChatSend(c *WSConn, raw json.RawMessage) {
 		ConversationID string `json:"conversationId"`
 		MessageContent string `json:"messageContent"`
 		ClientID       string `json:"clientId"`
+		ProviderID     string `json:"providerId"`
+		Model          string `json:"model"`
 	}
 	json.Unmarshal(raw, &p)
 
@@ -113,21 +118,12 @@ func handleChatSend(c *WSConn, raw json.RawMessage) {
 		clientID = c.ConnID
 	}
 
-	result := chatSvc.SendMessage(p.ConversationID, p.MessageContent, clientID)
+	result := chatSvc.SendMessage(p.ConversationID, p.MessageContent, clientID, p.ProviderID, p.Model)
 	if !result.Accepted {
-		if result.Reason == "inactive_conv" {
-			c.Notify("chat.inactive_conv", map[string]interface{}{
-				"conversationId":  p.ConversationID,
-				"activeConvId":    result.ActiveConvID,
-				"activeConvTitle": result.ActiveConvTitle,
-				"hint":           "当前激活会话为「" + result.ActiveConvTitle + "」，请先切换会话",
-			})
-		} else {
-			c.Notify("chat.error", map[string]interface{}{
-				"message":        "消息入队失败，请重试",
-				"conversationId": p.ConversationID,
-			})
-		}
+		c.Notify("chat.error", map[string]interface{}{
+			"message":        "消息入队失败，请重试",
+			"conversationId": p.ConversationID,
+		})
 	}
 }
 
@@ -203,5 +199,43 @@ func handleChatStatus(c *WSConn, raw json.RawMessage) {
 	}
 	json.Unmarshal(raw, &p)
 	c.Reply("chat.status", p.ReqID, chatSvc.GetStatus(p.ConversationID))
+}
+
+func handleChatStop(c *WSConn, raw json.RawMessage) {
+	var p struct {
+		baseReq
+		ConversationID string `json:"conversationId"`
+	}
+	json.Unmarshal(raw, &p)
+	go func() {
+		result, err := chatSvc.StopConversation(p.ConversationID)
+		c.ReplyResult("chat.stop", p.ReqID, result, err)
+	}()
+}
+
+func handleConversationConfigGet(c *WSConn, raw json.RawMessage) {
+	var p struct {
+		baseReq
+		ConversationID string `json:"conversationId"`
+	}
+	json.Unmarshal(raw, &p)
+	go func() {
+		cfg, err := chatSvc.GetConversationConfig(p.ConversationID)
+		c.ReplyResult("chat.conversation_config_get", p.ReqID, cfg, err)
+	}()
+}
+
+func handleConversationConfigSet(c *WSConn, raw json.RawMessage) {
+	var p struct {
+		baseReq
+		ConversationID string `json:"conversationId"`
+		ProviderID     string `json:"providerId"`
+		Model          string `json:"model"`
+	}
+	json.Unmarshal(raw, &p)
+	go func() {
+		cfg, err := chatSvc.SetConversationConfig(p.ConversationID, p.ProviderID, p.Model)
+		c.ReplyResult("chat.conversation_config_set", p.ReqID, cfg, err)
+	}()
 }
 

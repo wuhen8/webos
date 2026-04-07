@@ -131,6 +131,37 @@ export const useSidebarConfig = () => {
     return newConfig
   }, [sidebarConfig, saveSidebarConfig])
 
+  // 批量添加收藏项
+  const addFavorites = useCallback(async (files: Array<{ name: string; path: string; isDir: boolean; nodeId?: string }>) => {
+    if (files.length === 0) return sidebarConfig
+
+    const newFavorites = files.map(file => ({
+      id: `fav-${file.nodeId || 'local_1'}-${file.path}`,
+      name: file.name,
+      icon: file.isDir ? 'folder' : 'file',
+      path: file.path,
+      nodeId: file.nodeId || 'local_1',
+      isDirectory: file.isDir,
+    }))
+
+    const newConfig = {
+      ...sidebarConfig,
+      items: sidebarConfig.items.map(item =>
+        item.id === 'home'
+          ? {
+              ...item,
+              children: [
+                ...(item.children || []),
+                ...newFavorites,
+              ],
+            }
+          : item
+      ),
+    }
+    await saveSidebarConfig(newConfig)
+    return newConfig
+  }, [sidebarConfig, saveSidebarConfig])
+
   // 删除收藏项
   const removeFavorite = useCallback(async (itemId: string) => {
     const newConfig = {
@@ -209,6 +240,7 @@ export const useSidebarConfig = () => {
     sidebarConfig,
     isLoading,
     addFavorite,
+    addFavorites,
     removeFavorite,
     reorderFavorites,
     renameItem,

@@ -149,7 +149,7 @@ func ActionCompress(convID string) (*CompressResult, error) {
 		return nil, actionErr("当前没有活跃对话，无法压缩。")
 	}
 
-	cfg, err := loadAIConfig()
+	cfg, err := loadAIConfig(convID, "", "")
 	if err != nil {
 		return nil, actionErr("AI 未配置: " + err.Error())
 	}

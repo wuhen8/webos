@@ -188,9 +188,22 @@ func sendWeixinMessageAsync(toUserID, contextToken string, itemList []map[string
 		if err := json.Unmarshal([]byte(raw), &resp); err == nil {
 			if resp.Error != "" || resp.Ret != 0 || resp.ErrCode != 0 {
 				ok = false
+				logMsg(fmt.Sprintf("WARN: weixin sendmessage failed user=%s hasCtx=%t ret=%d errcode=%d errmsg=%s error=%s raw=%s",
+					toUserID,
+					strings.TrimSpace(contextToken) != "",
+					resp.Ret,
+					resp.ErrCode,
+					truncate(resp.ErrMsg, 120),
+					truncate(resp.Error, 120),
+					truncate(raw, 240),
+				))
 			}
 		} else if strings.TrimSpace(raw) == "" {
 			ok = false
+			logMsg(fmt.Sprintf("WARN: weixin sendmessage empty response user=%s hasCtx=%t", toUserID, strings.TrimSpace(contextToken) != ""))
+		} else {
+			ok = false
+			logMsg(fmt.Sprintf("WARN: weixin sendmessage invalid response user=%s hasCtx=%t raw=%s", toUserID, strings.TrimSpace(contextToken) != "", truncate(raw, 240)))
 		}
 		if cb != nil {
 			cb(ok, raw)

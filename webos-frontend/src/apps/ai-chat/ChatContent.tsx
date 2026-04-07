@@ -41,7 +41,6 @@ function CodeBlock(props: ComponentProps<'pre'>) {
   )
 }
 
-// Stable references for ReactMarkdown plugins (avoid re-creating arrays each render)
 const remarkPluginsGfm = [remarkGfm]
 const rehypePluginsHighlight = [rehypeHighlight]
 const mdComponents = { pre: CodeBlock }
@@ -114,6 +113,44 @@ const CommandMessage = memo(({ content }: { content: string }) => {
   )
 })
 
+function buildMessageBlocks(data: any[]): MessageBlock[] {
+  const blocks: MessageBlock[] = []
+  for (const m of data) {
+    const role = m.Role || m.role
+    const content = m.Content || m.content || ''
+    if (role === 'user') {
+      blocks.push({ id: `h-${m.ID || m.id}`, type: 'user', content, timestamp: m.CreatedAt || m.created_at || 0 })
+    } else if (role === 'assistant') {
+      const thinking = m.Thinking || m.thinking || ''
+      if (thinking) {
+        blocks.push({ id: `ht-${m.ID || m.id}`, type: 'thinking', content: thinking, timestamp: m.CreatedAt || m.created_at || 0 })
+      }
+      if (content) {
+        const usageRaw = m.TokenUsage || m.token_usage
+        let usage: TokenUsage | undefined
+        if (usageRaw) { try { usage = typeof usageRaw === 'string' ? JSON.parse(usageRaw) : usageRaw } catch { /* ignore */ } }
+        blocks.push({ id: `h-${m.ID || m.id}`, type: 'assistant', content, timestamp: m.CreatedAt || m.created_at || 0, usage })
+      }
+      const tcRaw = m.ToolCalls || m.tool_calls
+      if (tcRaw) {
+        try {
+          const tcs = typeof tcRaw === 'string' ? JSON.parse(tcRaw) : tcRaw
+          for (const tc of tcs) {
+            blocks.push({ id: `htc-${tc.id}`, type: 'tool_call', content: '', toolCall: tc, timestamp: m.CreatedAt || m.created_at || 0 })
+          }
+        } catch { /* ignore */ }
+      }
+    } else if (role === 'tool') {
+      const callId = m.ToolCallID || m.tool_call_id
+      const tcBlock = blocks.findLast((b: MessageBlock) => b.type === 'tool_call' && b.toolCall?.id === callId)
+      if (tcBlock) {
+        tcBlock.toolResult = { tool_call_id: callId, content, is_error: false }
+      }
+    }
+  }
+  return blocks
+}
+
 export default function ChatContent() {
   const { t } = useTranslation()
   const [messages, setMessages] = useState<MessageBlock[]>([])
@@ -128,9 +165,9 @@ export default function ChatContent() {
   const [commands, setCommands] = useState<CommandDef[]>([])
   const [showCommands, setShowCommands] = useState(false)
   const [cmdIndex, setCmdIndex] = useState(0)
-  const [executorStatus, setExecutorStatus] = useState<{ state: 'idle' | 'running' | 'tool_executing'; runningConvId: string; runningConvTitle: string; queueSize: number; activeConvId: string }>({ state: 'idle', runningConvId: '', runningConvTitle: '', queueSize: 0, activeConvId: '' })
+  const [executorStatus, setExecutorStatus] = useState<{ state: 'idle' | 'running' | 'tool_executing'; runningConvId: string; runningConvTitle: string; queueSize: number }>({ state: 'idle', runningConvId: '', runningConvTitle: '', queueSize: 0 })
   const [commandProgress, setCommandProgress] = useState<string | null>(null)
-  const [activeConvId, setActiveConvId] = useState('')
+  const [draftModelConfig, setDraftModelConfig] = useState<{ providerId: string; model: string } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const streamBuf = useRef('')
@@ -142,8 +179,10 @@ export default function ChatContent() {
   const thinkingRafRef = useRef(0)
   const convIdRef = useRef(convId)
   const streamTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const ensureConvPromiseRef = useRef<Promise<boolean> | null>(null)
+  const executorStatusRef = useRef(executorStatus)
+
   useEffect(() => { convIdRef.current = convId }, [convId])
+  useEffect(() => { executorStatusRef.current = executorStatus }, [executorStatus])
 
   const resetStreamTimeout = useCallback(() => {
     if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current)
@@ -151,6 +190,7 @@ export default function ChatContent() {
       setStreaming(false)
     }, 120_000)
   }, [])
+
   const clearStreamTimeout = useCallback(() => {
     if (streamTimeoutRef.current) {
       clearTimeout(streamTimeoutRef.current)
@@ -170,183 +210,33 @@ export default function ChatContent() {
     try {
       const data = await request('chat.history', {})
       if (Array.isArray(data)) {
-        setConversations(data.map((c: any) => ({ id: c.ID || c.id, title: c.Title || c.title })))
+        setConversations(data.map((c: any) => ({
+          id: c.ID || c.id,
+          title: c.Title || c.title,
+          providerId: c.ProviderID || c.providerId,
+          model: c.Model || c.model,
+        })))
       }
     } catch { /* ignore */ }
   }, [])
-
-  useEffect(() => { loadConversations() }, [loadConversations])
 
   const loadConversationMessages = useCallback(async (id: string) => {
+    if (!id) {
+      setMessages([])
+      return
+    }
     try {
       const data = await request('chat.messages', { conversationId: id })
-      if (Array.isArray(data)) {
-        const blocks: MessageBlock[] = []
-        for (const m of data) {
-          const role = m.Role || m.role
-          const content = m.Content || m.content || ''
-          if (role === 'user') {
-            blocks.push({ id: `h-${m.ID || m.id}`, type: 'user', content, timestamp: m.CreatedAt || m.created_at || 0 })
-          } else if (role === 'assistant') {
-            const thinking = m.Thinking || m.thinking || ''
-            if (thinking) {
-              blocks.push({ id: `ht-${m.ID || m.id}`, type: 'thinking', content: thinking, timestamp: m.CreatedAt || m.created_at || 0 })
-            }
-            if (content) {
-              const usageRaw = m.TokenUsage || m.token_usage
-              let usage: TokenUsage | undefined
-              if (usageRaw) { try { usage = typeof usageRaw === 'string' ? JSON.parse(usageRaw) : usageRaw } catch { /* */ } }
-              blocks.push({ id: `h-${m.ID || m.id}`, type: 'assistant', content, timestamp: m.CreatedAt || m.created_at || 0, usage })
-            }
-            const tcRaw = m.ToolCalls || m.tool_calls
-            if (tcRaw) {
-              try {
-                const tcs = typeof tcRaw === 'string' ? JSON.parse(tcRaw) : tcRaw
-                for (const tc of tcs) {
-                  blocks.push({ id: `htc-${tc.id}`, type: 'tool_call', content: '', toolCall: tc, timestamp: m.CreatedAt || m.created_at || 0 })
-                }
-              } catch { /* */ }
-            }
-          } else if (role === 'tool') {
-            const callId = m.ToolCallID || m.tool_call_id
-            const tcBlock = blocks.findLast((b: MessageBlock) => b.type === 'tool_call' && b.toolCall?.id === callId)
-            if (tcBlock) {
-              tcBlock.toolResult = { tool_call_id: callId, content, is_error: false }
-            }
-          }
-        }
-        setMessages(blocks)
-      }
+      if (Array.isArray(data)) setMessages(buildMessageBlocks(data))
     } catch { /* ignore */ }
   }, [])
 
-  // On mount, fetch executor status and restore active conversation (parallel)
   useEffect(() => {
-    const statusP = request('chat.executor_status', {})
-    const msgsP = request('chat.messages', {})
-    Promise.all([statusP, msgsP]).then(([statusData, msgsData]: any[]) => {
-      if (statusData) {
-        setExecutorStatus(statusData)
-        if (statusData.activeConvId) {
-          setActiveConvId(statusData.activeConvId)
-          if (!convIdRef.current) {
-            convIdRef.current = statusData.activeConvId
-            setConvId(statusData.activeConvId)
-          }
-        }
-      }
-      if (Array.isArray(msgsData) && msgsData.length > 0 && !convIdRef.current) {
-        // chat.messages without id returned active conv messages
-        // extract convId from first message
-        const firstMsg = msgsData[0]
-        const cid = firstMsg.ConversationID || firstMsg.conversation_id || ''
-        if (cid) {
-          convIdRef.current = cid
-          setConvId(cid)
-        }
-      }
-      if (Array.isArray(msgsData) && msgsData.length > 0) {
-        const blocks: MessageBlock[] = []
-        for (const m of msgsData) {
-          const role = m.Role || m.role
-          const content = m.Content || m.content || ''
-          if (role === 'user') {
-            blocks.push({ id: `h-${m.ID || m.id}`, type: 'user', content, timestamp: m.CreatedAt || m.created_at || 0 })
-          } else if (role === 'assistant') {
-            const thinking = m.Thinking || m.thinking || ''
-            if (thinking) {
-              blocks.push({ id: `ht-${m.ID || m.id}`, type: 'thinking', content: thinking, timestamp: m.CreatedAt || m.created_at || 0 })
-            }
-            if (content) {
-              const usageRaw = m.TokenUsage || m.token_usage
-              let usage: TokenUsage | undefined
-              if (usageRaw) { try { usage = typeof usageRaw === 'string' ? JSON.parse(usageRaw) : usageRaw } catch { /* */ } }
-              blocks.push({ id: `h-${m.ID || m.id}`, type: 'assistant', content, timestamp: m.CreatedAt || m.created_at || 0, usage })
-            }
-            const tcRaw = m.ToolCalls || m.tool_calls
-            if (tcRaw) {
-              try {
-                const tcs = typeof tcRaw === 'string' ? JSON.parse(tcRaw) : tcRaw
-                for (const tc of tcs) {
-                  blocks.push({ id: `htc-${tc.id}`, type: 'tool_call', content: '', toolCall: tc, timestamp: m.CreatedAt || m.created_at || 0 })
-                }
-              } catch { /* */ }
-            }
-          } else if (role === 'tool') {
-            const callId = m.ToolCallID || m.tool_call_id
-            const tcBlock = blocks.findLast((b: MessageBlock) => b.type === 'tool_call' && b.toolCall?.id === callId)
-            if (tcBlock) {
-              tcBlock.toolResult = { tool_call_id: callId, content: m.Content || m.content || '', is_error: false }
-            }
-          }
-        }
-        setMessages(blocks)
-      }
+    loadConversations()
+    request('chat.executor_status', {}).then((statusData: any) => {
+      if (statusData) setExecutorStatus(statusData)
     }).catch(() => {})
-  }, [])
-
-  // Restore after WebSocket reconnect: if streaming is still active, check whether the backend conversation already finished
-  useEffect(() => {
-    const unsub = registerReconnectHook(() => {
-      if (!streaming) return
-      const cid = convIdRef.current
-      if (!cid) return
-      // Give the backend a moment to finish, then check the conversation status
-      setTimeout(async () => {
-        try {
-          const status = await request('chat.status', { conversationId: cid })
-          if (status && !(status as any).active) {
-            // Backend already finished, but the frontend missed the done event, so restore from DB
-            setStreaming(false)
-            streamBuf.current = ''
-            thinkingBuf.current = ''
-            if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = 0 }
-            if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
-            const data = await request('chat.messages', { conversationId: cid })
-            if (Array.isArray(data)) {
-              const blocks: MessageBlock[] = []
-              for (const m of data) {
-                const role = m.Role || m.role
-                const content = m.Content || m.content || ''
-                if (role === 'user') {
-                  blocks.push({ id: `h-${m.ID || m.id}`, type: 'user', content, timestamp: m.CreatedAt || m.created_at || 0 })
-                } else if (role === 'assistant') {
-                  const thinking = m.Thinking || m.thinking || ''
-                  if (thinking) {
-                    blocks.push({ id: `ht-${m.ID || m.id}`, type: 'thinking', content: thinking, timestamp: m.CreatedAt || m.created_at || 0 })
-                  }
-                  if (content) {
-                    const usageRaw = m.TokenUsage || m.token_usage
-                    let usage: TokenUsage | undefined
-                    if (usageRaw) { try { usage = typeof usageRaw === 'string' ? JSON.parse(usageRaw) : usageRaw } catch { /* */ } }
-                    blocks.push({ id: `h-${m.ID || m.id}`, type: 'assistant', content, timestamp: m.CreatedAt || m.created_at || 0, usage })
-                  }
-                  const tcRaw = m.ToolCalls || m.tool_calls
-                  if (tcRaw) {
-                    try {
-                      const tcs = typeof tcRaw === 'string' ? JSON.parse(tcRaw) : tcRaw
-                      for (const tc of tcs) {
-                        blocks.push({ id: `htc-${tc.id}`, type: 'tool_call', content: '', toolCall: tc, timestamp: m.CreatedAt || m.created_at || 0 })
-                      }
-                    } catch { /* */ }
-                  }
-                } else if (role === 'tool') {
-                  const callId = m.ToolCallID || m.tool_call_id
-                  const tcBlock = blocks.findLast((b: MessageBlock) => b.type === 'tool_call' && b.toolCall?.id === callId)
-                  if (tcBlock) {
-                    tcBlock.toolResult = { tool_call_id: callId, content, is_error: false }
-                  }
-                }
-              }
-              setMessages(blocks)
-            }
-            loadConversations()
-          }
-        } catch { /* ignore when chat.status is unavailable */ }
-      }, 1000)
-    })
-    return unsub
-  }, [streaming, loadConversations])
+  }, [loadConversations])
 
   useEffect(() => {
     request('chat.commands', {}).then((data: any) => {
@@ -354,17 +244,40 @@ export default function ChatContent() {
     }).catch(() => {})
   }, [])
 
-  // Listen to chat events
+  useEffect(() => {
+    const unsub = registerReconnectHook(() => {
+      if (!streaming) return
+      const cid = convIdRef.current
+      if (!cid) return
+      setTimeout(async () => {
+        try {
+          const status = await request('chat.status', { conversationId: cid })
+          if (status && !(status as any).active) {
+            setStreaming(false)
+            streamBuf.current = ''
+            thinkingBuf.current = ''
+            if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = 0 }
+            if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
+            const data = await request('chat.messages', { conversationId: cid })
+            if (Array.isArray(data)) setMessages(buildMessageBlocks(data))
+            loadConversations()
+          }
+        } catch { /* ignore */ }
+      }, 1000)
+    })
+    return unsub
+  }, [streaming, loadConversations])
+
   useEffect(() => {
     const unsub = onChatEvent((event: ChatEvent) => {
-      // Global events — not scoped to a conversation, handle before filtering
       if (event.type === 'status_update') {
         if (event.statusUpdate) {
+          const prevStatus = executorStatusRef.current
+          const currentConvId = convIdRef.current
           setExecutorStatus(event.statusUpdate)
-          if (event.statusUpdate.activeConvId) {
-            setActiveConvId(event.statusUpdate.activeConvId)
-          }
-          if (event.statusUpdate.state === 'idle') {
+          const currentConversationStopped = !!currentConvId && prevStatus.runningConvId === currentConvId && prevStatus.state !== 'idle' && event.statusUpdate.runningConvId !== currentConvId
+          if (currentConversationStopped) {
+            clearStreamTimeout()
             setStreaming(false)
             pendingToolCalls.current.clear()
             shellOutputs.current.clear()
@@ -381,47 +294,17 @@ export default function ChatContent() {
         }
         return
       }
+
       if (event.type === 'command_progress') {
         setCommandProgress(event.commandProgress?.state === 'running' ? event.commandProgress.command : null)
         return
       }
-      if (event.type === 'chat.conv_switched') {
-        if (event.convSwitched) {
-          const newId = event.convSwitched.convId
-          setActiveConvId(newId)
-          // If we're in a "new chat" state (no convId yet), bind the newly created
-          // conversation to the current view so responses appear here instead of
-          // requiring the user to click the sidebar entry.
-          if (!convIdRef.current && newId) {
-            convIdRef.current = newId
-            setConvId(newId)
-          }
-          loadConversations()
-        }
-        return
-      }
-      if (event.type === 'inactive_conv') {
-        // Message was rejected because it targets a non-active conversation
-        setStreaming(false)
-        clearStreamTimeout()
-        if (event.inactiveConv) {
-          setMessages(prev => [...prev, {
-            id: `sys-${Date.now()}`,
-            type: 'error',
-            content: event.inactiveConv!.hint,
-            timestamp: Date.now(),
-          }])
-        }
-        return
-      }
 
-      // Bind conversation ID on first event of a new chat
       if (event.conversationId && !convIdRef.current) {
         convIdRef.current = event.conversationId
         setConvId(event.conversationId)
       }
 
-      // Ignore events from a different conversation
       if (event.conversationId && convIdRef.current && event.conversationId !== convIdRef.current) {
         return
       }
@@ -437,37 +320,22 @@ export default function ChatContent() {
               const buf = thinkingBuf.current
               setMessages(prev => {
                 const last = prev[prev.length - 1]
-                if (last?.type === 'thinking') {
-                  return [...prev.slice(0, -1), { ...last, content: buf }]
-                }
-                return [...prev, {
-                  id: `think-${Date.now()}`,
-                  type: 'thinking',
-                  content: buf,
-                  timestamp: Date.now(),
-                }]
+                if (last?.type === 'thinking') return [...prev.slice(0, -1), { ...last, content: buf }]
+                return [...prev, { id: `think-${Date.now()}`, type: 'thinking', content: buf, timestamp: Date.now() }]
               })
             })
           }
           break
 
         case 'delta':
-          // Flush pending thinking before switching to delta
           if (thinkingBuf.current) {
             if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
             const pendingThinking = thinkingBuf.current
             thinkingBuf.current = ''
             setMessages(prev => {
               const last = prev[prev.length - 1]
-              if (last?.type === 'thinking') {
-                return [...prev.slice(0, -1), { ...last, content: pendingThinking }]
-              }
-              return [...prev, {
-                id: `think-${Date.now()}`,
-                type: 'thinking',
-                content: pendingThinking,
-                timestamp: Date.now(),
-              }]
+              if (last?.type === 'thinking') return [...prev.slice(0, -1), { ...last, content: pendingThinking }]
+              return [...prev, { id: `think-${Date.now()}`, type: 'thinking', content: pendingThinking, timestamp: Date.now() }]
             })
           }
           streamBuf.current += event.content || ''
@@ -477,73 +345,42 @@ export default function ChatContent() {
               const buf = streamBuf.current
               setMessages(prev => {
                 const last = prev[prev.length - 1]
-                if (last?.type === 'assistant') {
-                  return [...prev.slice(0, -1), { ...last, content: buf }]
-                }
-                return [...prev, {
-                  id: `msg-${Date.now()}`,
-                  type: 'assistant',
-                  content: buf,
-                  timestamp: Date.now(),
-                }]
+                if (last?.type === 'assistant') return [...prev.slice(0, -1), { ...last, content: buf }]
+                return [...prev, { id: `msg-${Date.now()}`, type: 'assistant', content: buf, timestamp: Date.now() }]
               })
             })
           }
           break
 
         case 'tool_call_pending': {
-          // Flush pending thinking
           const pendingThinking = thinkingBuf.current
           thinkingBuf.current = ''
           if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
-          // Flush pending streamBuf before cancelling rAF
           const pendingContent = streamBuf.current
           streamBuf.current = ''
           if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = 0 }
           if (pendingThinking) {
             setMessages(prev => {
               const last = prev[prev.length - 1]
-              if (last?.type === 'thinking') {
-                return [...prev.slice(0, -1), { ...last, content: pendingThinking }]
-              }
-              return [...prev, {
-                id: `think-${Date.now()}`,
-                type: 'thinking',
-                content: pendingThinking,
-                timestamp: Date.now(),
-              }]
+              if (last?.type === 'thinking') return [...prev.slice(0, -1), { ...last, content: pendingThinking }]
+              return [...prev, { id: `think-${Date.now()}`, type: 'thinking', content: pendingThinking, timestamp: Date.now() }]
             })
           }
           if (pendingContent) {
             setMessages(prev => {
               const last = prev[prev.length - 1]
-              if (last?.type === 'assistant') {
-                return [...prev.slice(0, -1), { ...last, content: pendingContent }]
-              }
-              return [...prev, {
-                id: `msg-${Date.now()}`,
-                type: 'assistant',
-                content: pendingContent,
-                timestamp: Date.now(),
-              }]
+              if (last?.type === 'assistant') return [...prev.slice(0, -1), { ...last, content: pendingContent }]
+              return [...prev, { id: `msg-${Date.now()}`, type: 'assistant', content: pendingContent, timestamp: Date.now() }]
             })
           }
           if (event.toolCallPending) {
             const pending = event.toolCallPending
-            pendingToolCalls.current.set(pending.id, {
-              id: pending.id,
-              type: 'function',
-              function: { name: pending.name, arguments: '' },
-            })
+            pendingToolCalls.current.set(pending.id, { id: pending.id, type: 'function', function: { name: pending.name, arguments: '' } })
             setMessages(prev => [...prev, {
               id: `tc-${pending.id}`,
               type: 'tool_call',
               content: '',
-              toolCall: {
-                id: pending.id,
-                type: 'function',
-                function: { name: pending.name, arguments: '' },
-              },
+              toolCall: { id: pending.id, type: 'function', function: { name: pending.name, arguments: '' } },
               timestamp: Date.now(),
             }])
           }
@@ -551,59 +388,34 @@ export default function ChatContent() {
         }
 
         case 'tool_call': {
-          // Flush pending thinking
-          const pendingThinking2 = thinkingBuf.current
+          const pendingThinking = thinkingBuf.current
           thinkingBuf.current = ''
           if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
-          const pendingContent2 = streamBuf.current
+          const pendingContent = streamBuf.current
           streamBuf.current = ''
           if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = 0 }
-          if (pendingThinking2) {
+          if (pendingThinking) {
             setMessages(prev => {
               const last = prev[prev.length - 1]
-              if (last?.type === 'thinking') {
-                return [...prev.slice(0, -1), { ...last, content: pendingThinking2 }]
-              }
-              return [...prev, {
-                id: `think-${Date.now()}`,
-                type: 'thinking',
-                content: pendingThinking2,
-                timestamp: Date.now(),
-              }]
+              if (last?.type === 'thinking') return [...prev.slice(0, -1), { ...last, content: pendingThinking }]
+              return [...prev, { id: `think-${Date.now()}`, type: 'thinking', content: pendingThinking, timestamp: Date.now() }]
             })
           }
-          if (pendingContent2) {
+          if (pendingContent) {
             setMessages(prev => {
               const last = prev[prev.length - 1]
-              if (last?.type === 'assistant') {
-                return [...prev.slice(0, -1), { ...last, content: pendingContent2 }]
-              }
-              return [...prev, {
-                id: `msg-${Date.now()}`,
-                type: 'assistant',
-                content: pendingContent2,
-                timestamp: Date.now(),
-              }]
+              if (last?.type === 'assistant') return [...prev.slice(0, -1), { ...last, content: pendingContent }]
+              return [...prev, { id: `msg-${Date.now()}`, type: 'assistant', content: pendingContent, timestamp: Date.now() }]
             })
           }
           if (event.toolCall) {
             const callId = event.toolCall.id
             if (pendingToolCalls.current.has(callId)) {
               pendingToolCalls.current.set(callId, event.toolCall)
-              setMessages(prev => prev.map(m =>
-                m.type === 'tool_call' && m.toolCall?.id === callId
-                  ? { ...m, toolCall: event.toolCall }
-                  : m
-              ))
+              setMessages(prev => prev.map(m => m.type === 'tool_call' && m.toolCall?.id === callId ? { ...m, toolCall: event.toolCall } : m))
             } else {
               pendingToolCalls.current.set(callId, event.toolCall)
-              setMessages(prev => [...prev, {
-                id: `tc-${callId}`,
-                type: 'tool_call',
-                content: '',
-                toolCall: event.toolCall,
-                timestamp: Date.now(),
-              }])
+              setMessages(prev => [...prev, { id: `tc-${callId}`, type: 'tool_call', content: '', toolCall: event.toolCall, timestamp: Date.now() }])
             }
           }
           break
@@ -613,11 +425,7 @@ export default function ChatContent() {
           if (event.toolResult) {
             const callId = event.toolResult.tool_call_id
             shellOutputs.current.delete(callId)
-            setMessages(prev => prev.map(m =>
-              m.type === 'tool_call' && m.toolCall?.id === callId
-                ? { ...m, toolResult: event.toolResult, shellOutput: undefined }
-                : m
-            ))
+            setMessages(prev => prev.map(m => m.type === 'tool_call' && m.toolCall?.id === callId ? { ...m, toolResult: event.toolResult, shellOutput: undefined } : m))
           }
           break
 
@@ -625,11 +433,8 @@ export default function ChatContent() {
           if (event.shellOutput) {
             const { toolCallId, stream, data } = event.shellOutput
             const prev = shellOutputs.current.get(toolCallId) || { stdout: '', stderr: '' }
-            if (stream === 'stderr') {
-              prev.stderr += data
-            } else {
-              prev.stdout += data
-            }
+            if (stream === 'stderr') prev.stderr += data
+            else prev.stdout += data
             shellOutputs.current.set(toolCallId, prev)
             if (!rafRef.current) {
               rafRef.current = requestAnimationFrame(() => {
@@ -655,20 +460,14 @@ export default function ChatContent() {
           if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = 0 }
           if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
           setMessages(prev => {
-            // First, mark any pending tool_calls as completed
             const cleaned = prev.map(m =>
               m.type === 'tool_call' && !m.toolResult
                 ? { ...m, toolResult: { tool_call_id: m.toolCall!.id, content: t('apps.aiChat.chat.completed'), is_error: false }, shellOutput: undefined }
                 : m
             )
             const lastAssistantIdx = cleaned.findLastIndex(m => m.type === 'assistant')
-            // Check if there are tool_call blocks after the last assistant message.
-            // If so, the finalContent belongs to a NEW assistant turn (the summary after tools),
-            // not the old one before tools. We must append a new block instead of overwriting.
             const hasToolCallAfter = lastAssistantIdx >= 0 && cleaned.slice(lastAssistantIdx + 1).some(m => m.type === 'tool_call')
-
             if (lastAssistantIdx >= 0 && !hasToolCallAfter) {
-              // The last assistant block is already after all tool calls — safe to update in place
               const updated = [...cleaned]
               updated[lastAssistantIdx] = {
                 ...updated[lastAssistantIdx],
@@ -678,51 +477,19 @@ export default function ChatContent() {
               return updated
             }
             if (finalContent) {
-              // Either no assistant block exists, or the existing one is before tool calls
-              // (rAF was cancelled before it could create the post-tool assistant message)
-              return [...cleaned, {
-                id: `msg-${Date.now()}`,
-                type: 'assistant' as const,
-                content: finalContent,
-                timestamp: Date.now(),
-                usage: event.usage,
-              }]
+              return [...cleaned, { id: `msg-${Date.now()}`, type: 'assistant', content: finalContent, timestamp: Date.now(), usage: event.usage }]
             }
             if (lastAssistantIdx >= 0) {
-              // No new content but we have an old assistant block — just attach usage
               const updated = [...cleaned]
               updated[lastAssistantIdx] = { ...updated[lastAssistantIdx], usage: event.usage }
               return updated
             }
-            // No content at all — reload from DB as fallback
-            const cid = convIdRef.current
-            if (cid) {
-              request('chat.messages', { conversationId: cid }).then((data: any) => {
-                if (!Array.isArray(data)) return
-                const blocks: MessageBlock[] = []
-                for (const m of data) {
-                  const role = m.Role || m.role
-                  const content = m.Content || m.content || ''
-                  if (role === 'user') {
-                    blocks.push({ id: `h-${m.ID || m.id}`, type: 'user', content, timestamp: m.CreatedAt || m.created_at || 0 })
-                  } else if (role === 'assistant') {
-                    const thinking = m.Thinking || m.thinking || ''
-                    if (thinking) {
-                      blocks.push({ id: `ht-${m.ID || m.id}`, type: 'thinking', content: thinking, timestamp: m.CreatedAt || m.created_at || 0 })
-                    }
-                    if (content) {
-                      const usageRaw = m.TokenUsage || m.token_usage
-                      let u: TokenUsage | undefined
-                      if (usageRaw) { try { u = typeof usageRaw === 'string' ? JSON.parse(usageRaw) : usageRaw } catch { /* */ } }
-                      blocks.push({ id: `h-${m.ID || m.id}`, type: 'assistant', content, timestamp: m.CreatedAt || m.created_at || 0, usage: u })
-                    }
-                  }
-                }
-                if (blocks.length > 0) setMessages(blocks)
-              }).catch(() => {})
-            }
             return cleaned
           })
+          if (!convIdRef.current && event.conversationId) {
+            convIdRef.current = event.conversationId
+            setConvId(event.conversationId)
+          }
           loadConversations()
           break
         }
@@ -742,33 +509,31 @@ export default function ChatContent() {
                 ? { ...m, toolResult: { tool_call_id: m.toolCall!.id, content: t('apps.aiChat.chat.interrupted'), is_error: true }, shellOutput: undefined }
                 : m
             ),
-            {
-              id: `err-${Date.now()}`,
-              type: 'error' as const,
-              content: event.error || t('apps.aiChat.chat.unknownError'),
-              timestamp: Date.now(),
-            },
+            { id: `err-${Date.now()}`, type: 'error', content: event.error || t('apps.aiChat.chat.unknownError'), timestamp: Date.now() },
           ])
           break
 
         case 'command_result':
           clearStreamTimeout()
           setStreaming(false)
-          if (event.commandResult) {
-            if (event.commandResult.clearHistory) {
+          const commandResult = event.commandResult
+          if (commandResult) {
+            if (commandResult.clearHistory) {
               convIdRef.current = ''
               setConvId('')
               setMessages([])
+              setDraftModelConfig(null)
               loadConversations()
             } else {
               setMessages(prev => [...prev, {
                 id: `cmd-${Date.now()}`,
-                type: event.commandResult!.isError ? 'error' : 'command',
-                content: event.commandResult!.text,
+                type: commandResult.isError ? 'error' : 'command',
+                content: commandResult.text,
                 timestamp: Date.now(),
               }])
             }
             setConfigVer(v => v + 1)
+            loadConversations()
           }
           break
 
@@ -779,10 +544,7 @@ export default function ChatContent() {
               case 'open_app':
                 if (params.appId) {
                   const options = (params.options || {}) as Record<string, unknown>
-                  useWindowStore.getState().openWindow(params.appId, {
-                    forceNew: true,
-                    appDataOptions: options,
-                  })
+                  useWindowStore.getState().openWindow(params.appId, { forceNew: true, appDataOptions: options })
                 }
                 break
               case 'open_path':
@@ -813,163 +575,36 @@ export default function ChatContent() {
 
         case 'chat.busy':
           if (event.busyInfo) {
-            setMessages(prev => [...prev, {
-              id: `busy-${Date.now()}`,
-              type: 'error',
-              content: event.busyInfo!.hint,
-              timestamp: Date.now(),
-            }])
+            setMessages(prev => [...prev, { id: `busy-${Date.now()}`, type: 'error', content: event.busyInfo!.hint, timestamp: Date.now() }])
           }
           break
-
       }
     })
+
     return () => {
       unsub()
       clearStreamTimeout()
     }
-  }, [loadConversations, resetStreamTimeout, clearStreamTimeout])
+  }, [clearStreamTimeout, loadConversations, resetStreamTimeout, t])
 
   const handleSend = async () => {
     const text = input.trim()
     if (!text) return
 
-    const isCommand = text.startsWith('/')
-    setMessages(prev => [...prev, {
-      id: `user-${Date.now()}`,
-      type: 'user',
-      content: text,
-      timestamp: Date.now(),
-    }])
+    const draftConfig = !convIdRef.current ? draftModelConfig : null
+
+    setMessages(prev => [...prev, { id: `user-${Date.now()}`, type: 'user', content: text, timestamp: Date.now() }])
     setInput('')
     setShowCommands(false)
-    if (!isCommand) {
+
+    if (!text.startsWith('/')) {
       setStreaming(true)
       streamBuf.current = ''
       thinkingBuf.current = ''
       resetStreamTimeout()
     }
 
-    const ensureConversationReady = async (): Promise<boolean> => {
-      if (isCommand) return true
-
-      if (ensureConvPromiseRef.current) {
-        return ensureConvPromiseRef.current
-      }
-
-      const promise = (async () => {
-        // New chat: create & activate a new conversation first, wait until conv id is actually bound
-        if (!convIdRef.current) {
-          return await new Promise<boolean>(resolve => {
-            let settled = false
-            let timeout: ReturnType<typeof setTimeout> | undefined
-            const finish = (ok: boolean) => {
-              if (settled) return
-              settled = true
-              if (timeout) clearTimeout(timeout)
-              unsub()
-              resolve(ok)
-            }
-            const unsub = onChatEvent(ev => {
-              if (ev.type === 'chat.conv_switched' && ev.convSwitched?.convId) {
-                const newId = ev.convSwitched.convId
-                convIdRef.current = newId
-                setConvId(newId)
-                setActiveConvId(newId)
-                finish(true)
-                return
-              }
-              if (ev.type === 'command_result' && ev.commandResult?.isError) {
-                setStreaming(false)
-                clearStreamTimeout()
-                setMessages(prev => [...prev, {
-                  id: `sys-${Date.now()}`,
-                  type: 'error',
-                  content: ev.commandResult!.text,
-                  timestamp: Date.now(),
-                }])
-                finish(false)
-              }
-            })
-            timeout = setTimeout(() => {
-              setStreaming(false)
-              clearStreamTimeout()
-              setMessages(prev => [...prev, {
-                id: `sys-${Date.now()}`,
-                type: 'error',
-                content: t('apps.aiChat.chat.createConversationTimeout'),
-                timestamp: Date.now(),
-              }])
-              finish(false)
-            }, 5000)
-            chatSend('', '/conv new')
-          })
-        }
-
-        // Viewing a non-active conversation: switch backend active conv before sending,
-        // and wait until the switch is actually confirmed.
-        if (convIdRef.current && convIdRef.current !== activeConvId) {
-          const targetId = convIdRef.current
-          return await new Promise<boolean>(resolve => {
-            let settled = false
-            let timeout: ReturnType<typeof setTimeout> | undefined
-            const finish = (ok: boolean) => {
-              if (settled) return
-              settled = true
-              if (timeout) clearTimeout(timeout)
-              unsub()
-              resolve(ok)
-            }
-            const unsub = onChatEvent(ev => {
-              if (ev.type === 'chat.conv_switched' && ev.convSwitched?.convId === targetId) {
-                setActiveConvId(targetId)
-                finish(true)
-                return
-              }
-              if (ev.type === 'command_result' && ev.commandResult?.isError) {
-                setStreaming(false)
-                clearStreamTimeout()
-                setMessages(prev => [...prev, {
-                  id: `sys-${Date.now()}`,
-                  type: 'error',
-                  content: ev.commandResult!.text,
-                  timestamp: Date.now(),
-                }])
-                finish(false)
-              }
-            })
-            timeout = setTimeout(() => {
-              setStreaming(false)
-              clearStreamTimeout()
-              setMessages(prev => [...prev, {
-                id: `sys-${Date.now()}`,
-                type: 'error',
-                content: t('apps.aiChat.chat.switchConversationTimeout'),
-                timestamp: Date.now(),
-              }])
-              finish(false)
-            }, 5000)
-            chatSend('', `/conv switch ${targetId}`)
-          })
-        }
-
-        return true
-      })()
-
-      ensureConvPromiseRef.current = promise
-      try {
-        return await promise
-      } finally {
-        if (ensureConvPromiseRef.current === promise) {
-          ensureConvPromiseRef.current = null
-        }
-      }
-    }
-
-    const ready = await ensureConversationReady()
-    if (!ready) return
-
-    chatSend(convIdRef.current || '', text)
+    chatSend(convIdRef.current || '', text, draftConfig)
     setTimeout(() => {
       if (inputRef.current) {
         inputRef.current.style.height = 'auto'
@@ -983,17 +618,26 @@ export default function ChatContent() {
     convIdRef.current = ''
     setConvId('')
     setMessages([])
+    setStreaming(false)
+    setDraftModelConfig(null)
     streamBuf.current = ''
     thinkingBuf.current = ''
     pendingToolCalls.current.clear()
+    shellOutputs.current.clear()
+    clearStreamTimeout()
   }
 
   const handleSelectConversation = async (id: string) => {
     convIdRef.current = id
     setConvId(id)
     setMessages([])
+    setStreaming(false)
+    setDraftModelConfig(null)
     streamBuf.current = ''
     thinkingBuf.current = ''
+    pendingToolCalls.current.clear()
+    shellOutputs.current.clear()
+    clearStreamTimeout()
     await loadConversationMessages(id)
   }
 
@@ -1066,13 +710,8 @@ export default function ChatContent() {
       setInput(`/${cmd.Name}`)
       setShowCommands(false)
       setTimeout(() => {
-        chatSend('', `/${cmd.Name}`)
-        setMessages(prev => [...prev, {
-          id: `user-${Date.now()}`,
-          type: 'user',
-          content: `/${cmd.Name}`,
-          timestamp: Date.now(),
-        }])
+        setMessages(prev => [...prev, { id: `user-${Date.now()}`, type: 'user', content: `/${cmd.Name}`, timestamp: Date.now() }])
+        chatSend(convIdRef.current || '', `/${cmd.Name}`, !convIdRef.current ? draftModelConfig : null)
         setInput('')
       }, 0)
     }
@@ -1122,12 +761,15 @@ export default function ChatContent() {
     } catch { /* ignore invalid data */ }
   }
 
+  const currentConversationBusy = !!convId && executorStatus.runningConvId === convId && (executorStatus.state === 'running' || executorStatus.state === 'tool_executing')
+  const showHeaderBusy = currentConversationBusy || !!commandProgress
+
   return (
     <div className="h-full flex bg-white relative">
       {showSidebar && (
         <Sidebar
           conversations={conversations}
-          activeId={convId || activeConvId}
+          activeId={convId}
           onSelect={id => { handleSelectConversation(id); setShowSidebar(false) }}
           onNew={() => { handleNewChat(); setShowSidebar(false) }}
           onDelete={handleDeleteConversation}
@@ -1137,7 +779,6 @@ export default function ChatContent() {
       {showConfig && <ConfigPanel onClose={(saved) => { setShowConfig(false); if (saved) setConfigVer(v => v + 1) }} />}
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
         <div className="relative flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-white/80 backdrop-blur-sm">
           <button
             onClick={() => setShowSidebar(!showSidebar)}
@@ -1149,9 +790,14 @@ export default function ChatContent() {
             </svg>
           </button>
           <Bot className="h-4.5 w-4.5 text-violet-500" />
-          <ModelSwitcher configVer={configVer} />
+          <ModelSwitcher
+            conversationId={convId}
+            configVer={configVer}
+            draftConfig={draftModelConfig}
+            onDraftConfigChange={setDraftModelConfig}
+          />
           <div className="absolute left-1/2 -translate-x-1/2">
-            {(executorStatus.state === 'running' || executorStatus.state === 'tool_executing' || !!commandProgress) ? (
+            {showHeaderBusy ? (
               <span className="relative flex h-2.5 w-2.5" title={t('apps.aiChat.chat.busy')}>
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
@@ -1170,10 +816,9 @@ export default function ChatContent() {
           </button>
         </div>
 
-        {/* Status bar — only visible when busy */}
-        {(executorStatus.state === 'running' || executorStatus.state === 'tool_executing' || !!commandProgress) && (
+        {showHeaderBusy && (
           <div className="flex flex-wrap items-center gap-2 px-4 py-1.5 border-b border-slate-100 bg-slate-50/80 text-xs">
-            {(executorStatus.state === 'running' || executorStatus.state === 'tool_executing') && (
+            {currentConversationBusy && (
               <span className="inline-flex items-center gap-1.5 text-amber-600">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
@@ -1195,7 +840,6 @@ export default function ChatContent() {
           </div>
         )}
 
-        {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-auto px-4 py-3 space-y-3">
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-3">
@@ -1205,15 +849,11 @@ export default function ChatContent() {
           )}
 
           {messages.map(msg => {
-            if (msg.type === 'user') {
-              return <UserMessage key={msg.id} content={msg.content} />
-            }
-
+            if (msg.type === 'user') return <UserMessage key={msg.id} content={msg.content} />
             if (msg.type === 'assistant') {
               if (!msg.content.trim()) return null
               return <AssistantMessage key={msg.id} content={msg.content} usage={msg.usage} />
             }
-
             if (msg.type === 'thinking') {
               return (
                 <div key={msg.id} className="px-2">
@@ -1221,7 +861,6 @@ export default function ChatContent() {
                 </div>
               )
             }
-
             if (msg.type === 'tool_call' && msg.toolCall) {
               return (
                 <div key={msg.id} className="px-2">
@@ -1229,21 +868,12 @@ export default function ChatContent() {
                 </div>
               )
             }
-
-            if (msg.type === 'error') {
-              return <ErrorMessage key={msg.id} content={msg.content} />
-            }
-
-            if (msg.type === 'command') {
-              return <CommandMessage key={msg.id} content={msg.content} />
-            }
-
+            if (msg.type === 'error') return <ErrorMessage key={msg.id} content={msg.content} />
+            if (msg.type === 'command') return <CommandMessage key={msg.id} content={msg.content} />
             return null
           })}
-
         </div>
 
-        {/* Input */}
         <div
           className="px-3 pb-3 pt-1 relative"
           onDragOver={handleDragOver}

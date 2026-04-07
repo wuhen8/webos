@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"strings"
 )
 
 var migrations = []string{
@@ -200,6 +201,60 @@ var migrations = []string{
 		created_at INTEGER NOT NULL
 	);
 	CREATE INDEX idx_fw_rules_table_chain ON firewall_rules(table_name, chain, sort_order);`,
+
+	// version 2: ai conversation model config
+	`ALTER TABLE ai_conversations ADD COLUMN provider_id TEXT NOT NULL DEFAULT '';
+	ALTER TABLE ai_conversations ADD COLUMN model TEXT NOT NULL DEFAULT '';`,
+
+	// version 3: ai queue draft model selection
+	`ALTER TABLE ai_queue ADD COLUMN provider_id TEXT NOT NULL DEFAULT '';
+	ALTER TABLE ai_queue ADD COLUMN model TEXT NOT NULL DEFAULT '';`,
+}
+
+func ensureAISchemaColumns() error {
+	if err := ensureTableColumns("ai_conversations", map[string]string{
+		"provider_id": "TEXT NOT NULL DEFAULT ''",
+		"model":       "TEXT NOT NULL DEFAULT ''",
+	}); err != nil {
+		return err
+	}
+	return ensureTableColumns("ai_queue", map[string]string{
+		"provider_id": "TEXT NOT NULL DEFAULT ''",
+		"model":       "TEXT NOT NULL DEFAULT ''",
+	})
+}
+
+func ensureTableColumns(table string, required map[string]string) error {
+	rows, err := db.Query("SELECT name FROM pragma_table_info(?)", table)
+	if err != nil {
+		return fmt.Errorf("inspect %s columns: %w", table, err)
+	}
+	defer rows.Close()
+
+	existing := map[string]struct{}{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return fmt.Errorf("scan %s column: %w", table, err)
+		}
+		existing[name] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate %s columns: %w", table, err)
+	}
+
+	for name, ddl := range required {
+		if _, ok := existing[name]; ok {
+			continue
+		}
+		if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, name, ddl)); err != nil {
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
+			return fmt.Errorf("add %s.%s: %w", table, name, err)
+		}
+	}
+	return nil
 }
 
 func migrate() error {
@@ -213,6 +268,12 @@ func migrate() error {
 	row := db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_version")
 	if err := row.Scan(&current); err != nil {
 		return fmt.Errorf("get schema version: %w", err)
+	}
+
+	if current > 0 {
+		if err := ensureAISchemaColumns(); err != nil {
+			return fmt.Errorf("ensure ai schema columns: %w", err)
+		}
 	}
 
 	// 执行未应用的迁移

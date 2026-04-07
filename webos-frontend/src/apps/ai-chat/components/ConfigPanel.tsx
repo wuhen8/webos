@@ -20,8 +20,6 @@ interface AIProvider {
 
 interface AIMultiConfig {
   providers: AIProvider[]
-  activeProvider: string
-  activeModel: string
 }
 
 function newProvider(): AIProvider {
@@ -29,7 +27,7 @@ function newProvider(): AIProvider {
 }
 
 function emptyMultiConfig(): AIMultiConfig {
-  return { providers: [newProvider()], activeProvider: '', activeModel: '' }
+  return { providers: [newProvider()] }
 }
 
 function Field({ label, value, onChange, placeholder, type = 'text' }: {
@@ -110,18 +108,10 @@ export function ConfigPanel({ onClose }: { onClose: (saved?: boolean) => void })
     setSaving(true)
     try {
       const cleaned: AIMultiConfig = {
-        ...cfg,
         providers: cfg.providers.map(p => ({
           ...p,
           models: p.models.filter(m => m.trim() !== '')
         }))
-      }
-      if (!cleaned.activeProvider && cleaned.providers.length > 0) {
-        cleaned.activeProvider = cleaned.providers[0].id
-      }
-      if (!cleaned.activeModel) {
-        const ap = cleaned.providers.find(p => p.id === cleaned.activeProvider)
-        if (ap && ap.models.length > 0) cleaned.activeModel = ap.models[0]
       }
       await request('config.set', {
         key: 'ai_config',

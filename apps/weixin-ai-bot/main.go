@@ -12,6 +12,7 @@ import (
 
 const defaultWeixinBaseURL = "https://ilinkai.weixin.qq.com"
 const defaultWeixinCDNBaseURL = "https://novac2c.cdn.weixin.qq.com/c2c"
+const scheduledAIConversationID = "scheduled_ai"
 
 var (
 	weixinBaseURL      string
@@ -27,12 +28,100 @@ var (
 	lastLoginStatus    string
 	lastLoginError     string
 	allowedUserIDs     map[string]bool
+	userConversations  map[string]string
+	conversationUsers  map[string]string
 	activeUserID       string
 	activeContextTok   string
 	replyBuf           strings.Builder
 	sendSeq            int64
 	weixinSyncBuf      string
 )
+
+func weixinConversationKVKey(userID string) string {
+	return "weixin_conv:" + strings.TrimSpace(userID)
+}
+
+func getCurrentConversationID(userID string) string {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return ""
+	}
+	if convID := strings.TrimSpace(userConversations[userID]); convID != "" {
+		return convID
+	}
+	convID := strings.TrimSpace(kvGet(weixinConversationKVKey(userID)))
+	if convID != "" {
+		userConversations[userID] = convID
+		conversationUsers[convID] = userID
+	}
+	return convID
+}
+
+func setCurrentConversationID(userID, convID string) {
+	userID = strings.TrimSpace(userID)
+	convID = strings.TrimSpace(convID)
+	if userID == "" || convID == "" {
+		return
+	}
+	if prev := strings.TrimSpace(userConversations[userID]); prev != "" && prev != convID {
+		delete(conversationUsers, prev)
+	}
+	if userConversations[userID] == convID {
+		conversationUsers[convID] = userID
+		return
+	}
+	userConversations[userID] = convID
+	conversationUsers[convID] = userID
+	kvSet(weixinConversationKVKey(userID), convID)
+}
+
+func bindActiveUser(userID, contextToken string) string {
+	activeUserID = strings.TrimSpace(userID)
+	convID := getCurrentConversationID(activeUserID)
+	if strings.TrimSpace(contextToken) == "" && activeUserID != "" {
+		contextToken = kvGet("ctx:" + activeUserID)
+	}
+	activeContextTok = strings.TrimSpace(contextToken)
+	return convID
+}
+
+func ensureConversationID(userID, contextToken, userText string) string {
+	convID := bindActiveUser(userID, contextToken)
+	if convID != "" {
+		return convID
+	}
+	placeholder := strings.TrimSpace(userText)
+	if placeholder == "" {
+		placeholder = "[微信会话初始化]"
+	}
+	resp := request("chat.send", map[string]interface{}{
+		"conversationId": "",
+		"messageContent": placeholder,
+		"clientId":       "weixin-ai-bot",
+	})
+	var result struct {
+		Accepted       bool   `json:"accepted"`
+		Reason         string `json:"reason"`
+		ConversationID string `json:"conversationId"`
+	}
+	_ = json.Unmarshal([]byte(resp), &result)
+	if !result.Accepted {
+		if reason := strings.TrimSpace(result.Reason); reason != "" {
+			logMsg(fmt.Sprintf("ERROR: 创建微信会话失败 user=%s reason=%s", userID, reason))
+		} else {
+			logMsg(fmt.Sprintf("ERROR: 创建微信会话失败 user=%s", userID))
+		}
+		return ""
+	}
+	convID = strings.TrimSpace(result.ConversationID)
+	if convID != "" {
+		setCurrentConversationID(userID, convID)
+		activeUserID = strings.TrimSpace(userID)
+		activeContextTok = strings.TrimSpace(contextToken)
+		return convID
+	}
+	return bindActiveUser(userID, contextToken)
+}
 
 func main() {}
 
@@ -65,6 +154,8 @@ func ensureInit() {
 	}
 
 	allowedUserIDs = make(map[string]bool)
+	userConversations = make(map[string]string)
+	conversationUsers = make(map[string]string)
 	loadAllowedUserIDs()
 	if len(allowedUserIDs) == 0 {
 		logMsg("微信 AI Bot 初始化完成（自动注册模式：首个发消息用户自动授权）")
@@ -172,6 +263,36 @@ func on_event(ptr uint32, size uint32) uint32 {
 	return 0
 }
 
+func conversationUserID(convID string) string {
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return strings.TrimSpace(activeUserID)
+	}
+	if userID := lookupConversationUserID(convID); userID != "" {
+		return userID
+	}
+	return strings.TrimSpace(activeUserID)
+}
+
+func lookupConversationUserID(convID string) string {
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return ""
+	}
+	return strings.TrimSpace(conversationUsers[convID])
+}
+
+func contextTokenForUser(userID string) string {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return ""
+	}
+	if strings.TrimSpace(activeUserID) == userID && strings.TrimSpace(activeContextTok) != "" {
+		return strings.TrimSpace(activeContextTok)
+	}
+	return strings.TrimSpace(kvGet("ctx:" + userID))
+}
+
 func beginReplyStream(userID, contextToken string) {
 	activeUserID = userID
 	if strings.TrimSpace(contextToken) == "" && strings.TrimSpace(userID) != "" {
@@ -181,14 +302,25 @@ func beginReplyStream(userID, contextToken string) {
 	replyBuf.Reset()
 }
 
+func shouldBindConversation(convID string) bool {
+	convID = strings.TrimSpace(convID)
+	return convID != "" && convID != scheduledAIConversationID
+}
+
 func onChatDelta(data json.RawMessage) {
-	if activeUserID == "" {
-		return
-	}
 	var d struct {
-		Content string `json:"content"`
+		ConversationID string `json:"conversationId"`
+		Content        string `json:"content"`
 	}
 	json.Unmarshal(data, &d)
+	uid := conversationUserID(d.ConversationID)
+	if uid == "" {
+		return
+	}
+	activeUserID = uid
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(uid, d.ConversationID)
+	}
 	if d.Content == "" {
 		return
 	}
@@ -196,13 +328,19 @@ func onChatDelta(data json.RawMessage) {
 }
 
 func onChatDone(data json.RawMessage) {
-	if activeUserID == "" {
-		return
-	}
 	var d struct {
-		FullText string `json:"fullText"`
+		ConversationID string `json:"conversationId"`
+		FullText       string `json:"fullText"`
 	}
 	_ = json.Unmarshal(data, &d)
+	uid := conversationUserID(d.ConversationID)
+	if uid == "" {
+		return
+	}
+	activeUserID = uid
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(uid, d.ConversationID)
+	}
 	text := strings.TrimSpace(replyBuf.String())
 	if strings.TrimSpace(d.FullText) != "" {
 		text = strings.TrimSpace(d.FullText)
@@ -210,8 +348,7 @@ func onChatDone(data json.RawMessage) {
 	if text == "" {
 		text = "(空回复)"
 	}
-	uid := activeUserID
-	ctx := activeContextTok
+	ctx := contextTokenForUser(uid)
 	sendWeixinTextAsync(uid, ctx, text, func(ok bool, resp string) {
 		if !ok {
 			logMsg("ERROR: send weixin reply failed: " + truncate(resp, 200))
@@ -221,30 +358,59 @@ func onChatDone(data json.RawMessage) {
 }
 
 func onChatError(data json.RawMessage) {
-	if activeUserID == "" {
-		return
-	}
 	var d struct {
-		Error string `json:"error"`
+		ConversationID string `json:"conversationId"`
+		Error          string `json:"error"`
 	}
 	json.Unmarshal(data, &d)
+	uid := conversationUserID(d.ConversationID)
+	if uid == "" {
+		return
+	}
+	activeUserID = uid
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(uid, d.ConversationID)
+	}
 	errMsg := strings.TrimSpace(d.Error)
 	if errMsg == "" {
 		errMsg = "未知错误"
 	}
-	sendWeixinTextAsync(activeUserID, activeContextTok, "AI 错误: "+errMsg, nil)
+	ctx := contextTokenForUser(uid)
+	sendWeixinTextAsync(uid, ctx, "AI 错误: "+errMsg, func(ok bool, resp string) {
+		if !ok {
+			logMsg("ERROR: send weixin chat error failed: " + truncate(resp, 200))
+		}
+	})
 	replyBuf.Reset()
 }
 
 func onCommandResult(data json.RawMessage) {
-	if activeUserID == "" {
-		return
-	}
 	var d struct {
-		Text    string `json:"text"`
-		IsError bool   `json:"isError"`
+		ConversationID       string `json:"conversationId"`
+		Text                 string `json:"text"`
+		IsError              bool   `json:"isError"`
+		TargetConversationID string `json:"targetConversationId"`
+		ConversationAction   string `json:"conversationAction"`
+		SwitchConversation   bool   `json:"switchConversation"`
+		RoutePolicy          string `json:"routePolicy"`
+		OwnerClientID        string `json:"ownerClientId"`
 	}
 	json.Unmarshal(data, &d)
+	uid := lookupConversationUserID(d.ConversationID)
+	if uid == "" && d.SwitchConversation && d.RoutePolicy == "directed" && d.OwnerClientID == currentAppID {
+		uid = strings.TrimSpace(activeUserID)
+	}
+	if uid == "" && strings.TrimSpace(d.TargetConversationID) != "" {
+		uid = lookupConversationUserID(d.TargetConversationID)
+	}
+	if uid == "" {
+		logMsg(fmt.Sprintf("WARN: weixin command result dropped conv=%s targetConv=%s activeUser=%s", strings.TrimSpace(d.ConversationID), strings.TrimSpace(d.TargetConversationID), strings.TrimSpace(activeUserID)))
+		return
+	}
+	activeUserID = uid
+	if d.SwitchConversation && !d.IsError && strings.TrimSpace(d.TargetConversationID) != "" && d.RoutePolicy == "directed" && d.OwnerClientID == currentAppID {
+		setCurrentConversationID(uid, d.TargetConversationID)
+	}
 	if d.Text == "" {
 		return
 	}
@@ -252,7 +418,15 @@ func onCommandResult(data json.RawMessage) {
 	if d.IsError {
 		prefix = "❌ "
 	}
-	sendWeixinTextAsync(activeUserID, activeContextTok, prefix+d.Text, nil)
+	if d.ConversationAction != "" && strings.TrimSpace(d.TargetConversationID) != "" {
+		d.Text += fmt.Sprintf("\n\n当前会话: `%s`", d.TargetConversationID)
+	}
+	ctx := contextTokenForUser(uid)
+	sendWeixinTextAsync(uid, ctx, prefix+d.Text, func(ok bool, resp string) {
+		if !ok {
+			logMsg("ERROR: send weixin command result failed: " + truncate(resp, 200))
+		}
+	})
 }
 
 func onSystemNotify(data json.RawMessage) {
@@ -358,11 +532,10 @@ func handleInboundMessage(msg WeixinMessage) {
 		kvSet("ctx:"+uid, msg.ContextToken)
 	}
 	ctxToken := strings.TrimSpace(msg.ContextToken)
+	convID := bindActiveUser(uid, ctxToken)
 	if ctxToken == "" {
-		ctxToken = strings.TrimSpace(kvGet("ctx:" + uid))
+		ctxToken = contextTokenForUser(uid)
 	}
-	activeUserID = uid
-	activeContextTok = ctxToken
 
 	userText := describeWeixinMessage(msg)
 	plainText := extractWeixinText(msg)
@@ -380,6 +553,7 @@ func handleInboundMessage(msg WeixinMessage) {
 				pendingDownloads[reqID] = &PendingDownload{
 					UserID:       uid,
 					ContextToken: ctxToken,
+					ConvID:       convID,
 					UserText:     plainText,
 					FileName:     safeName,
 					Kind:         kind,
@@ -395,7 +569,14 @@ func handleInboundMessage(msg WeixinMessage) {
 	}
 	logMsg(fmt.Sprintf("[weixin:%s] %s", uid, truncate(userText, 120)))
 	beginReplyStream(uid, ctxToken)
+	if convID == "" {
+		convID = ensureConversationID(uid, ctxToken, userText)
+	}
+	if convID == "" {
+		return
+	}
 	request("chat.send", map[string]interface{}{
+		"conversationId": convID,
 		"messageContent": userText,
 		"clientId":       "weixin-ai-bot",
 	})
@@ -404,6 +585,21 @@ func handleInboundMessage(msg WeixinMessage) {
 func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 	if pd == nil {
 		return
+	}
+	sendToConversation := func(message string) {
+		beginReplyStream(pd.UserID, pd.ContextToken)
+		convID := strings.TrimSpace(pd.ConvID)
+		if convID == "" {
+			convID = ensureConversationID(pd.UserID, pd.ContextToken, message)
+		}
+		if convID == "" {
+			return
+		}
+		request("chat.send", map[string]interface{}{
+			"conversationId": convID,
+			"messageContent": message,
+			"clientId":       "weixin-ai-bot",
+		})
 	}
 	handleDownloadedPath := func(finalPath string) {
 		relativePath := finalPath
@@ -418,11 +614,7 @@ func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 			msg = fileInfo
 		}
 		logMsg(fmt.Sprintf("[weixin:%s] 附件下载完成: %s", pd.UserID, pd.FileName))
-		beginReplyStream(pd.UserID, pd.ContextToken)
-		request("chat.send", map[string]interface{}{
-			"messageContent": msg,
-			"clientId":       "weixin-ai-bot",
-		})
+		sendToConversation(msg)
 	}
 	if errMsg != "" {
 		logMsg(fmt.Sprintf("[weixin:%s] 附件下载失败: %s", pd.UserID, errMsg))
@@ -430,11 +622,7 @@ func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 		if strings.TrimSpace(msg) == "" {
 			msg = fmt.Sprintf("[附件下载失败: %s]", pd.FileName)
 		}
-		beginReplyStream(pd.UserID, pd.ContextToken)
-		request("chat.send", map[string]interface{}{
-			"messageContent": msg,
-			"clientId":       "weixin-ai-bot",
-		})
+		sendToConversation(msg)
 		return
 	}
 	if strings.TrimSpace(pd.AESKey) == "" {
@@ -447,11 +635,7 @@ func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 		if strings.TrimSpace(msg) == "" {
 			msg = fmt.Sprintf("[附件解密失败: %s]", pd.FileName)
 		}
-		beginReplyStream(pd.UserID, pd.ContextToken)
-		request("chat.send", map[string]interface{}{
-			"messageContent": msg,
-			"clientId":       "weixin-ai-bot",
-		})
+		sendToConversation(msg)
 		return
 	}
 	handleDownloadedPath(savedPath)
@@ -459,12 +643,9 @@ func onDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 
 func onChatMedia(data json.RawMessage) {
 	ensureInit()
-	if activeUserID == "" || activeContextTok == "" {
-		logMsg("WARN: 收到 chat.media 但 activeUserID 或 activeContextTok 为空")
-		return
-	}
 	var d struct {
-		Attachment struct {
+		ConversationID string `json:"conversationId"`
+		Attachment     struct {
 			NodeID   string `json:"nodeId"`
 			Path     string `json:"path"`
 			FileName string `json:"fileName"`
@@ -478,8 +659,16 @@ func onChatMedia(data json.RawMessage) {
 		return
 	}
 	a := d.Attachment
-	uid := activeUserID
-	ctx := activeContextTok
+	uid := conversationUserID(d.ConversationID)
+	if uid == "" {
+		logMsg("WARN: 收到 chat.media 但 userID 为空")
+		return
+	}
+	activeUserID = uid
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(uid, d.ConversationID)
+	}
+	ctx := contextTokenForUser(uid)
 	filePath := a.Path
 	if !strings.HasPrefix(filePath, "/") {
 		filePath = "/opt/webos/" + strings.TrimLeft(filePath, "/")

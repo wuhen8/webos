@@ -27,7 +27,7 @@ export interface TokenUsage {
 }
 
 export interface ChatEvent {
-  type: 'delta' | 'thinking' | 'tool_call_pending' | 'tool_call' | 'tool_result' | 'shell_output' | 'done' | 'error' | 'command_result' | 'ui_action' | 'chat.busy' | 'status_update' | 'chat.conv_switched' | 'inactive_conv' | 'command_progress'
+  type: 'delta' | 'thinking' | 'tool_call_pending' | 'tool_call' | 'tool_result' | 'shell_output' | 'done' | 'error' | 'command_result' | 'ui_action' | 'chat.busy' | 'status_update' | 'command_progress'
   conversationId: string
   content?: string
   toolCallPending?: { id: string; name: string }
@@ -39,9 +39,7 @@ export interface ChatEvent {
   usage?: TokenUsage
   uiAction?: { action: string; params: Record<string, any> }
   busyInfo?: { rejectedConvId: string; busyConvTitle: string; hint: string }
-  statusUpdate?: { state: 'idle' | 'running' | 'tool_executing'; runningConvId: string; runningConvTitle: string; queueSize: number; activeConvId: string }
-  convSwitched?: { convId: string; convTitle: string }
-  inactiveConv?: { conversationId: string; activeConvId: string; activeConvTitle: string; hint: string }
+  statusUpdate?: { state: 'idle' | 'running' | 'tool_executing'; runningConvId: string; runningConvTitle: string; queueSize: number }
   commandProgress?: { command: string; state: 'running' | 'done' }
 }
 
@@ -71,7 +69,7 @@ const methodMap: Record<string, (p: any) => ChatEvent | null> = {
     shellOutput: { toolCallId: p.toolCallId, stream: p.output?.stream, data: p.output?.data },
   }),
   'chat.done': (p) => ({ type: 'done', conversationId: p.conversationId, usage: p.usage }),
-  'chat.error': (p) => ({ type: 'error', conversationId: p.conversationId, error: p.message }),
+  'chat.error': (p) => ({ type: 'error', conversationId: p.conversationId, error: p.message || p.error }),
   'chat.command_result': (p) => ({
     type: 'command_result', conversationId: p.conversationId,
     commandResult: { text: p.text || '', isError: p.isError || false, clearHistory: p.clearHistory || false },
@@ -80,8 +78,6 @@ const methodMap: Record<string, (p: any) => ChatEvent | null> = {
   'chat.ui_action': (p) => ({ type: 'ui_action', conversationId: p.conversationId, uiAction: p.action }),
   'chat.busy': (p) => ({ type: 'chat.busy', conversationId: p.rejectedConvId || '', busyInfo: p }),
   'chat.status_update': (p) => ({ type: 'status_update', conversationId: p.runningConvId || '', statusUpdate: p }),
-  'chat.conv_switched': (p) => ({ type: 'chat.conv_switched', conversationId: p.convId || '', convSwitched: p }),
-  'chat.inactive_conv': (p) => ({ type: 'inactive_conv', conversationId: p.conversationId || '', inactiveConv: p }),
 }
 
 registerMessageHandler((msg: any) => {
@@ -95,6 +91,11 @@ registerMessageHandler((msg: any) => {
 
 // ── API ──
 
-export function chatSend(conversationId: string, messageContent: string) {
-  notify('chat.send', { conversationId, messageContent })
+export function chatSend(conversationId: string, messageContent: string, draftConfig?: { providerId: string; model: string } | null) {
+  notify('chat.send', {
+    conversationId,
+    messageContent,
+    providerId: draftConfig?.providerId || '',
+    model: draftConfig?.model || '',
+  })
 }

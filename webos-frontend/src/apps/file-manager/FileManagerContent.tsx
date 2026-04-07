@@ -65,9 +65,16 @@ export function FileManagerContent({ windowId }: { windowId: string }) {
     })
   }, [windowId, activeFmTabIndex, updateFmTabState])
 
-  const addFavorite = (file: FileInfo) => {
-    toast({ title: t('apps.fileManager.content.favoriteAdded'), description: t('apps.fileManager.content.favoriteAddedDescription', { name: file.name }) })
-    window.dispatchEvent(new CustomEvent('sidebar:addFavorite', { detail: file }))
+  const addFavorite = (files: FileInfo[]) => {
+    const favoriteDirs = files.filter(file => file.isDir)
+    if (favoriteDirs.length === 0) return
+
+    const description = favoriteDirs.length === 1
+      ? t('apps.fileManager.content.favoriteAddedDescription', { name: favoriteDirs[0].name })
+      : t('apps.fileManager.content.favoriteAddedDescriptionMany', { count: favoriteDirs.length })
+
+    toast({ title: t('apps.fileManager.content.favoriteAdded'), description })
+    window.dispatchEvent(new CustomEvent('sidebar:addFavorite', { detail: favoriteDirs }))
   }
 
   const handleFileCountChange = useCallback((total: number, selected: number) => {
@@ -84,7 +91,7 @@ export function FileManagerContent({ windowId }: { windowId: string }) {
     >
       <Sidebar
         onNavigate={(path) => { setShowTrash(false); navigateTo(path) }} currentPath={currentPath}
-        onAddToFavorites={addFavorite} openGlobalMenu={openGlobalMenu} closeGlobalMenu={closeGlobalMenu}
+        openGlobalMenu={openGlobalMenu} closeGlobalMenu={closeGlobalMenu}
         activeNodeId={activeNodeId} onSwitchNode={(nodeId) => { setShowTrash(false); handleSwitchNode(nodeId) }}
         onNavigateNode={(nodeId, path) => { setShowTrash(false); handleNavigateNode(nodeId, path) }}
         totalCount={fileCounts.total} selectedCount={fileCounts.selected}

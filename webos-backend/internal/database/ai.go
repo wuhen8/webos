@@ -9,10 +9,12 @@ import (
 
 // AIConversationRow represents a row in ai_conversations.
 type AIConversationRow struct {
-	ID        string
-	Title     string
-	CreatedAt int64
-	UpdatedAt int64
+	ID         string
+	Title      string
+	ProviderID string
+	Model      string
+	CreatedAt  int64
+	UpdatedAt  int64
 }
 
 // AIMessageRow represents a row in ai_messages.
@@ -54,11 +56,20 @@ func (r AIMessageRow) MarshalJSON() ([]byte, error) {
 }
 
 // CreateConversation inserts a new conversation.
-func CreateConversation(id, title string) error {
+func CreateConversation(id, title, providerID, model string) error {
 	now := time.Now().Unix()
 	_, err := db.Exec(
-		"INSERT INTO ai_conversations(id, title, created_at, updated_at) VALUES(?, ?, ?, ?)",
-		id, title, now, now,
+		"INSERT INTO ai_conversations(id, title, provider_id, model, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?)",
+		id, title, providerID, model, now, now,
+	)
+	return err
+}
+
+// UpdateConversationModel updates the provider/model and updated_at of a conversation.
+func UpdateConversationModel(id, providerID, model string) error {
+	_, err := db.Exec(
+		"UPDATE ai_conversations SET provider_id=?, model=?, updated_at=? WHERE id=?",
+		providerID, model, time.Now().Unix(), id,
 	)
 	return err
 }
@@ -83,7 +94,7 @@ func TouchConversation(id string) error {
 
 // ListConversations returns all conversations ordered by updated_at desc.
 func ListConversations() ([]AIConversationRow, error) {
-	rows, err := db.Query("SELECT id, title, created_at, updated_at FROM ai_conversations ORDER BY updated_at DESC")
+	rows, err := db.Query("SELECT id, title, provider_id, model, created_at, updated_at FROM ai_conversations ORDER BY updated_at DESC")
 	if err != nil {
 		return nil, fmt.Errorf("list conversations: %w", err)
 	}
@@ -92,7 +103,7 @@ func ListConversations() ([]AIConversationRow, error) {
 	var result []AIConversationRow
 	for rows.Next() {
 		var r AIConversationRow
-		if err := rows.Scan(&r.ID, &r.Title, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.ProviderID, &r.Model, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan conversation: %w", err)
 		}
 		result = append(result, r)
@@ -103,8 +114,8 @@ func ListConversations() ([]AIConversationRow, error) {
 // GetConversation retrieves a single conversation by ID.
 func GetConversation(id string) (*AIConversationRow, error) {
 	var r AIConversationRow
-	err := db.QueryRow("SELECT id, title, created_at, updated_at FROM ai_conversations WHERE id=?", id).
-		Scan(&r.ID, &r.Title, &r.CreatedAt, &r.UpdatedAt)
+	err := db.QueryRow("SELECT id, title, provider_id, model, created_at, updated_at FROM ai_conversations WHERE id=?", id).
+		Scan(&r.ID, &r.Title, &r.ProviderID, &r.Model, &r.CreatedAt, &r.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

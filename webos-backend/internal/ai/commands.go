@@ -34,12 +34,12 @@ func ResolveCommand(name string) *service.CommandDef {
 func InitCommandCallbacks(svc *Service) {
 	ce := service.GetCommandExecutor()
 
-	ce.OnSwitchModel = func(ref string) (provName, modelName, switchRef string, err error) {
-		return ActionSwitchModel(ref)
+	ce.OnSwitchModel = func(convID, ref string) (provName, modelName, switchRef string, err error) {
+		return ActionSwitchModel(convID, ref)
 	}
 
-	ce.OnListModels = func() (string, error) {
-		models, err := ActionListModels()
+	ce.OnListModels = func(convID string) (string, error) {
+		models, err := ActionListModels(convID)
 		if err != nil {
 			return "", err
 		}
@@ -64,8 +64,8 @@ func InitCommandCallbacks(svc *Service) {
 		return sb.String(), nil
 	}
 
-	ce.OnGetConfig = func() (string, error) {
-		model, maxTokens, maxToolRounds, skillsDir, providerCount, err := ActionGetConfig()
+	ce.OnGetConfig = func(convID string) (string, error) {
+		model, maxTokens, maxToolRounds, skillsDir, providerCount, err := ActionGetConfig(convID)
 		if err != nil {
 			return "", err
 		}
@@ -90,12 +90,18 @@ func InitCommandCallbacks(svc *Service) {
 			result.TotalMessages, result.TotalTokens, result.CompressedCount, result.CompressedTokens, result.SummaryTokens, result.KeptMessages), nil
 	}
 
-	ce.OnGetStatus = func() (string, error) {
+	ce.OnGetStatus = func(convID string) (string, error) {
 		snap := svc.sysCtx.Snapshot()
 		h := snap.Health
 		e := snap.Executor
 		var sb strings.Builder
 		sb.WriteString("**系统状态：**\n\n")
+		if cfg, err := loadAIConfig(convID, "", ""); err == nil {
+			if convID != "" {
+				sb.WriteString(fmt.Sprintf("- 当前会话: `%s`\n", convID))
+				sb.WriteString(fmt.Sprintf("- 当前会话模型: `%s / %s`\n", cfg.ProviderName, cfg.Model))
+			}
+		}
 		sb.WriteString(fmt.Sprintf("- AI 状态: `%s`\n", e.State))
 		if e.RunningConvID != "" {
 			sb.WriteString(fmt.Sprintf("- 正在运行: `%s`\n", e.RunningConvTitle))
@@ -113,26 +119,18 @@ func InitCommandCallbacks(svc *Service) {
 		if len(snap.Jobs) > 0 {
 			sb.WriteString(fmt.Sprintf("- 定时任务: `%d` 个\n", len(snap.Jobs)))
 		}
-
-		convID := ""
-		if svc.Executor != nil {
-			convID = svc.Executor.GetActiveConvID()
-		}
 		if convID != "" {
-			cs := NewChatService(svc.Executor, svc)
-			if ctx, err := cs.GetContextStatus(convID); err == nil && ctx.MessageCount > 0 {
+			ctxSvc := NewChatService(svc.Executor, svc)
+			if ctx, err := ctxSvc.GetContextStatus(convID); err == nil && ctx != nil {
+				summaryText := "无"
+				if ctx.HasSummary {
+					summaryText = fmt.Sprintf("有 (截至消息 #%d)", ctx.SummaryUpToID)
+				}
 				sb.WriteString("\n**上下文状态：**\n\n")
 				sb.WriteString(fmt.Sprintf("- 模型: `%s`\n", ctx.Model))
 				sb.WriteString(fmt.Sprintf("- 消息数: `%d`\n", ctx.MessageCount))
-				sb.WriteString(fmt.Sprintf("- 上下文 Token: `%d` / `%d` (`%d%%`)\n", ctx.ContextTokens, ctx.ContextWindow, ctx.ContextPercent))
-				if ctx.HasSummary {
-					sb.WriteString(fmt.Sprintf("- 摘要: 已压缩 (覆盖到消息 #%d)\n", ctx.SummaryUpToID))
-				} else {
-					sb.WriteString("- 摘要: 无\n")
-				}
-				if ctx.Compressed {
-					sb.WriteString("- 截断: 是 (早期消息已丢弃)\n")
-				}
+				sb.WriteString(fmt.Sprintf("- 上下文 Token: `%d / %d (%d%%)`\n", ctx.ContextTokens, ctx.ContextWindow, ctx.ContextPercent))
+				sb.WriteString(fmt.Sprintf("- 摘要: `%s`\n", summaryText))
 			}
 		}
 		return sb.String(), nil
@@ -140,8 +138,8 @@ func InitCommandCallbacks(svc *Service) {
 }
 
 // ActionGetConfig returns the current AI config summary.
-func ActionGetConfig() (model string, maxTokens, maxToolRounds int, skillsDir string, providerCount int, err error) {
-	cfg, e := loadAIConfig()
+func ActionGetConfig(convID string) (model string, maxTokens, maxToolRounds int, skillsDir string, providerCount int, err error) {
+	cfg, e := loadAIConfig(convID, "", "")
 	if e != nil {
 		err = fmt.Errorf("AI 未配置: %s", e.Error())
 		return
@@ -165,33 +163,46 @@ type ModelInfo struct {
 }
 
 // ActionListModels returns all available models across providers.
-func ActionListModels() ([]ModelInfo, error) {
+func ActionListModels(convID string) ([]ModelInfo, error) {
 	multi, err := loadMultiConfig()
 	if err != nil {
 		return nil, fmt.Errorf("AI 未配置: %s", err.Error())
 	}
+
+	selectedProviderID := ""
+	selectedModel := ""
+	if convID != "" {
+		cfg, err := loadAIConfig(convID, "", "")
+		if err == nil {
+			selectedProviderID = cfg.ProviderID
+			selectedModel = cfg.Model
+		}
+	}
+
 	var result []ModelInfo
 	for _, p := range multi.Providers {
 		for _, m := range p.Models {
 			result = append(result, ModelInfo{
 				Provider: p.Name,
 				Model:    m,
-				Active:   p.ID == multi.ActiveProvider && m == multi.ActiveModel,
+				Active:   p.ID == selectedProviderID && m == selectedModel,
 			})
 		}
 	}
 	return result, nil
 }
 
-// ActionSwitchModel switches the active model.
-func ActionSwitchModel(ref string) (providerName, modelName, switchRef string, err error) {
+// ActionSwitchModel resolves a model reference for a conversation.
+func ActionSwitchModel(convID, ref string) (providerName, modelName, switchRef string, err error) {
 	if ref == "" {
-		cfg, e := loadAIConfig()
+		cfg, e := loadAIConfig(convID, "", "")
 		if e != nil {
 			err = fmt.Errorf("AI 未配置")
 			return
 		}
+		providerName = cfg.ProviderName
 		modelName = cfg.Model
+		switchRef = cfg.ProviderID + "/" + cfg.Model
 		return
 	}
 

@@ -28,6 +28,8 @@ func ExternalAISendHandler(c *gin.Context) {
 		ConversationID string `json:"conversationId"`
 		Message        string `json:"message"`
 		ClientID       string `json:"clientId"`
+		ProviderID     string `json:"providerId"`
+		Model          string `json:"model"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.Message == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "message is required"})
@@ -41,19 +43,12 @@ func ExternalAISendHandler(c *gin.Context) {
 	}
 
 	// All messages (including commands) go through ChatService
-	result := chatSvc.SendMessage(req.ConversationID, req.Message, clientID)
+	result := chatSvc.SendMessage(req.ConversationID, req.Message, clientID, req.ProviderID, req.Model)
 	if !result.Accepted {
-		if result.Reason == "inactive_conv" {
-			c.JSON(http.StatusConflict, gin.H{
-				"error":           "inactive conversation",
-				"activeConvId":    result.ActiveConvID,
-				"activeConvTitle": result.ActiveConvTitle,
-			})
-		} else {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "enqueue failed"})
-		}
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "enqueue failed"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true, "conversationId": chatSvc.GetActiveConvID()})
+	conversationID := result.ConversationID
+	c.JSON(http.StatusOK, gin.H{"ok": true, "conversationId": conversationID})
 }

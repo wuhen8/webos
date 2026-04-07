@@ -35,17 +35,20 @@ type CapabilityHandler func(appID string, params json.RawMessage) (interface{}, 
 var globalRouter *CapabilityRouter
 
 var capabilityDeps struct {
-	chatCommands      func() interface{}
-	chatSend          func(conversationID, messageContent, clientID string) interface{}
-	chatHistory       func() (interface{}, error)
-	chatMessages      func(conversationID string) (interface{}, error)
-	chatStatus        func(conversationID string) interface{}
-	executorStatus    func() interface{}
-	chatDelete        func(conversationID string) error
-	chatCleanup       func()
-	registerClientCtx func(payload json.RawMessage) (interface{}, error)
-	broadcastNotify   func(level, title, message, source, target string)
-	shellExec         func(command string) (string, string, int, error)
+	chatCommands           func() interface{}
+	chatSend               func(conversationID, messageContent, clientID, providerID, model string) interface{}
+	chatHistory            func() (interface{}, error)
+	chatMessages           func(conversationID string) (interface{}, error)
+	chatStatus             func(conversationID string) interface{}
+	chatStop               func(conversationID string) (interface{}, error)
+	chatConversationConfig func(conversationID string) (interface{}, error)
+	chatSetConversationCfg func(conversationID, providerID, model string) (interface{}, error)
+	executorStatus         func() interface{}
+	chatDelete             func(conversationID string) error
+	chatCleanup            func()
+	registerClientCtx      func(payload json.RawMessage) (interface{}, error)
+	broadcastNotify        func(level, title, message, source, target string)
+	shellExec              func(command string) (string, string, int, error)
 }
 
 func init() {
@@ -58,10 +61,13 @@ func GetRouter() *CapabilityRouter {
 
 func ConfigureCapabilityDeps(
 	chatCommands func() interface{},
-	chatSend func(conversationID, messageContent, clientID string) interface{},
+	chatSend func(conversationID, messageContent, clientID, providerID, model string) interface{},
 	chatHistory func() (interface{}, error),
 	chatMessages func(conversationID string) (interface{}, error),
 	chatStatus func(conversationID string) interface{},
+	chatStop func(conversationID string) (interface{}, error),
+	chatConversationConfig func(conversationID string) (interface{}, error),
+	chatSetConversationCfg func(conversationID, providerID, model string) (interface{}, error),
 	executorStatus func() interface{},
 	chatDelete func(conversationID string) error,
 	chatCleanup func(),
@@ -74,6 +80,9 @@ func ConfigureCapabilityDeps(
 	capabilityDeps.chatHistory = chatHistory
 	capabilityDeps.chatMessages = chatMessages
 	capabilityDeps.chatStatus = chatStatus
+	capabilityDeps.chatStop = chatStop
+	capabilityDeps.chatConversationConfig = chatConversationConfig
+	capabilityDeps.chatSetConversationCfg = chatSetConversationCfg
 	capabilityDeps.executorStatus = executorStatus
 	capabilityDeps.chatDelete = chatDelete
 	capabilityDeps.chatCleanup = chatCleanup
@@ -96,6 +105,9 @@ func NewCapabilityRouter() *CapabilityRouter {
 	r.Register("chat.history", chatHistoryCapability)
 	r.Register("chat.messages", chatMessagesCapability)
 	r.Register("chat.status", chatStatusCapability)
+	r.Register("chat.stop", chatStopCapability)
+	r.Register("chat.conversation_config_get", chatConversationConfigCapability)
+	r.Register("chat.conversation_config_set", chatConversationConfigSetCapability)
 	r.Register("chat.executor_status", chatExecutorStatusCapability)
 	r.Register("chat.delete", chatDeleteCapability)
 	r.Register("chat.cleanup", chatCleanupCapability)
@@ -219,11 +231,13 @@ func chatSendCapability(appID string, params json.RawMessage) (interface{}, erro
 		ConversationID string `json:"conversationId"`
 		MessageContent string `json:"messageContent"`
 		ClientID       string `json:"clientId"`
+		ProviderID     string `json:"providerId"`
+		Model          string `json:"model"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
 	}
-	return capabilityDeps.chatSend(p.ConversationID, p.MessageContent, p.ClientID), nil
+	return capabilityDeps.chatSend(p.ConversationID, p.MessageContent, p.ClientID, p.ProviderID, p.Model), nil
 }
 
 func chatHistoryCapability(appID string, params json.RawMessage) (interface{}, error) {
@@ -257,6 +271,47 @@ func chatStatusCapability(appID string, params json.RawMessage) (interface{}, er
 		return nil, err
 	}
 	return capabilityDeps.chatStatus(p.ConversationID), nil
+}
+
+func chatStopCapability(appID string, params json.RawMessage) (interface{}, error) {
+	if capabilityDeps.chatStop == nil {
+		return nil, fmt.Errorf("chat stop unavailable")
+	}
+	var p struct {
+		ConversationID string `json:"conversationId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	return capabilityDeps.chatStop(p.ConversationID)
+}
+
+func chatConversationConfigCapability(appID string, params json.RawMessage) (interface{}, error) {
+	if capabilityDeps.chatConversationConfig == nil {
+		return nil, fmt.Errorf("chat conversation config unavailable")
+	}
+	var p struct {
+		ConversationID string `json:"conversationId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	return capabilityDeps.chatConversationConfig(p.ConversationID)
+}
+
+func chatConversationConfigSetCapability(appID string, params json.RawMessage) (interface{}, error) {
+	if capabilityDeps.chatSetConversationCfg == nil {
+		return nil, fmt.Errorf("chat conversation config update unavailable")
+	}
+	var p struct {
+		ConversationID string `json:"conversationId"`
+		ProviderID     string `json:"providerId"`
+		Model          string `json:"model"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	return capabilityDeps.chatSetConversationCfg(p.ConversationID, p.ProviderID, p.Model)
 }
 
 func chatExecutorStatusCapability(appID string, params json.RawMessage) (interface{}, error) {

@@ -66,24 +66,24 @@ type AIProvider struct {
 
 // AIMultiConfig is the top-level AI configuration supporting multiple providers.
 type AIMultiConfig struct {
-	Providers      []AIProvider `json:"providers"`
-	ActiveProvider string       `json:"activeProvider"`
-	ActiveModel    string       `json:"activeModel"`
+	Providers []AIProvider `json:"providers"`
 }
 
 // AIConfig stores the flat LLM API configuration used by ChatStream.
 type AIConfig struct {
-	BaseURL        string `json:"baseUrl"`
-	APIKey         string `json:"apiKey"`
-	Model          string `json:"model"`
-	APIFormat      string `json:"apiFormat,omitempty"`       // "openai" (default) or "anthropic"
-	Proxy          string `json:"proxy,omitempty"`           // HTTP/HTTPS/SOCKS5 代理地址
-	MaxTokens      int    `json:"maxTokens,omitempty"`
-	MaxInputTokens int    `json:"maxInputTokens,omitempty"` // 模型最大输入 token 限制，默认 128000
-	MaxToolRounds  int    `json:"maxToolRounds,omitempty"`
-	RPM            int    `json:"rpm,omitempty"`            // requests per minute, default 10
-	ContextWindow  int    `json:"contextWindow,omitempty"`  // 上下文窗口大小，默认 32000
-	RecentMessages int    `json:"recentMessages,omitempty"` // 保留最近消息数，默认 5
+	ProviderID      string `json:"providerId,omitempty"`
+	ProviderName    string `json:"providerName,omitempty"`
+	BaseURL         string `json:"baseUrl"`
+	APIKey          string `json:"apiKey"`
+	Model           string `json:"model"`
+	APIFormat       string `json:"apiFormat,omitempty"`       // "openai" (default) or "anthropic"
+	Proxy           string `json:"proxy,omitempty"`           // HTTP/HTTPS/SOCKS5 代理地址
+	MaxTokens       int    `json:"maxTokens,omitempty"`
+	MaxInputTokens  int    `json:"maxInputTokens,omitempty"` // 模型最大输入 token 限制，默认 128000
+	MaxToolRounds   int    `json:"maxToolRounds,omitempty"`
+	RPM             int    `json:"rpm,omitempty"`            // requests per minute, default 10
+	ContextWindow   int    `json:"contextWindow,omitempty"`  // 上下文窗口大小，默认 32000
+	RecentMessages  int    `json:"recentMessages,omitempty"` // 保留最近消息数，默认 5
 }
 
 // TokenUsage holds token estimation info for a chat turn.

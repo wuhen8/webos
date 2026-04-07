@@ -35,7 +35,12 @@ type CommandResult struct {
 	// Action flags — the handler checks these to decide what to do next.
 	ClearHistory bool   // /reset: clear conversation history
 	StopChat     bool   // /stop: cancel active generation
-	SwitchModel  string // /model <ref>: switch active model
+	SwitchModel  string // /model <ref>: switch conversation model
+	ConversationID     string // conversation selected/created by command
+	ConversationAction string // "created" or "switched"
+	SwitchConversation bool   // whether the client should update its current conversation binding
+	RoutePolicy        string // "directed", "broadcast", or "unowned"
+	OwnerClientID      string // logical client/app owner for directed command results
 }
 
 // commandRegistry holds all registered slash commands.
@@ -55,9 +60,9 @@ func init() {
 		{Name: "status", Description: "系统健康状态", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30},
 		{Name: "compress", Description: "手动压缩当前对话上下文（生成摘要替代早期消息）", Category: "chat", CategoryLabel: "💬 对话", CategoryOrder: 10},
 		{Name: "conv list", Description: "列出所有对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15},
-		{Name: "conv switch", Description: "切换活跃对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15, Args: "<id>"},
-		{Name: "conv new", Description: "创建新对话并激活", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15},
-		{Name: "conv rename", Description: "重命名当前对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15, Args: "<新名称>"},
+		{Name: "conv switch", Description: "切换当前聊天绑定的对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15, Args: "<id>"},
+		{Name: "conv new", Description: "创建新对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15},
+		{Name: "conv rename", Description: "重命名指定对话或当前对话", Category: "conv", CategoryLabel: "📋 会话管理", CategoryOrder: 15, Args: "<id> <新名称>"},
 		{Name: "notify", Description: "系统通知：广播到所有客户端（Web/Telegram/飞书），@客户端ID 可定向推送，list 查看已连接客户端", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "[list | <消息> | @客户端ID <消息>]"},
 		{Name: "jobs", Description: "列出所有定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30},
 		{Name: "job run", Description: "立即执行指定定时任务", Category: "system", CategoryLabel: "🔧 系统", CategoryOrder: 30, Args: "<任务ID>"},
@@ -124,33 +129,20 @@ type NotifySink interface {
 	OnSystemEvent(msgType string, data interface{})
 }
 
-// ConvSwitcher abstracts conversation switching for /conv commands.
-type ConvSwitcher interface {
-	GetActiveConvID() string
-	SwitchConv(convID string) ConvSwitchResult
-	Stop()
-}
-
-// ConvSwitchResult is the result of a conversation switch attempt.
-type ConvSwitchResult struct {
-	OK               bool
-	RunningConvTitle string
-}
-
 // CommandExecutor executes slash commands.
 // AI-specific commands are handled via injected callbacks.
 type CommandExecutor struct {
 	// AI callbacks (injected by ai package)
-	OnSwitchModel func(ref string) (provName, modelName, switchRef string, err error)
-	OnListModels  func() (text string, err error)
-	OnGetConfig   func() (text string, err error)
+	OnSwitchModel func(convID, ref string) (provName, modelName, switchRef string, err error)
+	OnListModels  func(convID string) (text string, err error)
+	OnGetConfig   func(convID string) (text string, err error)
 	OnCompress    func(convID string) (text string, err error)
-	OnGetStatus   func() (text string, err error)
+	OnGetStatus   func(convID string) (text string, err error)
 	OnAISend      func(convID, message, clientID string) (accepted bool, reason string) // 给 AI 发消息
+	OnStop        func(convID string)
 
 	// System dependencies
-	NotifySink   NotifySink
-	ConvSwitcher ConvSwitcher
+	NotifySink NotifySink
 }
 
 var globalCommandExecutor *CommandExecutor
@@ -171,61 +163,66 @@ func (ce *CommandExecutor) ExecuteCommand(convID, cmdName, cmdArgs string) Comma
 // ExecuteCommandForClient runs a slash command with an optional client identity.
 // clientID is only used by commands that need to route follow-up events back to a caller, such as /ai.
 func (ce *CommandExecutor) ExecuteCommandForClient(convID, cmdName, cmdArgs, clientID string) CommandResult {
-	if convID == "" && ce.ConvSwitcher != nil {
-		convID = ce.ConvSwitcher.GetActiveConvID()
-	}
+	var result CommandResult
 	switch cmdName {
 	case "help":
-		return ce.cmdHelp()
+		result = ce.cmdHelp()
 	case "reset", "clear":
-		return CommandResult{Text: "对话已重置。", ClearHistory: true}
+		result = CommandResult{Text: "对话已重置。", ClearHistory: true}
 	case "host", "sandbox", "mode":
-		return CommandResult{Text: "全局执行模式已移除。AI 现在通过 shell 工具的 mode 参数自主选择执行环境（host/sandbox）。"}
+		result = CommandResult{Text: "全局执行模式已移除。AI 现在通过 shell 工具的 mode 参数自主选择执行环境（host/sandbox）。"}
 	case "model":
-		return ce.cmdModel(cmdArgs)
+		result = ce.cmdModel(convID, cmdArgs)
 	case "models":
-		return ce.cmdModels()
+		result = ce.cmdModels(convID)
 	case "stop":
-		return CommandResult{Text: "已停止生成。", StopChat: true}
+		result = CommandResult{Text: "已停止生成。", StopChat: true}
 	case "config":
-		return ce.cmdConfig()
+		result = ce.cmdConfig(convID)
 	case "tasks", "t":
-		return ce.cmdTasks()
+		result = ce.cmdTasks()
 	case "cancel":
-		return ce.cmdCancel(cmdArgs)
+		result = ce.cmdCancel(cmdArgs)
 	case "restart":
-		return ce.cmdRestart()
+		result = ce.cmdRestart()
 	case "status":
-		return ce.cmdStatus()
+		result = ce.cmdStatus(convID)
 	case "compress":
-		return ce.cmdCompress(convID)
+		result = ce.cmdCompress(convID)
 	case "conv":
-		return ce.cmdConv(cmdArgs)
+		result = ce.cmdConv(cmdArgs)
 	case "notify":
-		return ce.cmdNotify(cmdArgs)
+		result = ce.cmdNotify(cmdArgs)
 	case "ai":
-		return ce.cmdAI(convID, cmdArgs, clientID)
+		result = ce.cmdAI(convID, cmdArgs, clientID)
 	case "jobs":
-		return ce.cmdJobs()
+		result = ce.cmdJobs()
 	case "job":
-		return ce.cmdJob(cmdArgs)
+		result = ce.cmdJob(cmdArgs)
 	case "guard":
-		return ce.cmdGuard(cmdArgs)
+		result = ce.cmdGuard(cmdArgs)
 	default:
-		return CommandResult{
+		result = CommandResult{
 			Text:    fmt.Sprintf("未知命令: /%s\n输入 /help 查看可用命令。", cmdName),
 			IsError: true,
 		}
 	}
+	if clientID != "" {
+		result.RoutePolicy = "directed"
+		result.OwnerClientID = clientID
+	} else {
+		result.RoutePolicy = "unowned"
+	}
+	return result
 }
 
 // HandleCommandResult processes the side effects of a CommandResult.
 func (ce *CommandExecutor) HandleCommandResult(convID string, result CommandResult) {
-	if result.StopChat && ce.ConvSwitcher != nil {
-		ce.ConvSwitcher.Stop()
+	if result.StopChat && ce.OnStop != nil {
+		ce.OnStop(convID)
 	}
-	if result.SwitchModel != "" {
-		ce.applySwitchModel(result.SwitchModel)
+	if result.SwitchModel != "" && convID != "" {
+		ce.applySwitchModel(convID, result.SwitchModel)
 	}
 }
 
@@ -287,19 +284,18 @@ func (ce *CommandExecutor) cmdHelp() CommandResult {
 	return CommandResult{Text: sb.String()}
 }
 
-func (ce *CommandExecutor) cmdModel(args string) CommandResult {
+func (ce *CommandExecutor) cmdModel(convID, args string) CommandResult {
 	if ce.OnSwitchModel == nil {
 		return CommandResult{Text: "AI 未配置。", IsError: true}
 	}
 	if args == "" {
-		// Show current model — pass empty ref to get current
-		_, modelName, _, err := ce.OnSwitchModel("")
+		_, modelName, _, err := ce.OnSwitchModel(convID, "")
 		if err != nil {
 			return CommandResult{Text: err.Error(), IsError: true}
 		}
-		return CommandResult{Text: fmt.Sprintf("当前模型: **%s**\n\n使用 `/model <供应商名/模型名>` 切换模型，或 `/models` 查看所有可用模型。", modelName)}
+		return CommandResult{Text: fmt.Sprintf("当前会话模型: **%s**\n\n使用 `/model <供应商名/模型名>` 切换模型，或 `/models` 查看所有可用模型。", modelName)}
 	}
-	provName, modelName, ref, err := ce.OnSwitchModel(args)
+	provName, modelName, ref, err := ce.OnSwitchModel(convID, args)
 	if err != nil {
 		return CommandResult{Text: err.Error(), IsError: true}
 	}
@@ -309,22 +305,22 @@ func (ce *CommandExecutor) cmdModel(args string) CommandResult {
 	}
 }
 
-func (ce *CommandExecutor) cmdModels() CommandResult {
+func (ce *CommandExecutor) cmdModels(convID string) CommandResult {
 	if ce.OnListModels == nil {
 		return CommandResult{Text: "AI 未配置。", IsError: true}
 	}
-	text, err := ce.OnListModels()
+	text, err := ce.OnListModels(convID)
 	if err != nil {
 		return CommandResult{Text: err.Error(), IsError: true}
 	}
 	return CommandResult{Text: text}
 }
 
-func (ce *CommandExecutor) cmdConfig() CommandResult {
+func (ce *CommandExecutor) cmdConfig(convID string) CommandResult {
 	if ce.OnGetConfig == nil {
 		return CommandResult{Text: "AI 未配置。", IsError: true}
 	}
-	text, err := ce.OnGetConfig()
+	text, err := ce.OnGetConfig(convID)
 	if err != nil {
 		return CommandResult{Text: err.Error(), IsError: true}
 	}
@@ -395,9 +391,9 @@ func (ce *CommandExecutor) cmdCompress(convID string) CommandResult {
 	return CommandResult{Text: text}
 }
 
-func (ce *CommandExecutor) cmdStatus() CommandResult {
+func (ce *CommandExecutor) cmdStatus(convID string) CommandResult {
 	if ce.OnGetStatus != nil {
-		text, err := ce.OnGetStatus()
+		text, err := ce.OnGetStatus(convID)
 		if err != nil {
 			return CommandResult{Text: err.Error(), IsError: true}
 		}
@@ -436,7 +432,7 @@ func (ce *CommandExecutor) cmdConv(args string) CommandResult {
 	case "rename":
 		return ce.cmdConvRename(subArgs)
 	default:
-		return CommandResult{Text: "用法: /conv list | /conv switch <id> | /conv new | /conv rename <新名称>", IsError: true}
+		return CommandResult{Text: "用法: /conv list | /conv switch <id> | /conv new | /conv rename <id> <新名称>", IsError: true}
 	}
 }
 
@@ -465,76 +461,57 @@ func (ce *CommandExecutor) cmdConvSwitch(args string) CommandResult {
 	if err != nil {
 		return CommandResult{Text: "查询对话失败: " + err.Error(), IsError: true}
 	}
-	found := false
 	for _, c := range convs {
 		if c.ID == convID {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return CommandResult{Text: "对话不存在: " + convID, IsError: true}
-	}
-	if ce.ConvSwitcher != nil {
-		result := ce.ConvSwitcher.SwitchConv(convID)
-		if !result.OK {
 			return CommandResult{
-				Text:    fmt.Sprintf("无法切换：「%s」正在运行中，请先发送 /stop 停止", result.RunningConvTitle),
-				IsError: true,
+				Text:               "已切换到对话: `" + convID + "`",
+				ConversationID:     convID,
+				ConversationAction: "switched",
+				SwitchConversation: true,
 			}
 		}
 	}
-	return CommandResult{Text: "已切换到对话: " + convID}
+	return CommandResult{Text: "对话不存在: " + convID, IsError: true}
 }
 
 func (ce *CommandExecutor) cmdConvNew() CommandResult {
-	// 获取当前活跃会话，稍后清空其消息队列
-	var oldConvID string
-	if ce.ConvSwitcher != nil {
-		oldConvID = ce.ConvSwitcher.GetActiveConvID()
-	}
-
 	convID := genCommandID()
 	title := "新对话"
-	if err := database.CreateConversation(convID, title); err != nil {
+
+	providerID, model, err := defaultConversationSelection()
+	if err != nil {
 		return CommandResult{Text: "创建对话失败: " + err.Error(), IsError: true}
 	}
-
-	// 清空旧会话的待处理消息
-	if oldConvID != "" {
-		if err := database.DeleteAIQueueByConversation(oldConvID); err != nil {
-			log.Printf("[cmdConvNew] failed to clear queue for conv %s: %v", oldConvID, err)
-		}
+	if err := database.CreateConversation(convID, title, providerID, model); err != nil {
+		return CommandResult{Text: "创建对话失败: " + err.Error(), IsError: true}
 	}
-
-	if ce.ConvSwitcher != nil {
-		result := ce.ConvSwitcher.SwitchConv(convID)
-		if !result.OK {
-			return CommandResult{
-				Text:    fmt.Sprintf("对话已创建 `%s`，但无法激活：「%s」正在运行中，请先发送 /stop 停止", convID, result.RunningConvTitle),
-				IsError: true,
-			}
-		}
+	return CommandResult{
+		Text:               fmt.Sprintf("已创建新对话: `%s`", convID),
+		ConversationID:     convID,
+		ConversationAction: "created",
+		SwitchConversation: true,
 	}
-	return CommandResult{Text: fmt.Sprintf("已创建新对话: `%s`", convID)}
 }
 
-func (ce *CommandExecutor) cmdConvRename(newTitle string) CommandResult {
-	newTitle = strings.TrimSpace(newTitle)
+func (ce *CommandExecutor) cmdConvRename(args string) CommandResult {
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return CommandResult{Text: "用法: /conv rename <id> <新名称>", IsError: true}
+	}
+
+	parts := strings.Fields(args)
+	if len(parts) < 2 {
+		return CommandResult{Text: "用法: /conv rename <id> <新名称>", IsError: true}
+	}
+	convID := parts[0]
+	newTitle := strings.TrimSpace(strings.TrimPrefix(args, convID))
 	if newTitle == "" {
-		return CommandResult{Text: "用法: /conv rename <新名称>", IsError: true}
+		return CommandResult{Text: "用法: /conv rename <id> <新名称>", IsError: true}
 	}
 
-	// 获取当前激活会话ID
-	var convID string
-	if ce.ConvSwitcher != nil {
-		convID = ce.ConvSwitcher.GetActiveConvID()
+	if _, err := database.GetConversation(convID); err != nil {
+		return CommandResult{Text: "查询对话失败: " + err.Error(), IsError: true}
 	}
-	if convID == "" {
-		return CommandResult{Text: "当前没有激活的对话", IsError: true}
-	}
-
-	// 更新会话标题
 	if err := database.UpdateConversationTitle(convID, newTitle); err != nil {
 		return CommandResult{Text: "重命名失败: " + err.Error(), IsError: true}
 	}
@@ -913,33 +890,54 @@ func (ce *CommandExecutor) cmdJob(args string) CommandResult {
 	}
 }
 
-func (ce *CommandExecutor) applySwitchModel(ref string) {
+func (ce *CommandExecutor) applySwitchModel(convID, ref string) {
+	if convID == "" {
+		return
+	}
 	parts := strings.SplitN(ref, "/", 2)
 	if len(parts) != 2 {
 		return
 	}
-	// Read current config, update active provider/model, save back
+	if err := database.UpdateConversationModel(convID, parts[0], parts[1]); err != nil {
+		log.Printf("[commands] failed to update conversation model for %s: %v", convID, err)
+	}
+}
+
+type commandAIProvider struct {
+	ID     string   `json:"id"`
+	Name   string   `json:"name"`
+	Models []string `json:"models"`
+}
+
+type commandAIMultiConfig struct {
+	Providers []commandAIProvider `json:"providers"`
+}
+
+func defaultConversationSelection() (string, string, error) {
 	db := database.DB()
 	var val string
-	err := db.QueryRow("SELECT value FROM preferences WHERE key = 'ai_config'").Scan(&val)
-	if err != nil {
-		return
+	if err := db.QueryRow("SELECT value FROM preferences WHERE key = 'ai_config'").Scan(&val); err != nil {
+		return "", "", fmt.Errorf("请先配置 AI")
 	}
 	var raw string
 	if json.Unmarshal([]byte(val), &raw) != nil {
 		raw = val
 	}
-	var cfg map[string]interface{}
-	if json.Unmarshal([]byte(raw), &cfg) != nil {
-		return
+	var cfg commandAIMultiConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return "", "", fmt.Errorf("AI 配置格式错误: %v", err)
 	}
-	cfg["activeProvider"] = parts[0]
-	cfg["activeModel"] = parts[1]
-	b, err := json.Marshal(cfg)
-	if err != nil {
-		return
+	if len(cfg.Providers) == 0 {
+		return "", "", fmt.Errorf("AI 配置不完整，没有供应商")
 	}
-	database.SetPreference("ai_config", string(b))
+	provider := cfg.Providers[0]
+	if provider.ID == "" {
+		return "", "", fmt.Errorf("AI 配置不完整，默认供应商缺少 ID")
+	}
+	if len(provider.Models) == 0 || strings.TrimSpace(provider.Models[0]) == "" {
+		return "", "", fmt.Errorf("供应商 %s 没有配置模型", provider.Name)
+	}
+	return provider.ID, provider.Models[0], nil
 }
 
 // genCommandID generates a random hex ID for conversations.

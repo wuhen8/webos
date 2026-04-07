@@ -13,6 +13,8 @@ import (
 	"unsafe"
 )
 
+const scheduledAIConversationID = "scheduled_ai"
+
 var (
 	appID       string
 	appSecret   string
@@ -29,9 +31,91 @@ var (
 	tickCount    int
 
 	// 多用户授权
-	allowedChatIDs map[string]bool // 授权的 chat_id 集合
-	activeChatID   string          // 当前活跃的 chat_id（AI 回复发到这里）
+	allowedChatIDs    map[string]bool // 授权的 chat_id 集合
+	chatConversations map[string]string
+	conversationChats map[string]string
+	activeChatID      string // 当前活跃的 chat_id（AI 回复发到这里）
 )
+
+func feishuConversationKVKey(chatID string) string {
+	return "feishu_conv:" + strings.TrimSpace(chatID)
+}
+
+func getCurrentConversationID(chatID string) string {
+	chatID = strings.TrimSpace(chatID)
+	if chatID == "" {
+		return ""
+	}
+	if convID := strings.TrimSpace(chatConversations[chatID]); convID != "" {
+		return convID
+	}
+	convID := strings.TrimSpace(kvGet(feishuConversationKVKey(chatID)))
+	if convID != "" {
+		chatConversations[chatID] = convID
+		conversationChats[convID] = chatID
+	}
+	return convID
+}
+
+func setCurrentConversationID(chatID, convID string) {
+	chatID = strings.TrimSpace(chatID)
+	convID = strings.TrimSpace(convID)
+	if chatID == "" || convID == "" {
+		return
+	}
+	if prev := strings.TrimSpace(chatConversations[chatID]); prev != "" && prev != convID {
+		delete(conversationChats, prev)
+	}
+	if chatConversations[chatID] == convID {
+		conversationChats[convID] = chatID
+		return
+	}
+	chatConversations[chatID] = convID
+	conversationChats[convID] = chatID
+	kvSet(feishuConversationKVKey(chatID), convID)
+}
+
+func bindActiveChat(chatID string) string {
+	activeChatID = strings.TrimSpace(chatID)
+	return getCurrentConversationID(activeChatID)
+}
+
+func ensureConversationID(chatID, userText string) string {
+	convID := bindActiveChat(chatID)
+	if convID != "" {
+		return convID
+	}
+	placeholder := strings.TrimSpace(userText)
+	if placeholder == "" {
+		placeholder = "[飞书会话初始化]"
+	}
+	resp := request("chat.send", map[string]interface{}{
+		"conversationId": "",
+		"messageContent": placeholder,
+		"clientId":       "feishu-ai-bot",
+	})
+	var result struct {
+		Accepted       bool   `json:"accepted"`
+		Reason         string `json:"reason"`
+		ConversationID string `json:"conversationId"`
+	}
+	_ = json.Unmarshal([]byte(resp), &result)
+	if !result.Accepted {
+		if strings.TrimSpace(result.Reason) != "" {
+			logMsg(fmt.Sprintf("ERROR: 创建飞书会话失败 chat=%s reason=%s", chatID, result.Reason))
+		} else {
+			logMsg(fmt.Sprintf("ERROR: 创建飞书会话失败 chat=%s", chatID))
+		}
+		return ""
+	}
+	convID = strings.TrimSpace(result.ConversationID)
+	if convID != "" {
+		setCurrentConversationID(chatID, convID)
+		activeChatID = strings.TrimSpace(chatID)
+		return convID
+	}
+	return bindActiveChat(chatID)
+}
 
 func main() {}
 
@@ -53,18 +137,14 @@ func ensureInit() {
 
 	// 加载授权 chat_id 列表
 	allowedChatIDs = make(map[string]bool)
+	chatConversations = make(map[string]string)
+	conversationChats = make(map[string]string)
 	loadFeishuAllowedChatIDs()
 
 	if len(allowedChatIDs) == 0 {
 		logMsg("自动注册模式：首个发消息的用户将被自动授权")
 	} else {
 		logMsg(fmt.Sprintf("授权 chat_id: %d 个", len(allowedChatIDs)))
-		// 自动设置 activeChatID 为第一个授权用户
-		for cid := range allowedChatIDs {
-			activeChatID = cid
-			logMsg(fmt.Sprintf("自动设置活跃 chat: %s", cid))
-			break
-		}
 	}
 	request("client_context.register", map[string]interface{}{
 		"id":           "feishu-ai-bot",
@@ -108,7 +188,7 @@ func on_event(ptr uint32, size uint32) uint32 {
 	case "chat.delta":
 		onChatDelta(ev.Params)
 	case "chat.done":
-		onChatDone()
+		onChatDone(ev.Params)
 	case "chat.error":
 		onChatError(ev.Params)
 	case "chat.command_result":
@@ -483,11 +563,19 @@ func handleTextMessage(msg struct {
 		return
 	}
 
-	activeChatID = chatID
+	convID := bindActiveChat(chatID)
 	logMsg(fmt.Sprintf("[chat:%s] %s: %s", chatID, senderOpenID, userText))
 
 	deltaCount = 0
+	replyBuf.Reset()
+	if convID == "" {
+		convID = ensureConversationID(chatID, userText)
+	}
+	if convID == "" {
+		return
+	}
 	request("chat.send", map[string]interface{}{
+		"conversationId": convID,
 		"messageContent": userText,
 		"clientId":       "feishu-ai-bot",
 	})
@@ -510,8 +598,10 @@ func handleImageMessage(msg struct {
 
 	logMsg(fmt.Sprintf("[chat:%s] %s 发送图片: image_key=%s", chatID, senderOpenID, content.ImageKey))
 
+	convID := bindActiveChat(chatID)
+
 	// 异步下载图片
-	downloadFeishuMediaAsync(msg.MessageID, content.ImageKey, "image", chatID, senderOpenID)
+	downloadFeishuMediaAsync(msg.MessageID, content.ImageKey, "image", chatID, senderOpenID, convID)
 }
 
 // handleFileMessage 处理文件消息
@@ -537,8 +627,10 @@ func handleFileMessage(msg struct {
 
 	logMsg(fmt.Sprintf("[chat:%s] %s 发送文件: file_key=%s, name=%s", chatID, senderOpenID, content.FileKey, fileName))
 
+	convID := bindActiveChat(chatID)
+
 	// 异步下载文件
-	reqID := sendDownloadRequest(msg.MessageID, content.FileKey, "file", chatID, senderOpenID, fileName)
+	reqID := sendDownloadRequest(msg.MessageID, content.FileKey, "file", chatID, senderOpenID, fileName, convID)
 	if reqID == "" {
 		logMsg("ERROR: 发起文件下载请求失败")
 	}
@@ -572,13 +664,6 @@ func isFeishuChatAllowed(cid string) bool {
 	return allowedChatIDs[cid]
 }
 
-func getChatID() string {
-	if activeChatID != "" {
-		return activeChatID
-	}
-	return configGet("feishu_chat_id")
-}
-
 func stripAtMention(text string) string {
 	for strings.Contains(text, "@_user_") {
 		start := strings.Index(text, "@_user_")
@@ -591,46 +676,89 @@ func stripAtMention(text string) string {
 	return strings.TrimSpace(text)
 }
 
+func conversationChatID(convID string) string {
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return strings.TrimSpace(activeChatID)
+	}
+	if chatID := lookupConversationChatID(convID); chatID != "" {
+		return chatID
+	}
+	return strings.TrimSpace(activeChatID)
+}
+
+func lookupConversationChatID(convID string) string {
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return ""
+	}
+	return strings.TrimSpace(conversationChats[convID])
+}
+
+func shouldBindConversation(convID string) bool {
+	convID = strings.TrimSpace(convID)
+	return convID != "" && convID != scheduledAIConversationID
+}
+
 // ==================== AI 回复处理 ====================
 
 func onChatDelta(data json.RawMessage) {
-	cid := getChatID()
-	if cid == "" {
-		return
-	}
 	var d struct {
-		Content string `json:"content"`
+		ConversationID string `json:"conversationId"`
+		Content        string `json:"content"`
 	}
 	json.Unmarshal(data, &d)
+	chatID := conversationChatID(d.ConversationID)
+	if chatID == "" {
+		return
+	}
+	activeChatID = chatID
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(chatID, d.ConversationID)
+	}
 	replyBuf.WriteString(d.Content)
 	deltaCount++
 	flushReplyBuf(false)
 }
 
-func onChatDone() {
-	if getChatID() == "" {
+func onChatDone(data json.RawMessage) {
+	var d struct {
+		ConversationID string `json:"conversationId"`
+	}
+	json.Unmarshal(data, &d)
+	chatID := conversationChatID(d.ConversationID)
+	if chatID == "" {
 		return
+	}
+	activeChatID = chatID
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(chatID, d.ConversationID)
 	}
 	flushReplyBuf(true)
 	inCodeBlock = false
 }
 
 func onChatError(data json.RawMessage) {
-	cid := getChatID()
-	if cid == "" {
-		return
-	}
 	var d struct {
-		Error string `json:"error"`
+		ConversationID string `json:"conversationId"`
+		Error          string `json:"error"`
 	}
 	json.Unmarshal(data, &d)
+	chatID := conversationChatID(d.ConversationID)
+	if chatID == "" {
+		return
+	}
+	activeChatID = chatID
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(chatID, d.ConversationID)
+	}
 	flushReplyBuf(true)
 	inCodeBlock = false
-	sendFeishuAsync(cid, "AI 错误: "+d.Error)
+	sendFeishuAsync(chatID, "AI 错误: "+d.Error)
 }
 
 func flushReplyBuf(force bool) {
-	cid := getChatID()
+	cid := strings.TrimSpace(activeChatID)
 	s := replyBuf.String()
 	if strings.TrimSpace(s) == "" {
 		replyBuf.Reset()
@@ -695,27 +823,45 @@ func endsWithSentence(s string) bool {
 }
 
 func onCommandResult(data json.RawMessage) {
-	cid := getChatID()
-	if cid == "" {
-		return
-	}
 	var d struct {
-		Text    string `json:"text"`
-		IsError bool   `json:"isError"`
+		ConversationID       string `json:"conversationId"`
+		Text                 string `json:"text"`
+		IsError              bool   `json:"isError"`
+		TargetConversationID string `json:"targetConversationId"`
+		ConversationAction   string `json:"conversationAction"`
+		SwitchConversation   bool   `json:"switchConversation"`
+		RoutePolicy          string `json:"routePolicy"`
+		OwnerClientID        string `json:"ownerClientId"`
 	}
 	json.Unmarshal(data, &d)
+	chatID := lookupConversationChatID(d.ConversationID)
+	if chatID == "" && strings.TrimSpace(d.TargetConversationID) != "" {
+		chatID = lookupConversationChatID(d.TargetConversationID)
+	}
+	if chatID == "" && d.SwitchConversation && d.RoutePolicy == "directed" && d.OwnerClientID == currentAppID {
+		chatID = strings.TrimSpace(activeChatID)
+	}
+	if chatID == "" {
+		return
+	}
+	activeChatID = chatID
+	if d.SwitchConversation && !d.IsError && strings.TrimSpace(d.TargetConversationID) != "" && d.RoutePolicy == "directed" && d.OwnerClientID == currentAppID {
+		setCurrentConversationID(chatID, d.TargetConversationID)
+	}
 	if d.Text != "" {
 		prefix := "📋 "
 		if d.IsError {
 			prefix = "❌ "
 		}
-		sendFeishuAsync(cid, prefix+d.Text)
+		if d.ConversationAction != "" && strings.TrimSpace(d.TargetConversationID) != "" {
+			d.Text += fmt.Sprintf("\n\n当前会话: `%s`", d.TargetConversationID)
+		}
+		sendFeishuAsync(chatID, prefix+d.Text)
 	}
 }
 
 func onSystemNotify(data json.RawMessage) {
-	cid := getChatID()
-	if cid == "" {
+	if activeChatID == "" {
 		return
 	}
 	var d struct {
@@ -746,16 +892,13 @@ func onSystemNotify(data json.RawMessage) {
 		text += d.Title + "\n"
 	}
 	text += d.Message
-	sendFeishuAsync(cid, text)
+	sendFeishuAsync(activeChatID, text)
 }
 
 func onMediaAttachment(data json.RawMessage) {
-	cid := getChatID()
-	if cid == "" {
-		return
-	}
 	var d struct {
-		Attachment struct {
+		ConversationID string `json:"conversationId"`
+		Attachment     struct {
 			NodeID   string `json:"nodeId"`
 			Path     string `json:"path"`
 			FileName string `json:"fileName"`
@@ -767,6 +910,14 @@ func onMediaAttachment(data json.RawMessage) {
 	if json.Unmarshal(data, &d) != nil {
 		return
 	}
+	chatID := conversationChatID(d.ConversationID)
+	if chatID == "" {
+		return
+	}
+	activeChatID = chatID
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(chatID, d.ConversationID)
+	}
 	a := d.Attachment
 	text := fmt.Sprintf("📎 %s", a.FileName)
 	if a.Caption != "" {
@@ -775,12 +926,12 @@ func onMediaAttachment(data json.RawMessage) {
 	if a.Size > 0 {
 		text += fmt.Sprintf(" (%s)", humanSize(a.Size))
 	}
-	sendFeishuAsync(cid, text)
+	sendFeishuAsync(chatID, text)
 
 	if strings.HasPrefix(a.MimeType, "image/") {
-		uploadImageToFeishu(cid, a)
+		uploadImageToFeishu(chatID, a)
 	} else {
-		uploadFileToFeishu(cid, a)
+		uploadFileToFeishu(chatID, a)
 	}
 }
 
@@ -934,16 +1085,16 @@ func init() {
 
 // downloadFeishuMediaAsync 异步下载飞书媒体文件
 // 下载完成后通过 handleDownloadComplete 处理
-func downloadFeishuMediaAsync(messageID, fileKey, mediaType, chatID, senderOpenID string) {
+func downloadFeishuMediaAsync(messageID, fileKey, mediaType, chatID, senderOpenID, convID string) {
 	fileName := fileKey
 	if mediaType == "image" {
 		fileName = fileKey + ".jpg"
 	}
-	sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, fileName)
+	sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, fileName, convID)
 }
 
 // sendDownloadRequest 发起下载请求
-func sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, displayName string) string {
+func sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, displayName, convID string) string {
 	// 获取 token
 	token := ""
 	withToken(func(t string) {
@@ -983,9 +1134,10 @@ func sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, di
 		return ""
 	}
 
-	pendingDownloads[reqID] = PendingDownload{
+	pendingDownloads[reqID] = &PendingDownload{
 		ChatID:      chatID,
 		SenderID:    senderOpenID,
+		ConvID:      convID,
 		FileName:    fileName,
 		MediaType:   mediaType,
 		DisplayName: displayName,
@@ -995,7 +1147,10 @@ func sendDownloadRequest(messageID, fileKey, mediaType, chatID, senderOpenID, di
 }
 
 // handleDownloadComplete 处理下载完成事件
-func handleDownloadComplete(pending PendingDownload, respBody string) {
+func handleDownloadComplete(pending *PendingDownload, respBody string) {
+	if pending == nil {
+		return
+	}
 	if respBody == "" {
 		logMsg("ERROR: 下载飞书媒体失败: 空响应")
 		return
@@ -1028,9 +1183,24 @@ func handleDownloadComplete(pending PendingDownload, respBody string) {
 		userText = fmt.Sprintf("[用户发送了一个文件: %s]\n文件: [文件: local_1:/opt/webos/%s]", pending.DisplayName, relativePath)
 	}
 
-	activeChatID = pending.ChatID
+	convID := strings.TrimSpace(pending.ConvID)
+	if convID == "" {
+		convID = bindActiveChat(pending.ChatID)
+	} else {
+		activeChatID = strings.TrimSpace(pending.ChatID)
+		setCurrentConversationID(activeChatID, convID)
+	}
+	if convID == "" {
+		convID = ensureConversationID(pending.ChatID, userText)
+	}
+	if convID == "" {
+		return
+	}
+
+	activeChatID = strings.TrimSpace(pending.ChatID)
 	deltaCount = 0
 	request("chat.send", map[string]interface{}{
+		"conversationId": convID,
 		"messageContent": userText,
 		"clientId":       "feishu-ai-bot",
 	})

@@ -18,6 +18,8 @@ export interface MessageBlock {
 export interface Conversation {
   id: string
   title: string
+  providerId?: string
+  model?: string
 }
 
 export interface CommandDef {

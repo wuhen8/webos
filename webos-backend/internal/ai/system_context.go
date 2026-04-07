@@ -29,7 +29,6 @@ type ExecutorSnapshot struct {
 	State            string `json:"state"`
 	RunningConvID    string `json:"runningConvId"`
 	RunningConvTitle string `json:"runningConvTitle"`
-	ActiveConvID     string `json:"activeConvId"`
 	QueueSize        int    `json:"queueSize"`
 }
 
@@ -120,7 +119,7 @@ func (sc *defaultSystemContext) Snapshot() SystemSnapshot {
 	return SystemSnapshot{
 		Executor: ExecutorSnapshot{
 			State: es.State, RunningConvID: es.RunningConvID,
-			RunningConvTitle: es.RunningConvTitle, ActiveConvID: es.ActiveConvID,
+			RunningConvTitle: es.RunningConvTitle,
 			QueueSize: es.QueueSize,
 		},
 		Tasks: tasks, Jobs: jobs,

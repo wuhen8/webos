@@ -170,8 +170,35 @@ func on_event(ptr uint32, size uint32) uint32 {
 | `chat.history` | 对话列表 |
 | `chat.messages` | 对话消息 |
 | `chat.delete` | 删除对话 |
-| `chat.stop` | 停止生成 |
+| `chat.stop` | 停止当前会话生成并清理该会话未开始的排队消息 |
 | `chat.switch_conv` | 切换对话 |
+
+`chat.stop` 请求示例：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "chat.stop",
+  "params": {
+    "conversationId": "conv_123"
+  },
+  "id": "req_stop_1"
+}
+```
+
+`chat.stop` 成功响应示例：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "conversationId": "conv_123",
+    "stoppedActive": true,
+    "clearedPending": 2
+  },
+  "id": "req_stop_1"
+}
+```
 
 ### 定时任务 (scheduled_job.*)
 

@@ -246,7 +246,8 @@ func readHostFileBase64(path string) (string, error) {
 // ==================== Async file download via saveTo ====================
 
 type PendingDownload struct {
-	UserID   string
+	RouteKey string
+	ConvID   string
 	FileName string
 	UserText string   // 用户消息文本（最后一个附件下载完后发送）
 	Total    int      // 总附件数

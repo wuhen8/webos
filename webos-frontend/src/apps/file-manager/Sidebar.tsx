@@ -58,7 +58,6 @@ interface SidebarItem {
 export interface SidebarProps {
   onNavigate: (path: string) => void
   currentPath: string
-  onAddToFavorites?: (file: any) => void
   openGlobalMenu?: (menu: GlobalMenuState) => void
   closeGlobalMenu?: () => void
   activeNodeId?: string
@@ -71,12 +70,12 @@ export interface SidebarProps {
   showTrash?: boolean
 }
 
-export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalMenu, closeGlobalMenu, activeNodeId, onSwitchNode, onNavigateNode, totalCount = 0, selectedCount = 0, collapsed = false, onToggleCollapse, showTrash = false }: SidebarProps) {
+export function Sidebar({ onNavigate, currentPath, openGlobalMenu, closeGlobalMenu, activeNodeId, onSwitchNode, onNavigateNode, totalCount = 0, selectedCount = 0, collapsed = false, onToggleCollapse, showTrash = false }: SidebarProps) {
   const { t } = useTranslation()
   const {
     sidebarConfig,
     isLoading,
-    addFavorite,
+    addFavorites,
     removeFavorite,
     reorderFavorites,
     renameItem,
@@ -99,23 +98,28 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
 
   // 监听添加收藏夹事件
   useEffect(() => {
-    const handleAddFavorite = (event: CustomEvent) => {
-      const file = event.detail;
-      addFavorite({
+    const handleAddFavorite = (event: Event) => {
+      const customEvent = event as CustomEvent<FileInfo[]>
+      const files = customEvent.detail || []
+      const favoriteDirs = files.filter(file => file.isDir && file.path)
+
+      if (favoriteDirs.length === 0) return
+
+      addFavorites(favoriteDirs.map(file => ({
         name: file.name,
         path: file.path,
-        isDir: file.isDir,
+        isDir: true,
         nodeId: file.nodeId
-      }).catch(error => {
+      }))).catch(error => {
         console.error("Failed to add favorite:", error)
       })
     }
-    
-    window.addEventListener('sidebar:addFavorite', handleAddFavorite as EventListener)
+
+    window.addEventListener('sidebar:addFavorite', handleAddFavorite)
     return () => {
-      window.removeEventListener('sidebar:addFavorite', handleAddFavorite as EventListener)
+      window.removeEventListener('sidebar:addFavorite', handleAddFavorite)
     }
-  }, [addFavorite])
+  }, [addFavorites])
 
   // 处理编辑开始
   const startEditing = (itemId: string, itemName: string) => {
@@ -164,41 +168,31 @@ export function Sidebar({ onNavigate, currentPath, onAddToFavorites, openGlobalM
   const handleDrop = (e: React.DragEvent, targetItem: any) => {
     e.preventDefault()
     setDropTarget(null)
-    
-    // 从dataTransfer获取拖拽的数据
-    let droppedItem = null;
+
+    // 文件列表拖拽到收藏区的 payload 固定为数组
+    let droppedItems: any[] = []
     try {
-      const data = e.dataTransfer.getData("application/json");
+      const data = e.dataTransfer.getData("application/json")
       if (data) {
-        droppedItem = JSON.parse(data);
+        droppedItems = JSON.parse(data)
       }
     } catch (error) {
-      console.error("Failed to parse dropped data:", error);
+      console.error("Failed to parse dropped data:", error)
     }
-    
-    // 如果没有从dataTransfer获取到数据，使用直接拖拽的项目
-    if (!droppedItem && draggedItem) {
-      droppedItem = draggedItem;
-    }
-    
-    if (!droppedItem || (droppedItem.id && droppedItem.id === targetItem.id)) {
-      setDraggedItem(null)
-      return
-    }
-    
-    // 如果目标是"个人收藏"项，则添加到收藏夹
-    if (targetItem.id === "home" && onAddToFavorites) {
-      // 添加到收藏夹
-      addFavorite({
-        name: droppedItem.name,
-        path: droppedItem.path,
-        isDir: droppedItem.isDir,
-        nodeId: droppedItem.nodeId
-      }).catch(error => {
+
+    if (targetItem.id === "home") {
+      const favoriteDirs = droppedItems.filter(item => item?.isDir && item?.path)
+
+      addFavorites(favoriteDirs.map(item => ({
+        name: item.name,
+        path: item.path,
+        isDir: true,
+        nodeId: item.nodeId
+      }))).catch(error => {
         console.error("Failed to add favorite:", error)
       })
     }
-    
+
     setDraggedItem(null)
   }
 

@@ -12,12 +12,17 @@ import (
 func InitWasmBridge() {
 	wasm.ConfigureCapabilityDeps(
 		func() interface{} { return chatSvc.Commands() },
-		func(conversationID, messageContent, clientID string) interface{} {
-			return chatSvc.SendMessage(conversationID, messageContent, clientID)
+		func(conversationID, messageContent, clientID, providerID, model string) interface{} {
+			return chatSvc.SendMessage(conversationID, messageContent, clientID, providerID, model)
 		},
 		func() (interface{}, error) { return chatSvc.ListConversations() },
 		func(conversationID string) (interface{}, error) { return chatSvc.GetMessages(conversationID) },
 		func(conversationID string) interface{} { return chatSvc.GetStatus(conversationID) },
+		func(conversationID string) (interface{}, error) { return chatSvc.StopConversation(conversationID) },
+		func(conversationID string) (interface{}, error) { return chatSvc.GetConversationConfig(conversationID) },
+		func(conversationID, providerID, model string) (interface{}, error) {
+			return chatSvc.SetConversationConfig(conversationID, providerID, model)
+		},
 		func() interface{} { return chatSvc.ExecutorStatus() },
 		func(conversationID string) error { return chatSvc.DeleteConversation(conversationID) },
 		func() { chatSvc.Cleanup() },

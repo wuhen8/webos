@@ -7,22 +7,24 @@ import (
 
 // AIQueueRow represents a row in ai_queue.
 type AIQueueRow struct {
-	ID        int64  `json:"id"`
-	ConvID    string `json:"convId"`
-	Content   string `json:"content"`
-	ClientID  string `json:"clientId"`
-	Status    string `json:"status"`
-	CreatedAt int64  `json:"createdAt"`
+	ID         int64  `json:"id"`
+	ConvID     string `json:"convId"`
+	Content    string `json:"content"`
+	ClientID   string `json:"clientId"`
+	ProviderID string `json:"providerId"`
+	Model      string `json:"model"`
+	Status     string `json:"status"`
+	CreatedAt  int64  `json:"createdAt"`
 }
 
 // EnqueueAIMessage inserts a pending message into the queue and returns its ID.
-func EnqueueAIMessage(convID, content, clientID string) (int64, error) {
+func EnqueueAIMessage(convID, content, clientID, providerID, model string) (int64, error) {
 	if clientID == "" {
 		clientID = "web"
 	}
 	res, err := db.Exec(
-		"INSERT INTO ai_queue(conv_id, content, client_id, status, created_at) VALUES(?, ?, ?, 'pending', ?)",
-		convID, content, clientID, time.Now().Unix(),
+		"INSERT INTO ai_queue(conv_id, content, client_id, provider_id, model, status, created_at) VALUES(?, ?, ?, ?, ?, 'pending', ?)",
+		convID, content, clientID, providerID, model, time.Now().Unix(),
 	)
 	if err != nil {
 		return 0, err
@@ -43,8 +45,8 @@ func DequeueAIMessage() (*AIQueueRow, error) {
 			ORDER BY id
 			LIMIT 1
 		)
-		RETURNING id, conv_id, content, COALESCE(client_id, 'web'), status, created_at
-	`).Scan(&r.ID, &r.ConvID, &r.Content, &r.ClientID, &r.Status, &r.CreatedAt)
+		RETURNING id, conv_id, content, COALESCE(client_id, 'web'), COALESCE(provider_id, ''), COALESCE(model, ''), status, created_at
+	`).Scan(&r.ID, &r.ConvID, &r.Content, &r.ClientID, &r.ProviderID, &r.Model, &r.Status, &r.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -74,15 +76,29 @@ func PendingAIQueueCount() int {
 	return count
 }
 
-// DeleteAIQueueByConversation removes all pending queue items for a conversation.
-func DeleteAIQueueByConversation(convID string) error {
-	_, err := db.Exec("DELETE FROM ai_queue WHERE conv_id=? AND status='pending'", convID)
-	return err
+// DeletePendingAIQueueByConversation removes all pending queue items for a conversation and returns the number deleted.
+func DeletePendingAIQueueByConversation(convID string) (int64, error) {
+	res, err := db.Exec("DELETE FROM ai_queue WHERE conv_id=? AND status='pending'", convID)
+	if err != nil {
+		return 0, err
+	}
+	count, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// PendingAIQueueCountByConversation returns the number of pending items for a conversation.
+func PendingAIQueueCountByConversation(convID string) (int, error) {
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM ai_queue WHERE conv_id=? AND status='pending'", convID).Scan(&count)
+	return count, err
 }
 
 // ListPendingAIQueue returns all pending items in the queue.
 func ListPendingAIQueue() ([]AIQueueRow, error) {
-	rows, err := db.Query("SELECT id, conv_id, content, COALESCE(client_id, 'web'), status, created_at FROM ai_queue WHERE status='pending' ORDER BY id")
+	rows, err := db.Query("SELECT id, conv_id, content, COALESCE(client_id, 'web'), COALESCE(provider_id, ''), COALESCE(model, ''), status, created_at FROM ai_queue WHERE status='pending' ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +106,7 @@ func ListPendingAIQueue() ([]AIQueueRow, error) {
 	var result []AIQueueRow
 	for rows.Next() {
 		var r AIQueueRow
-		if err := rows.Scan(&r.ID, &r.ConvID, &r.Content, &r.ClientID, &r.Status, &r.CreatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.ConvID, &r.Content, &r.ClientID, &r.ProviderID, &r.Model, &r.Status, &r.CreatedAt); err != nil {
 			continue
 		}
 		result = append(result, r)

@@ -269,35 +269,21 @@ func InitAI() {
 	ai.InitCommandCallbacks(aiService)
 	ce := service.GetCommandExecutor()
 	ce.NotifySink = aiExecutor.GetBroadcastSink()
-	ce.ConvSwitcher = &executorConvSwitcher{executor: aiExecutor}
+	ce.OnStop = func(convID string) {
+		if convID == "" {
+			return
+		}
+		if _, err := chatSvc.StopConversation(convID); err != nil {
+			fmt.Printf("[ai] stop conversation failed conv=%s err=%v\n", convID, err)
+		}
+	}
 	ce.OnAISend = func(convID, message, clientID string) (bool, string) {
 		if clientID == "" {
 			clientID = "system"
 		}
-		r := aiExecutor.Enqueue(convID, message, clientID)
+		r := aiExecutor.Enqueue(convID, message, clientID, "", "")
 		return r.Accepted, r.Reason
 	}
-}
-
-// executorConvSwitcher adapts AIExecutor to the service.ConvSwitcher interface.
-type executorConvSwitcher struct {
-	executor *ai.AIExecutor
-}
-
-func (s *executorConvSwitcher) GetActiveConvID() string {
-	return s.executor.GetActiveConvID()
-}
-
-func (s *executorConvSwitcher) SwitchConv(convID string) service.ConvSwitchResult {
-	r := s.executor.SwitchConv(convID)
-	return service.ConvSwitchResult{
-		OK:               r.OK,
-		RunningConvTitle: r.RunningConvTitle,
-	}
-}
-
-func (s *executorConvSwitcher) Stop() {
-	s.executor.Stop()
 }
 
 // ==================== Subscribe / Unsubscribe handlers ====================

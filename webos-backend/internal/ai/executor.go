@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -197,20 +196,24 @@ func (e *AIExecutor) executeCommand(convID, cmdName, cmdArgs, sinkID string) {
 	ce.HandleCommandResult(convID, result)
 
 	sendToClient("chat.command_result", map[string]interface{}{
-		"conversationId": convID,
-		"command":        cmdName,
-		"text":           result.Text,
-		"isError":        result.IsError,
-		"clearHistory":   result.ClearHistory,
+		"conversationId":       convID,
+		"command":              cmdName,
+		"text":                 result.Text,
+		"isError":              result.IsError,
+		"clearHistory":         result.ClearHistory,
+		"targetConversationId": result.ConversationID,
+		"conversationAction":   result.ConversationAction,
+		"switchConversation":   result.SwitchConversation,
+		"routePolicy":          result.RoutePolicy,
+		"ownerClientId":        result.OwnerClientID,
 	})
 }
 
 // EnqueueResult represents the result of an enqueue operation.
 type EnqueueResult struct {
-	Accepted        bool   `json:"accepted"`
-	Reason          string `json:"reason,omitempty"`
-	ActiveConvID    string `json:"activeConvId,omitempty"`
-	ActiveConvTitle string `json:"activeConvTitle,omitempty"`
+	Accepted       bool   `json:"accepted"`
+	Reason         string `json:"reason,omitempty"`
+	ConversationID string `json:"conversationId,omitempty"`
 }
 
 // ExecutorStatus represents the current state of the executor.
@@ -219,10 +222,9 @@ type ExecutorStatus struct {
 	RunningConvID    string `json:"runningConvId"`    // conversation currently being executed (empty when idle)
 	RunningConvTitle string `json:"runningConvTitle"` // title of the running conversation
 	QueueSize        int    `json:"queueSize"`        // number of queued messages
-	ActiveConvID     string `json:"activeConvId"`     // the active (selected) conversation ID
 }
 
-// AIExecutor manages the message queue, broadcast sink, and active conversation.
+// AIExecutor manages the message queue and broadcast sink.
 // The queue is persisted to the database so messages survive restarts.
 // "Busy" means the AI is streaming an API response; tool execution does NOT count as busy.
 type AIExecutor struct {
@@ -231,15 +233,10 @@ type AIExecutor struct {
 	broadcastSink *BroadcastSink
 
 	mu            sync.Mutex
-	activeConvID  string             // cached in memory, persisted to DB
 	runningConvID string             // conversation currently being executed
 	streaming     bool               // true only while LLM API is streaming
 	cancelFn      context.CancelFunc // cancel function for current execution
 }
-
-const (
-	prefKeyActiveConvID = "active_conv_id"
-)
 
 // NewAIExecutor creates a new AIExecutor. Call Start() to begin consuming.
 // Must be called after database.Init() — it reads persisted state from DB.
@@ -248,7 +245,6 @@ func NewAIExecutor(svc *Service) *AIExecutor {
 		service:       svc,
 		notify:        make(chan struct{}, 1),
 		broadcastSink: NewBroadcastSink(),
-		activeConvID:  loadActiveConvID(),
 	}
 	if err := database.ResetProcessingAIQueue(); err != nil {
 		log.Printf("[AIExecutor] failed to reset processing queue items: %v", err)
@@ -256,55 +252,19 @@ func NewAIExecutor(svc *Service) *AIExecutor {
 	return ex
 }
 
-// loadActiveConvID reads the persisted active conversation ID from the database.
-func loadActiveConvID() string {
-	val, err := database.GetPreference(prefKeyActiveConvID)
-	if err != nil || val == "" {
-		return ""
-	}
-	var id string
-	if err := json.Unmarshal([]byte(val), &id); err != nil {
-		return val
-	}
-	return id
-}
-
 // Enqueue persists a message to the database queue and wakes the consumer.
-// Only accepts messages for the active conversation. Empty convID means "use active".
 // clientID identifies the caller — used for both ClientContext lookup (DB) and sink routing.
-// Returns rejection info if convID doesn't match the active conversation.
-func (e *AIExecutor) Enqueue(convID, content, clientID string) EnqueueResult {
-	e.mu.Lock()
-	active := e.activeConvID
-	e.mu.Unlock()
-
-	// Empty convID → use active conversation (or create new if none)
-	if convID == "" {
-		if active == "" {
-			// No active conversation — will be created by HandleChat
-			convID = ""
-		} else {
-			convID = active
-		}
-	} else if active != "" && convID != active {
-		// Non-active conversation — reject
-		return EnqueueResult{
-			Accepted:        false,
-			Reason:          "inactive_conv",
-			ActiveConvID:    active,
-			ActiveConvTitle: getConvTitle(active),
-		}
-	}
+func (e *AIExecutor) Enqueue(convID, content, clientID, providerID, model string) EnqueueResult {
 
 	// Slash commands bypass the queue — independent goroutine ensures /stop /restart always work
 	if cmdName, cmdArgs, isCmd := ParseCommand(content); isCmd {
 		go e.executeCommand(convID, cmdName, cmdArgs, clientID)
-		return EnqueueResult{Accepted: true}
+		return EnqueueResult{Accepted: true, ConversationID: convID}
 	}
 
-	if _, err := database.EnqueueAIMessage(convID, content, clientID); err != nil {
+	if _, err := database.EnqueueAIMessage(convID, content, clientID, providerID, model); err != nil {
 		log.Printf("[AIExecutor] failed to enqueue message: %v", err)
-		return EnqueueResult{Accepted: false, Reason: "enqueue_failed"}
+		return EnqueueResult{Accepted: false, Reason: "enqueue_failed", ConversationID: convID}
 	}
 
 	// Wake consumer
@@ -313,7 +273,7 @@ func (e *AIExecutor) Enqueue(convID, content, clientID string) EnqueueResult {
 	default:
 	}
 
-	return EnqueueResult{Accepted: true}
+	return EnqueueResult{Accepted: true, ConversationID: convID}
 }
 
 // IsStreaming returns true if the executor is currently streaming an LLM API response.
@@ -347,6 +307,36 @@ func (e *AIExecutor) Stop() {
 	e.broadcastStatus()
 }
 
+// StopConversation cancels the currently running task only when it belongs to the target conversation.
+func (e *AIExecutor) StopConversation(convID string) bool {
+	if convID == "" {
+		return false
+	}
+	e.mu.Lock()
+	if e.runningConvID != convID || e.cancelFn == nil {
+		e.mu.Unlock()
+		return false
+	}
+	fn := e.cancelFn
+	e.cancelFn = nil
+	e.streaming = false
+	e.mu.Unlock()
+
+	fn()
+	e.broadcastStatus()
+	return true
+}
+
+// IsConversationRunning reports whether the executor is currently executing the target conversation.
+func (e *AIExecutor) IsConversationRunning(convID string) bool {
+	if convID == "" {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.runningConvID == convID
+}
+
 // Status returns the current executor status.
 func (e *AIExecutor) Status() ExecutorStatus {
 	e.mu.Lock()
@@ -364,15 +354,7 @@ func (e *AIExecutor) Status() ExecutorStatus {
 		RunningConvID:    e.runningConvID,
 		RunningConvTitle: getConvTitle(e.runningConvID),
 		QueueSize:        database.PendingAIQueueCount(),
-		ActiveConvID:     e.activeConvID,
 	}
-}
-
-// GetActiveConvID returns the current active conversation ID.
-func (e *AIExecutor) GetActiveConvID() string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.activeConvID
 }
 
 // BroadcastSink returns the executor's broadcast sink for event subscription.
@@ -388,38 +370,6 @@ func (e *AIExecutor) RegisterSink(id string, sink ChatSink) {
 // UnregisterSink removes a ChatSink from broadcast.
 func (e *AIExecutor) UnregisterSink(id string) {
 	e.broadcastSink.Remove(id)
-}
-
-// SwitchConvResult represents the result of a conversation switch attempt.
-type SwitchConvResult struct {
-	OK               bool
-	Reason           string // "running" if executor is busy
-	RunningConvID    string
-	RunningConvTitle string
-}
-
-// SwitchConv updates the active conversation and broadcasts conv_switched.
-// Rejects if the executor is currently running a different conversation.
-func (e *AIExecutor) SwitchConv(convID string) SwitchConvResult {
-	e.mu.Lock()
-	if e.runningConvID != "" && e.runningConvID != convID {
-		running := e.runningConvID
-		e.mu.Unlock()
-		return SwitchConvResult{
-			OK:               false,
-			Reason:           "running",
-			RunningConvID:    running,
-			RunningConvTitle: getConvTitle(running),
-		}
-	}
-	e.activeConvID = convID
-	e.mu.Unlock()
-
-	if err := database.SetPreference(prefKeyActiveConvID, convID); err != nil {
-		log.Printf("[AIExecutor] failed to persist activeConvID: %v", err)
-	}
-	e.broadcastConvSwitched(convID)
-	return SwitchConvResult{OK: true}
 }
 
 // getConvTitle fetches the conversation title from the database.
@@ -493,19 +443,6 @@ func (e *AIExecutor) processMessage(row *database.AIQueueRow) {
 	e.runningConvID = row.ConvID
 	e.mu.Unlock()
 
-	// Update activeConvID if changed
-	e.mu.Lock()
-	if e.activeConvID != row.ConvID {
-		e.activeConvID = row.ConvID
-		e.mu.Unlock()
-		if err := database.SetPreference(prefKeyActiveConvID, row.ConvID); err != nil {
-			log.Printf("[AIExecutor] failed to persist activeConvID: %v", err)
-		}
-		e.broadcastConvSwitched(row.ConvID)
-	} else {
-		e.mu.Unlock()
-	}
-
 	e.broadcastStatus()
 
 	// Ultimate timeout (30 min) as last resort — prevents goroutine leak if user disconnects silently
@@ -520,7 +457,7 @@ func (e *AIExecutor) processMessage(row *database.AIQueueRow) {
 	if row.ClientID != "" {
 		sink = &targetedChatSink{sinkID: row.ClientID, sink: e.broadcastSink}
 	}
-	e.service.HandleChat(ctx, row.ConvID, row.Content, row.ClientID, sink)
+	e.service.HandleChat(ctx, row.ConvID, row.Content, row.ClientID, row.ProviderID, row.Model, sink)
 }
 
 type targetedChatSink struct {
@@ -576,13 +513,4 @@ func (t *targetedChatSink) OnSystemEvent(msgType string, data interface{}) {
 func (e *AIExecutor) broadcastStatus() {
 	status := e.Status()
 	e.broadcastSink.OnSystemEvent("chat.status_update", status)
-}
-
-// broadcastConvSwitched sends a conv_switched event to all sinks.
-func (e *AIExecutor) broadcastConvSwitched(convID string) {
-	title := getConvTitle(convID)
-	e.broadcastSink.OnSystemEvent("chat.conv_switched", map[string]string{
-		"convId":    convID,
-		"convTitle": title,
-	})
 }

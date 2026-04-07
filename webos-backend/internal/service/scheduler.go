@@ -597,6 +597,24 @@ func MakeJobRunFunc(jobID, jobType, cfg string, silent bool, systemSvc SystemExe
 		submitFn = GetTaskManager().SubmitSilent
 	}
 
+	const scheduledAIConversationID = "scheduled_ai"
+	const scheduledAIConversationTitle = "定时任务"
+
+	ensureScheduledAIConversation := func() error {
+		conv, err := database.GetConversation(scheduledAIConversationID)
+		if err != nil {
+			return err
+		}
+		if conv != nil {
+			return nil
+		}
+		providerID, model, err := defaultConversationSelection()
+		if err != nil {
+			return err
+		}
+		return database.CreateConversation(scheduledAIConversationID, scheduledAIConversationTitle, providerID, model)
+	}
+
 	switch jobType {
 	case "shell":
 		var sc shellConfig
@@ -643,14 +661,24 @@ func MakeJobRunFunc(jobID, jobType, cfg string, silent bool, systemSvc SystemExe
 					GetScheduler().SetJobResult(jobID, "failed", msg)
 					return "", fmt.Errorf("%s", msg)
 				}
-				result := ce.ExecuteCommandForClient("", name, args, "")
+				convID := ""
+				if name == "ai" {
+					if err := ensureScheduledAIConversation(); err != nil {
+						msg := "创建定时 AI 会话失败: " + err.Error()
+						DBUpdateJobStatus(jobID, "failed", msg)
+						GetScheduler().SetJobResult(jobID, "failed", msg)
+						return "", fmt.Errorf("%s", msg)
+					}
+					convID = scheduledAIConversationID
+				}
+				result := ce.ExecuteCommandForClient(convID, name, args, "")
 				if result.IsError {
 					DBUpdateJobStatus(jobID, "failed", result.Text)
 					GetScheduler().SetJobResult(jobID, "failed", result.Text)
 					return "", fmt.Errorf("%s", result.Text)
 				}
 				// Handle side effects (e.g. model switch persistence)
-				ce.HandleCommandResult("", result)
+				ce.HandleCommandResult(convID, result)
 				msg := result.Text
 				if len(msg) > 200 {
 					msg = msg[:200]

@@ -99,9 +99,6 @@ type Service struct {
 	skills  *SkillsContext
 	sysCtx  SystemContext
 
-	activeMu sync.Mutex
-	active   map[string]context.CancelFunc
-
 	Executor *AIExecutor // set after AIExecutor is created
 }
 
@@ -125,7 +122,6 @@ func NewService(fileSvc *service.FileService) *Service {
 		tools:   NewToolRegistry(fileSvc, sandbox, nil),
 		history: NewHistoryManager(),
 		sandbox: sandbox,
-		active:  make(map[string]context.CancelFunc),
 	}
 }
 
@@ -307,10 +303,15 @@ func (s *Service) processImageRefs(content string) interface{} {
 	return parts
 }
 
+func isConversationInitMessage(msg string) bool {
+	msg = strings.TrimSpace(msg)
+	return strings.HasPrefix(msg, "[") && strings.HasSuffix(msg, "会话初始化]")
+}
+
 // HandleChat processes a user message in a conversation, streaming results to the sink.
-func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID string, sink ChatSink) {
+func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID, draftProviderID, draftModel string, sink ChatSink) {
 	// Load AI config from preferences
-	cfg, err := loadAIConfig()
+	cfg, err := loadAIConfig(convID, draftProviderID, draftModel)
 	if err != nil {
 		sink.OnError(convID, fmt.Errorf("AI 未配置: %v", err))
 		return
@@ -323,7 +324,7 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID stri
 		if len(title) > 50 {
 			title = title[:50] + "..."
 		}
-		if err := database.CreateConversation(convID, title); err != nil {
+		if err := database.CreateConversation(convID, title, cfg.ProviderID, cfg.Model); err != nil {
 			sink.OnError(convID, fmt.Errorf("创建对话失败: %v", err))
 			return
 		}
@@ -343,17 +344,10 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID stri
 		}
 	}
 
-	// Register cancel func
-	ctx, cancel := context.WithCancel(ctx)
-	s.activeMu.Lock()
-	s.active[convID] = cancel
-	s.activeMu.Unlock()
-	defer func() {
-		s.activeMu.Lock()
-		delete(s.active, convID)
-		s.activeMu.Unlock()
-		cancel()
-	}()
+	if isConversationInitMessage(userMsg) {
+		database.TouchConversation(convID)
+		return
+	}
 
 	// Save user message
 	if err := s.history.SaveUserMessage(convID, userMsg); err != nil {
@@ -755,28 +749,11 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID stri
 	sink.OnError(convID, fmt.Errorf("工具调用轮次超过上限 (%d)", maxRounds))
 }
 
-// StopChat cancels an active chat.
-func (s *Service) StopChat(convID string) {
-	s.activeMu.Lock()
-	if cancel, ok := s.active[convID]; ok {
-		cancel()
-	}
-	s.activeMu.Unlock()
-}
-
-// IsChatActive returns whether a conversation is currently being processed.
-func (s *Service) IsChatActive(convID string) bool {
-	s.activeMu.Lock()
-	_, ok := s.active[convID]
-	s.activeMu.Unlock()
-	return ok
-}
-
 // DeleteConversation removes a conversation and cleans up all associated resources:
 // database records (messages, summaries, queue) and in-memory undo backups.
 func (s *Service) DeleteConversation(convID string) error {
 	// Clean up pending queue items for this conversation
-	if err := database.DeleteAIQueueByConversation(convID); err != nil {
+	if _, err := database.DeletePendingAIQueueByConversation(convID); err != nil {
 		log.Printf("[ai] 清理队列失败 conv=%s: %v", convID, err)
 	}
 	// Clean up in-memory undo backups
@@ -790,61 +767,103 @@ func (s *Service) Cleanup() {
 	// Sandbox container lifecycle is managed by the user, not by us.
 }
 
-// loadAIConfig reads multi-provider AI configuration from preferences,
-// resolves the active provider+model, and returns a flat AIConfig for ChatStream.
-func loadAIConfig() (*AIConfig, error) {
-	db := database.DB()
-	var val string
-	err := db.QueryRow("SELECT value FROM preferences WHERE key = 'ai_config'").Scan(&val)
-	if err != nil {
-		return nil, fmt.Errorf("请先配置 AI (ai_config)")
-	}
-
-	// The value may be double-encoded as a JSON string
-	var raw string
-	if err := json.Unmarshal([]byte(val), &raw); err != nil {
-		raw = val
-	}
-
-	var multi AIMultiConfig
-	if err := json.Unmarshal([]byte(raw), &multi); err != nil {
-		return nil, fmt.Errorf("AI 配置格式错误: %v", err)
-	}
-
-	cfg, err := resolveMultiConfig(&multi)
+// loadAIConfig reads multi-provider AI configuration from preferences and resolves
+// the provider+model for the target conversation.
+func loadAIConfig(convID, providerID, model string) (*AIConfig, error) {
+	multi, err := loadMultiConfig()
 	if err != nil {
 		return nil, err
 	}
-
-	return cfg, nil
+	return resolveConversationConfig(multi, convID, providerID, model)
 }
 
-// resolveMultiConfig finds the active provider and model, returning a flat AIConfig.
-func resolveMultiConfig(multi *AIMultiConfig) (*AIConfig, error) {
+func resolveConversationConfig(multi *AIMultiConfig, convID, providerID, model string) (*AIConfig, error) {
 	if len(multi.Providers) == 0 {
 		return nil, fmt.Errorf("AI 配置不完整，没有供应商")
 	}
 
-	// Find active provider
-	var provider *AIProvider
-	for i := range multi.Providers {
-		if multi.Providers[i].ID == multi.ActiveProvider {
-			provider = &multi.Providers[i]
-			break
+	provider, resolvedModel, err := resolveConversationSelection(multi, convID)
+	if err != nil {
+		return nil, err
+	}
+	if convID == "" && providerID != "" && model != "" {
+		for i := range multi.Providers {
+			if multi.Providers[i].ID == providerID {
+				provider = &multi.Providers[i]
+				resolvedModel = model
+				break
+			}
 		}
 	}
-	if provider == nil {
-		provider = &multi.Providers[0]
+	return buildProviderConfig(provider, resolvedModel)
+}
+
+func resolveConversationSelection(multi *AIMultiConfig, convID string) (*AIProvider, string, error) {
+	defaultProvider, defaultModel, err := getDefaultConversationModel(multi)
+	if err != nil {
+		return nil, "", err
+	}
+	if convID == "" {
+		return defaultProvider, defaultModel, nil
 	}
 
+	conv, err := database.GetConversation(convID)
+	if err != nil {
+		return nil, "", err
+	}
+	if conv == nil {
+		return nil, "", fmt.Errorf("对话不存在: %s", convID)
+	}
+
+	provider := defaultProvider
+	if conv.ProviderID != "" {
+		for i := range multi.Providers {
+			if multi.Providers[i].ID == conv.ProviderID {
+				provider = &multi.Providers[i]
+				break
+			}
+		}
+	}
+
+	model := conv.Model
+	if model == "" {
+		if provider.ID == defaultProvider.ID {
+			model = defaultModel
+		} else if len(provider.Models) > 0 {
+			model = provider.Models[0]
+		}
+	}
+	if model == "" {
+		return nil, "", fmt.Errorf("供应商 %s 没有配置模型", provider.Name)
+	}
+	for _, candidate := range provider.Models {
+		if candidate == model {
+			return provider, model, nil
+		}
+	}
+	return nil, "", fmt.Errorf("供应商 %s 中未找到模型: %s", provider.Name, model)
+}
+
+func getDefaultConversationModel(multi *AIMultiConfig) (*AIProvider, string, error) {
+	if len(multi.Providers) == 0 {
+		return nil, "", fmt.Errorf("AI 配置不完整，没有供应商")
+	}
+	provider := &multi.Providers[0]
+	if provider.BaseURL == "" || provider.APIKey == "" {
+		return nil, "", fmt.Errorf("供应商 %s 配置不完整，需要 baseUrl 和 apiKey", provider.Name)
+	}
+	if len(provider.Models) == 0 || provider.Models[0] == "" {
+		return nil, "", fmt.Errorf("供应商 %s 没有配置模型", provider.Name)
+	}
+	return provider, provider.Models[0], nil
+}
+
+func buildProviderConfig(provider *AIProvider, model string) (*AIConfig, error) {
+	if provider == nil {
+		return nil, fmt.Errorf("AI 配置不完整，没有供应商")
+	}
 	if provider.BaseURL == "" || provider.APIKey == "" {
 		return nil, fmt.Errorf("供应商 %s 配置不完整，需要 baseUrl 和 apiKey", provider.Name)
-	}
-
-	// Resolve model
-	model := multi.ActiveModel
-	if model == "" && len(provider.Models) > 0 {
-		model = provider.Models[0]
 	}
 	if model == "" {
 		return nil, fmt.Errorf("供应商 %s 没有配置模型", provider.Name)
@@ -856,6 +875,8 @@ func resolveMultiConfig(multi *AIMultiConfig) (*AIConfig, error) {
 	}
 
 	return &AIConfig{
+		ProviderID:     provider.ID,
+		ProviderName:   provider.Name,
 		BaseURL:        provider.BaseURL,
 		APIKey:         provider.APIKey,
 		Model:          model,

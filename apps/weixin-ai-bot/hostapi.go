@@ -25,6 +25,7 @@ var hostCallbacks = map[string]func(success bool, data interface{}, err string){
 type PendingDownload struct {
 	UserID       string
 	ContextToken string
+	ConvID       string
 	UserText     string
 	FileName     string
 	Kind         string
@@ -274,6 +275,7 @@ func handleHTTPResponse(data json.RawMessage) {
 	}
 	cb, ok := httpCallbacks[d.RequestID]
 	if !ok {
+		logMsg("WARN: http.response without callback reqID=" + d.RequestID)
 		return
 	}
 	delete(httpCallbacks, d.RequestID)

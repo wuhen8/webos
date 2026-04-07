@@ -14,6 +14,8 @@ import (
 	"unsafe"
 )
 
+const scheduledAIConversationID = "scheduled_ai"
+
 var (
 	appID       string
 	appSecret   string
@@ -41,9 +43,103 @@ var (
 	msgSeqCounter uint64
 
 	// 多用户授权
-	allowedUserIDs map[string]bool // 授权的 user_id 集合
-	activeUserID   string          // 当前活跃的用户ID
+	allowedUserIDs     map[string]bool // 授权的 user_id 集合
+	routeConversations map[string]string
+	conversationRoutes map[string]string
+	activeRouteKey     string
 )
+
+func qqC2CRouteKey(userID string) string {
+	return "c2c:" + strings.TrimSpace(userID)
+}
+
+func qqGroupRouteKey(groupID string) string {
+	return "group:" + strings.TrimSpace(groupID)
+}
+
+func qqChannelRouteKey(channelID string) string {
+	return "channel:" + strings.TrimSpace(channelID)
+}
+
+func qqConversationKVKey(routeKey string) string {
+	return "qq_conv:" + strings.TrimSpace(routeKey)
+}
+
+func getCurrentConversationID(routeKey string) string {
+	routeKey = strings.TrimSpace(routeKey)
+	if routeKey == "" {
+		return ""
+	}
+	if convID := strings.TrimSpace(routeConversations[routeKey]); convID != "" {
+		return convID
+	}
+	convID := strings.TrimSpace(kvGet(qqConversationKVKey(routeKey)))
+	if convID != "" {
+		routeConversations[routeKey] = convID
+		conversationRoutes[convID] = routeKey
+	}
+	return convID
+}
+
+func setCurrentConversationID(routeKey, convID string) {
+	routeKey = strings.TrimSpace(routeKey)
+	convID = strings.TrimSpace(convID)
+	if routeKey == "" || convID == "" {
+		return
+	}
+	if prev := strings.TrimSpace(routeConversations[routeKey]); prev != "" && prev != convID {
+		delete(conversationRoutes, prev)
+	}
+	if routeConversations[routeKey] == convID {
+		conversationRoutes[convID] = routeKey
+		return
+	}
+	routeConversations[routeKey] = convID
+	conversationRoutes[convID] = routeKey
+	kvSet(qqConversationKVKey(routeKey), convID)
+}
+
+func bindActiveRoute(routeKey string) string {
+	activeRouteKey = strings.TrimSpace(routeKey)
+	return getCurrentConversationID(activeRouteKey)
+}
+
+func ensureConversationID(routeKey, userText string) string {
+	convID := bindActiveRoute(routeKey)
+	if convID != "" {
+		return convID
+	}
+	placeholder := strings.TrimSpace(userText)
+	if placeholder == "" {
+		placeholder = "[QQ 会话初始化]"
+	}
+	resp := request("chat.send", map[string]interface{}{
+		"conversationId": "",
+		"messageContent": placeholder,
+		"clientId":       "qq-ai-bot",
+	})
+	var result struct {
+		Accepted       bool   `json:"accepted"`
+		Reason         string `json:"reason"`
+		ConversationID string `json:"conversationId"`
+	}
+	_ = json.Unmarshal([]byte(resp), &result)
+	if !result.Accepted {
+		if strings.TrimSpace(result.Reason) != "" {
+			logMsg(fmt.Sprintf("ERROR: 创建 QQ 会话失败 route=%s reason=%s", routeKey, result.Reason))
+		} else {
+			logMsg(fmt.Sprintf("ERROR: 创建 QQ 会话失败 route=%s", routeKey))
+		}
+		return ""
+	}
+	convID = strings.TrimSpace(result.ConversationID)
+	if convID != "" {
+		setCurrentConversationID(routeKey, convID)
+		activeRouteKey = strings.TrimSpace(routeKey)
+		return convID
+	}
+	return bindActiveRoute(routeKey)
+}
 
 // API 端点
 const (
@@ -71,18 +167,14 @@ func ensureInit() {
 
 	// 加载授权用户列表
 	allowedUserIDs = make(map[string]bool)
+	routeConversations = make(map[string]string)
+	conversationRoutes = make(map[string]string)
 	loadQQAllowedUserIDs()
 
 	if len(allowedUserIDs) == 0 {
 		logMsg("自动注册模式：首个发消息的用户将被自动授权")
 	} else {
 		logMsg(fmt.Sprintf("授权用户: %d 个", len(allowedUserIDs)))
-		// 自动设置 activeUserID 为第一个授权用户
-		for uid := range allowedUserIDs {
-			activeUserID = uid
-			logMsg(fmt.Sprintf("自动设置活跃用户: %s", uid))
-			break
-		}
 	}
 
 	// 注册客户端上下文
@@ -128,7 +220,7 @@ func on_event(ptr uint32, size uint32) uint32 {
 	case "chat.delta":
 		onChatDelta(ev.Params)
 	case "chat.done":
-		onChatDone()
+		onChatDone(ev.Params)
 	case "chat.error":
 		onChatError(ev.Params)
 	case "chat.command_result":
@@ -480,25 +572,22 @@ func handleC2CMessage(data json.RawMessage) {
 	}
 
 	userID := msg.Author.ID
+	routeKey := qqC2CRouteKey(userID)
 
-	// 自动注册模式
 	if len(allowedUserIDs) == 0 {
 		saveQQAutoUserID(userID)
 		logMsg(fmt.Sprintf("自动授权首个用户: %s", userID))
 		sendQQC2CMessage(userID, "✅ 已自动授权，直接发消息即可开始对话。")
 	}
 
-	// 未授权用户
 	if !isQQUserAllowed(userID) {
 		logMsg(fmt.Sprintf("[未授权] user_id=%s", userID))
 		sendQQC2CMessage(userID, "🚫 未授权访问，请联系管理员。")
 		return
 	}
 
-	activeUserID = userID
 	userText := strings.TrimSpace(msg.Content)
 
-	// 收集有效附件
 	var validAtts []struct {
 		URL      string
 		Filename string
@@ -513,7 +602,6 @@ func handleC2CMessage(data json.RawMessage) {
 		}
 	}
 
-	// 无附件 — 直接发给 AI
 	if len(validAtts) == 0 {
 		if userText == "" {
 			return
@@ -521,16 +609,25 @@ func handleC2CMessage(data json.RawMessage) {
 		logMsg(fmt.Sprintf("[C2C:%s] %s", userID, userText[:min(len(userText), 100)]))
 		deltaCount = 0
 		replyBuf.Reset()
+		convID := bindActiveRoute(routeKey)
+		if convID == "" {
+			convID = ensureConversationID(routeKey, userText)
+		}
+		if convID == "" {
+			return
+		}
 		request("chat.send", map[string]interface{}{
+			"conversationId": convID,
 			"messageContent": userText,
 			"clientId":       "qq-ai-bot",
 		})
 		return
 	}
 
-	// 有附件 — 异步下载，所有附件完成后统一发给 AI
+	convID := bindActiveRoute(routeKey)
 	pd := &PendingDownload{
-		UserID:   userID,
+		RouteKey: routeKey,
+		ConvID:   convID,
 		UserText: userText,
 		Total:    len(validAtts),
 	}
@@ -545,7 +642,6 @@ func handleC2CMessage(data json.RawMessage) {
 		pendingDownloads[reqID] = pd
 	}
 
-	// 如果所有下载都立即失败了，直接发文本
 	if pd.Done >= pd.Total {
 		sendTextToAI(pd)
 	}
@@ -568,20 +664,25 @@ func handleGroupAtMessage(data json.RawMessage) {
 		return
 	}
 
-	// 去掉 @ 部分
 	userText := strings.TrimSpace(msg.Content)
 	userText = stripQQAtMention(userText)
 	if userText == "" {
 		return
 	}
 
-	activeUserID = msg.GroupID
+	routeKey := qqGroupRouteKey(msg.GroupID)
 	logMsg(fmt.Sprintf("[GROUP:%s] %s: %s", msg.GroupID, msg.Author.ID, userText[:min(len(userText), 50)]))
-
-	// 调用 AI
 	deltaCount = 0
 	replyBuf.Reset()
+	convID := bindActiveRoute(routeKey)
+	if convID == "" {
+		convID = ensureConversationID(routeKey, userText)
+	}
+	if convID == "" {
+		return
+	}
 	request("chat.send", map[string]interface{}{
+		"conversationId": convID,
 		"messageContent": userText,
 		"clientId":       "qq-ai-bot",
 	})
@@ -610,95 +711,148 @@ func handleChannelMessage(data json.RawMessage) {
 		return
 	}
 
-	activeUserID = msg.ChannelID
+	routeKey := qqChannelRouteKey(msg.ChannelID)
 	logMsg(fmt.Sprintf("[CHANNEL:%s] %s: %s", msg.ChannelID, msg.Author.ID, userText[:min(len(userText), 50)]))
-
-	// 调用 AI
 	deltaCount = 0
 	replyBuf.Reset()
+	convID := bindActiveRoute(routeKey)
+	if convID == "" {
+		convID = ensureConversationID(routeKey, userText)
+	}
+	if convID == "" {
+		return
+	}
 	request("chat.send", map[string]interface{}{
+		"conversationId": convID,
 		"messageContent": userText,
 		"clientId":       "qq-ai-bot",
 	})
 }
 
+func conversationRouteKey(convID string) string {
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return strings.TrimSpace(activeRouteKey)
+	}
+	if routeKey := lookupConversationRouteKey(convID); routeKey != "" {
+		return routeKey
+	}
+	return strings.TrimSpace(activeRouteKey)
+}
+
+func lookupConversationRouteKey(convID string) string {
+	convID = strings.TrimSpace(convID)
+	if convID == "" {
+		return ""
+	}
+	return strings.TrimSpace(conversationRoutes[convID])
+}
+
+func shouldBindConversation(convID string) bool {
+	convID = strings.TrimSpace(convID)
+	return convID != "" && convID != scheduledAIConversationID
+}
+
 // ==================== AI 回复处理 ====================
 
 func onChatDelta(data json.RawMessage) {
-	if activeUserID == "" {
-		return
-	}
 	var d struct {
-		Content string `json:"content"`
+		ConversationID string `json:"conversationId"`
+		Content        string `json:"content"`
 	}
 	json.Unmarshal(data, &d)
+	routeKey := conversationRouteKey(d.ConversationID)
+	if routeKey == "" {
+		return
+	}
+	activeRouteKey = routeKey
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(routeKey, d.ConversationID)
+	}
 	replyBuf.WriteString(d.Content)
 	deltaCount++
 }
 
-func onChatDone() {
-	if activeUserID == "" {
+func onChatDone(data json.RawMessage) {
+	var d struct {
+		ConversationID string `json:"conversationId"`
+	}
+	json.Unmarshal(data, &d)
+	routeKey := conversationRouteKey(d.ConversationID)
+	if routeKey == "" {
 		return
+	}
+	activeRouteKey = routeKey
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(routeKey, d.ConversationID)
 	}
 	reply := replyBuf.String()
 	replyBuf.Reset()
-	if strings.TrimSpace(reply) != "" {
-		// 判断是私聊还是群聊
-		if strings.HasPrefix(activeUserID, "group_") {
-			// 群聊回复
-			groupID := strings.TrimPrefix(activeUserID, "group_")
-			sendQQGroupMessage(groupID, reply, "")
-		} else {
-			// 私聊回复
-			sendQQC2CMessage(activeUserID, reply)
-		}
+	if strings.TrimSpace(reply) == "" {
+		return
 	}
+	sendQQReply(routeKey, reply)
 }
 
 func onChatError(data json.RawMessage) {
-	if activeUserID == "" {
-		return
-	}
 	var d struct {
-		Error string `json:"error"`
+		ConversationID string `json:"conversationId"`
+		Error          string `json:"error"`
 	}
 	json.Unmarshal(data, &d)
-	replyBuf.Reset()
-
-	errMsg := "AI 错误: " + d.Error
-	if strings.HasPrefix(activeUserID, "group_") {
-		groupID := strings.TrimPrefix(activeUserID, "group_")
-		sendQQGroupMessage(groupID, errMsg, "")
-	} else {
-		sendQQC2CMessage(activeUserID, errMsg)
+	routeKey := conversationRouteKey(d.ConversationID)
+	if routeKey == "" {
+		return
 	}
+	activeRouteKey = routeKey
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(routeKey, d.ConversationID)
+	}
+	replyBuf.Reset()
+	sendQQReply(routeKey, "AI 错误: "+d.Error)
 }
 
 func onCommandResult(data json.RawMessage) {
-	if activeUserID == "" {
-		return
-	}
 	var d struct {
-		Text    string `json:"text"`
-		IsError bool   `json:"isError"`
+		ConversationID       string `json:"conversationId"`
+		Text                 string `json:"text"`
+		IsError              bool   `json:"isError"`
+		TargetConversationID string `json:"targetConversationId"`
+		ConversationAction   string `json:"conversationAction"`
+		SwitchConversation   bool   `json:"switchConversation"`
+		RoutePolicy          string `json:"routePolicy"`
+		OwnerClientID        string `json:"ownerClientId"`
 	}
 	json.Unmarshal(data, &d)
-	if d.Text != "" {
-		prefix := "📋 "
-		if d.IsError {
-			prefix = "❌ "
-		}
-		if strings.HasPrefix(activeUserID, "group_") {
-			groupID := strings.TrimPrefix(activeUserID, "group_")
-			sendQQGroupMessage(groupID, prefix+d.Text, "")
-		} else {
-			sendQQC2CMessage(activeUserID, prefix+d.Text)
-		}
+	routeKey := lookupConversationRouteKey(d.ConversationID)
+	if routeKey == "" && strings.TrimSpace(d.TargetConversationID) != "" {
+		routeKey = lookupConversationRouteKey(d.TargetConversationID)
 	}
+	if routeKey == "" && d.SwitchConversation && d.RoutePolicy == "directed" && d.OwnerClientID == currentAppID {
+		routeKey = strings.TrimSpace(activeRouteKey)
+	}
+	if routeKey == "" {
+		return
+	}
+	activeRouteKey = routeKey
+	if d.SwitchConversation && !d.IsError && strings.TrimSpace(d.TargetConversationID) != "" && d.RoutePolicy == "directed" && d.OwnerClientID == currentAppID {
+		setCurrentConversationID(routeKey, d.TargetConversationID)
+	}
+	if d.Text == "" {
+		return
+	}
+	prefix := "📋 "
+	if d.IsError {
+		prefix = "❌ "
+	}
+	if d.ConversationAction != "" && strings.TrimSpace(d.TargetConversationID) != "" {
+		d.Text += fmt.Sprintf("\n\n当前会话: `%s`", d.TargetConversationID)
+	}
+	sendQQReply(routeKey, prefix+d.Text)
 }
 
 func onSystemNotify(data json.RawMessage) {
-	if activeUserID == "" {
+	if activeRouteKey == "" {
 		return
 	}
 	var d struct {
@@ -729,21 +883,11 @@ func onSystemNotify(data json.RawMessage) {
 		text += d.Title + "\n"
 	}
 	text += d.Message
-
-	if strings.HasPrefix(activeUserID, "group_") {
-		groupID := strings.TrimPrefix(activeUserID, "group_")
-		sendQQGroupMessage(groupID, text, "")
-	} else {
-		sendQQC2CMessage(activeUserID, text)
-	}
+	sendQQReply(activeRouteKey, text)
 }
 
 // onChatMedia 处理 AI 发送的图片/文件
 func onChatMedia(data json.RawMessage) {
-	if activeUserID == "" {
-		logMsg("WARN: 收到 chat_media 但 activeUserID 为空")
-		return
-	}
 	var d struct {
 		ConversationID string `json:"conversationId"`
 		Attachment     struct {
@@ -759,6 +903,15 @@ func onChatMedia(data json.RawMessage) {
 		logMsg("ERROR: 解析 chat_media 失败: " + err.Error())
 		return
 	}
+	routeKey := conversationRouteKey(d.ConversationID)
+	if routeKey == "" {
+		logMsg("WARN: 收到 chat_media 但 routeKey 为空")
+		return
+	}
+	activeRouteKey = routeKey
+	if shouldBindConversation(d.ConversationID) {
+		setCurrentConversationID(routeKey, d.ConversationID)
+	}
 
 	logMsg(fmt.Sprintf("收到 chat_media: path=%s, mime=%s, size=%d", d.Attachment.Path, d.Attachment.MimeType, d.Attachment.Size))
 
@@ -767,29 +920,60 @@ func onChatMedia(data json.RawMessage) {
 		filePath = "/opt/webos/" + filePath
 	}
 
-	// 判断是图片还是文件
 	isImage := strings.HasPrefix(d.Attachment.MimeType, "image/")
 	fileName := d.Attachment.FileName
 	if fileName == "" {
-		// 从路径提取文件名
 		fileName = filePath[strings.LastIndex(filePath, "/")+1:]
 	}
 
-	if strings.HasPrefix(activeUserID, "group_") {
-		groupID := strings.TrimPrefix(activeUserID, "group_")
+	sendQQAttachment(routeKey, isImage, filePath, fileName, d.Attachment.Caption)
+}
+
+func sendQQReply(routeKey, content string) {
+	routeKey = strings.TrimSpace(routeKey)
+	if routeKey == "" || strings.TrimSpace(content) == "" {
+		return
+	}
+	switch {
+	case strings.HasPrefix(routeKey, "group:"):
+		sendQQGroupMessage(strings.TrimPrefix(routeKey, "group:"), content, "")
+	case strings.HasPrefix(routeKey, "channel:"):
+		sendQQGroupMessage(strings.TrimPrefix(routeKey, "channel:"), content, "")
+	case strings.HasPrefix(routeKey, "c2c:"):
+		sendQQC2CMessage(strings.TrimPrefix(routeKey, "c2c:"), content)
+	}
+}
+
+func sendQQAttachment(routeKey string, isImage bool, filePath, fileName, caption string) {
+	routeKey = strings.TrimSpace(routeKey)
+	if routeKey == "" {
+		return
+	}
+	switch {
+	case strings.HasPrefix(routeKey, "group:"):
+		id := strings.TrimPrefix(routeKey, "group:")
 		if isImage {
-			sendQQGroupImage(groupID, filePath, "", d.Attachment.Caption)
+			sendQQGroupImage(id, filePath, "", caption)
 		} else {
-			sendQQGroupFile(groupID, filePath, fileName, d.Attachment.Caption)
+			sendQQGroupFile(id, filePath, fileName, caption)
 		}
-	} else {
+	case strings.HasPrefix(routeKey, "channel:"):
+		id := strings.TrimPrefix(routeKey, "channel:")
 		if isImage {
-			sendQQC2CImage(activeUserID, filePath, "", d.Attachment.Caption)
+			sendQQGroupImage(id, filePath, "", caption)
 		} else {
-			sendQQC2CFile(activeUserID, filePath, fileName, d.Attachment.Caption)
+			sendQQGroupFile(id, filePath, fileName, caption)
+		}
+	case strings.HasPrefix(routeKey, "c2c:"):
+		id := strings.TrimPrefix(routeKey, "c2c:")
+		if isImage {
+			sendQQC2CImage(id, filePath, "", caption)
+		} else {
+			sendQQC2CFile(id, filePath, fileName, caption)
 		}
 	}
 }
+
 
 // ==================== QQ 消息发送 ====================
 
@@ -911,7 +1095,7 @@ func isQQUserAllowed(uid string) bool {
 func handleDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 	pd.Done++
 	if errMsg != "" {
-		logMsg(fmt.Sprintf("[C2C:%s] 下载附件失败: %s", pd.UserID, errMsg))
+		logMsg(fmt.Sprintf("[%s] 下载附件失败: %s", pd.RouteKey, errMsg))
 	} else if savedPath != "" {
 		// 从绝对路径提取相对路径用于 AI
 		relativePath := savedPath
@@ -932,7 +1116,6 @@ func handleDownloadComplete(pd *PendingDownload, savedPath, errMsg string) {
 func sendTextToAI(pd *PendingDownload) {
 	userText := pd.UserText
 
-	// 拼接附件路径
 	for _, p := range pd.Paths {
 		info := fmt.Sprintf("[文件: local_1:/opt/webos/%s]", p)
 		if userText != "" {
@@ -946,11 +1129,26 @@ func sendTextToAI(pd *PendingDownload) {
 		return
 	}
 
-	activeUserID = pd.UserID
-	logMsg(fmt.Sprintf("[C2C:%s] %s", pd.UserID, userText[:min(len(userText), 100)]))
+	routeKey := strings.TrimSpace(pd.RouteKey)
+	if routeKey == "" {
+		return
+	}
+	convID := bindActiveRoute(routeKey)
+	if strings.TrimSpace(pd.ConvID) != "" {
+		convID = strings.TrimSpace(pd.ConvID)
+		setCurrentConversationID(routeKey, convID)
+	}
+	if convID == "" {
+		convID = ensureConversationID(routeKey, userText)
+	}
+	if convID == "" {
+		return
+	}
+	logMsg(fmt.Sprintf("[%s] %s", routeKey, userText[:min(len(userText), 100)]))
 	deltaCount = 0
 	replyBuf.Reset()
 	request("chat.send", map[string]interface{}{
+		"conversationId": convID,
 		"messageContent": userText,
 		"clientId":       "qq-ai-bot",
 	})
