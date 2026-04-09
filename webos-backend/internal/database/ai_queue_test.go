@@ -64,9 +64,9 @@ func TestDeletePendingAIQueueByConversation(t *testing.T) {
 		t.Fatalf("EnqueueAIMessage 3 failed: %v", err)
 	}
 
-	row, err := DequeueAIMessage()
+	row, err := DequeueAIMessageByConversation("conv-a")
 	if err != nil {
-		t.Fatalf("DequeueAIMessage failed: %v", err)
+		t.Fatalf("DequeueAIMessageByConversation failed: %v", err)
 	}
 	if row == nil || row.ID != id1 {
 		t.Fatalf("dequeued row = %+v, want id %d", row, id1)
@@ -80,9 +80,9 @@ func TestDeletePendingAIQueueByConversation(t *testing.T) {
 		t.Fatalf("cleared = %d, want 1", cleared)
 	}
 
-	next, err := DequeueAIMessage()
+	next, err := DequeueAIMessageByConversation("conv-b")
 	if err != nil {
-		t.Fatalf("DequeueAIMessage after delete failed: %v", err)
+		t.Fatalf("DequeueAIMessageByConversation after delete failed: %v", err)
 	}
 	if next == nil {
 		t.Fatal("expected remaining queue item for conv-b")
@@ -91,12 +91,68 @@ func TestDeletePendingAIQueueByConversation(t *testing.T) {
 		t.Fatalf("next conv = %q, want conv-b", next.ConvID)
 	}
 
-	none, err := DequeueAIMessage()
+	none, err := DequeueAIMessageByConversation("conv-a")
 	if err != nil {
-		t.Fatalf("final DequeueAIMessage failed: %v", err)
+		t.Fatalf("final DequeueAIMessageByConversation failed: %v", err)
 	}
 	if none != nil {
-		t.Fatalf("expected queue empty, got %+v", none)
+		t.Fatalf("expected conv-a queue empty, got %+v", none)
+	}
+}
+
+func TestDequeueAIMessageByConversationOnlyClaimsMatchingConversationInOrder(t *testing.T) {
+	setupAIQueueTestDB(t)
+
+	if err := CreateConversation("conv-a", "A", "provider-1", "model-1"); err != nil {
+		t.Fatalf("CreateConversation conv-a failed: %v", err)
+	}
+	if err := CreateConversation("conv-b", "B", "provider-1", "model-1"); err != nil {
+		t.Fatalf("CreateConversation conv-b failed: %v", err)
+	}
+
+	idA1, err := EnqueueAIMessage("conv-a", "msg-a1", "client-a", "provider-1", "model-1")
+	if err != nil {
+		t.Fatalf("EnqueueAIMessage conv-a #1 failed: %v", err)
+	}
+	idB1, err := EnqueueAIMessage("conv-b", "msg-b1", "client-b", "provider-1", "model-1")
+	if err != nil {
+		t.Fatalf("EnqueueAIMessage conv-b #1 failed: %v", err)
+	}
+	idA2, err := EnqueueAIMessage("conv-a", "msg-a2", "client-a", "provider-1", "model-1")
+	if err != nil {
+		t.Fatalf("EnqueueAIMessage conv-a #2 failed: %v", err)
+	}
+
+	rowA1, err := DequeueAIMessageByConversation("conv-a")
+	if err != nil {
+		t.Fatalf("first DequeueAIMessageByConversation conv-a failed: %v", err)
+	}
+	if rowA1 == nil || rowA1.ID != idA1 {
+		t.Fatalf("first conv-a row = %+v, want id %d", rowA1, idA1)
+	}
+
+	rowA2, err := DequeueAIMessageByConversation("conv-a")
+	if err != nil {
+		t.Fatalf("second DequeueAIMessageByConversation conv-a failed: %v", err)
+	}
+	if rowA2 == nil || rowA2.ID != idA2 {
+		t.Fatalf("second conv-a row = %+v, want id %d", rowA2, idA2)
+	}
+
+	rowB1, err := DequeueAIMessageByConversation("conv-b")
+	if err != nil {
+		t.Fatalf("DequeueAIMessageByConversation conv-b failed: %v", err)
+	}
+	if rowB1 == nil || rowB1.ID != idB1 {
+		t.Fatalf("conv-b row = %+v, want id %d", rowB1, idB1)
+	}
+
+	none, err := DequeueAIMessageByConversation("conv-a")
+	if err != nil {
+		t.Fatalf("final DequeueAIMessageByConversation conv-a failed: %v", err)
+	}
+	if none != nil {
+		t.Fatalf("expected conv-a queue empty, got %+v", none)
 	}
 }
 

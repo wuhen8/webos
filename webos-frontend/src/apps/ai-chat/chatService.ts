@@ -14,6 +14,15 @@ export interface ToolResult {
   is_error?: boolean
 }
 
+export interface MediaAttachment {
+  nodeId: string
+  path: string
+  fileName: string
+  mimeType?: string
+  size: number
+  caption?: string
+}
+
 export interface ChatDelta {
   conversationId: string
   content: string
@@ -27,7 +36,7 @@ export interface TokenUsage {
 }
 
 export interface ChatEvent {
-  type: 'delta' | 'thinking' | 'tool_call_pending' | 'tool_call' | 'tool_result' | 'shell_output' | 'done' | 'error' | 'command_result' | 'ui_action' | 'chat.busy' | 'status_update' | 'command_progress'
+  type: 'delta' | 'thinking' | 'tool_call_pending' | 'tool_call' | 'tool_result' | 'shell_output' | 'done' | 'error' | 'command_result' | 'ui_action' | 'chat.busy' | 'status_update' | 'command_progress' | 'media'
   conversationId: string
   content?: string
   toolCallPending?: { id: string; name: string }
@@ -35,12 +44,22 @@ export interface ChatEvent {
   toolResult?: ToolResult
   shellOutput?: { toolCallId: string; stream: string; data: string }
   error?: string
-  commandResult?: { text: string; isError: boolean; clearHistory: boolean }
+  commandResult?: {
+    text: string
+    isError: boolean
+    clearHistory: boolean
+    targetConversationId?: string
+    conversationAction?: string
+    switchConversation?: boolean
+    routePolicy?: string
+    ownerClientId?: string
+  }
   usage?: TokenUsage
   uiAction?: { action: string; params: Record<string, any> }
   busyInfo?: { rejectedConvId: string; busyConvTitle: string; hint: string }
   statusUpdate?: { state: 'idle' | 'running' | 'tool_executing'; runningConvId: string; runningConvTitle: string; queueSize: number }
   commandProgress?: { command: string; state: 'running' | 'done' }
+  media?: MediaAttachment
 }
 
 type ChatEventHandler = (event: ChatEvent) => void
@@ -72,12 +91,22 @@ const methodMap: Record<string, (p: any) => ChatEvent | null> = {
   'chat.error': (p) => ({ type: 'error', conversationId: p.conversationId, error: p.message || p.error }),
   'chat.command_result': (p) => ({
     type: 'command_result', conversationId: p.conversationId,
-    commandResult: { text: p.text || '', isError: p.isError || false, clearHistory: p.clearHistory || false },
+    commandResult: {
+      text: p.text || '',
+      isError: p.isError || false,
+      clearHistory: p.clearHistory || false,
+      targetConversationId: p.targetConversationId || '',
+      conversationAction: p.conversationAction || '',
+      switchConversation: p.switchConversation || false,
+      routePolicy: p.routePolicy || '',
+      ownerClientId: p.ownerClientId || '',
+    },
   }),
   'chat.command_progress': (p) => ({ type: 'command_progress', conversationId: '', commandProgress: { command: p.command, state: p.state } }),
   'chat.ui_action': (p) => ({ type: 'ui_action', conversationId: p.conversationId, uiAction: p.action }),
   'chat.busy': (p) => ({ type: 'chat.busy', conversationId: p.rejectedConvId || '', busyInfo: p }),
   'chat.status_update': (p) => ({ type: 'status_update', conversationId: p.runningConvId || '', statusUpdate: p }),
+  'chat.media': (p) => ({ type: 'media', conversationId: p.conversationId, media: p.attachment }),
 }
 
 registerMessageHandler((msg: any) => {

@@ -10,7 +10,7 @@ import { copyToClipboard } from '@/utils'
 import { useWindowStore } from '@/stores/windowStore'
 import { useEditorStore } from '@/apps/editor/store'
 import type { MessageBlock, Conversation, CommandDef } from './components/types'
-import { ToolCallBlock, ThinkingBlock } from './components/MessageBlocks'
+import { ToolCallBlock, ThinkingBlock, MediaBlock } from './components/MessageBlocks'
 import { CommandAutocomplete } from './components/CommandAutocomplete'
 import { ConfigPanel } from './components/ConfigPanel'
 import { ModelSwitcher } from './components/ModelSwitcher'
@@ -113,6 +113,19 @@ const CommandMessage = memo(({ content }: { content: string }) => {
   )
 })
 
+function parseStoredToolResult(content: string) {
+  try {
+    const parsed = JSON.parse(content)
+    if (parsed && typeof parsed === 'object' && ('content' in parsed || 'is_error' in parsed)) {
+      return {
+        content: typeof parsed.content === 'string' ? parsed.content : content,
+        isError: !!parsed.is_error,
+      }
+    }
+  } catch { /* ignore */ }
+  return { content, isError: false }
+}
+
 function buildMessageBlocks(data: any[]): MessageBlock[] {
   const blocks: MessageBlock[] = []
   for (const m of data) {
@@ -144,7 +157,8 @@ function buildMessageBlocks(data: any[]): MessageBlock[] {
       const callId = m.ToolCallID || m.tool_call_id
       const tcBlock = blocks.findLast((b: MessageBlock) => b.type === 'tool_call' && b.toolCall?.id === callId)
       if (tcBlock) {
-        tcBlock.toolResult = { tool_call_id: callId, content, is_error: false }
+        const parsed = parseStoredToolResult(content)
+        tcBlock.toolResult = { tool_call_id: callId, content: parsed.content, is_error: parsed.isError }
       }
     }
   }
@@ -166,6 +180,7 @@ export default function ChatContent() {
   const [showCommands, setShowCommands] = useState(false)
   const [cmdIndex, setCmdIndex] = useState(0)
   const [executorStatus, setExecutorStatus] = useState<{ state: 'idle' | 'running' | 'tool_executing'; runningConvId: string; runningConvTitle: string; queueSize: number }>({ state: 'idle', runningConvId: '', runningConvTitle: '', queueSize: 0 })
+  const [currentConversationActive, setCurrentConversationActive] = useState(false)
   const [commandProgress, setCommandProgress] = useState<string | null>(null)
   const [draftModelConfig, setDraftModelConfig] = useState<{ providerId: string; model: string } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -179,10 +194,9 @@ export default function ChatContent() {
   const thinkingRafRef = useRef(0)
   const convIdRef = useRef(convId)
   const streamTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const executorStatusRef = useRef(executorStatus)
+  const messageRequestRef = useRef(0)
 
   useEffect(() => { convIdRef.current = convId }, [convId])
-  useEffect(() => { executorStatusRef.current = executorStatus }, [executorStatus])
 
   const resetStreamTimeout = useCallback(() => {
     if (streamTimeoutRef.current) clearTimeout(streamTimeoutRef.current)
@@ -197,6 +211,23 @@ export default function ChatContent() {
       streamTimeoutRef.current = undefined
     }
   }, [])
+
+  const resetTransientState = useCallback(() => {
+    setStreaming(false)
+    streamBuf.current = ''
+    thinkingBuf.current = ''
+    pendingToolCalls.current.clear()
+    shellOutputs.current.clear()
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = 0
+    }
+    if (thinkingRafRef.current) {
+      cancelAnimationFrame(thinkingRafRef.current)
+      thinkingRafRef.current = 0
+    }
+    clearStreamTimeout()
+  }, [clearStreamTimeout])
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -225,11 +256,26 @@ export default function ChatContent() {
       setMessages([])
       return
     }
+    const reqId = ++messageRequestRef.current
     try {
       const data = await request('chat.messages', { conversationId: id })
+      if (reqId !== messageRequestRef.current || id !== convIdRef.current) return
       if (Array.isArray(data)) setMessages(buildMessageBlocks(data))
     } catch { /* ignore */ }
   }, [])
+
+  const restoreConversationState = useCallback(async (id: string) => {
+    if (!id) return
+    try {
+      const status = await request('chat.status', { conversationId: id })
+      if (id !== convIdRef.current) return
+      const active = !!status?.active
+      setCurrentConversationActive(active)
+      resetTransientState()
+      await loadConversationMessages(id)
+      loadConversations()
+    } catch { /* ignore */ }
+  }, [loadConversationMessages, loadConversations, resetTransientState])
 
   useEffect(() => {
     loadConversations()
@@ -239,6 +285,19 @@ export default function ChatContent() {
   }, [loadConversations])
 
   useEffect(() => {
+    const cid = convIdRef.current
+    if (!cid) {
+      setCurrentConversationActive(false)
+      return
+    }
+    request('chat.status', { conversationId: cid }).then((status: any) => {
+      if (cid === convIdRef.current) {
+        setCurrentConversationActive(!!status?.active)
+      }
+    }).catch(() => {})
+  }, [convId])
+
+  useEffect(() => {
     request('chat.commands', {}).then((data: any) => {
       if (Array.isArray(data)) setCommands(data)
     }).catch(() => {})
@@ -246,51 +305,39 @@ export default function ChatContent() {
 
   useEffect(() => {
     const unsub = registerReconnectHook(() => {
-      if (!streaming) return
       const cid = convIdRef.current
       if (!cid) return
-      setTimeout(async () => {
-        try {
-          const status = await request('chat.status', { conversationId: cid })
-          if (status && !(status as any).active) {
-            setStreaming(false)
-            streamBuf.current = ''
-            thinkingBuf.current = ''
-            if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = 0 }
-            if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
-            const data = await request('chat.messages', { conversationId: cid })
-            if (Array.isArray(data)) setMessages(buildMessageBlocks(data))
-            loadConversations()
-          }
-        } catch { /* ignore */ }
+      setTimeout(() => {
+        restoreConversationState(cid)
       }, 1000)
     })
     return unsub
-  }, [streaming, loadConversations])
+  }, [restoreConversationState])
+
+  const handleNewChat = useCallback(() => {
+    convIdRef.current = ''
+    setConvId('')
+    setMessages([])
+    setDraftModelConfig(null)
+    setCurrentConversationActive(false)
+    resetTransientState()
+  }, [resetTransientState])
+
+  const handleSelectConversation = useCallback(async (id: string) => {
+    convIdRef.current = id
+    setConvId(id)
+    setMessages([])
+    setDraftModelConfig(null)
+    setCurrentConversationActive(false)
+    resetTransientState()
+    await loadConversationMessages(id)
+  }, [loadConversationMessages, resetTransientState])
 
   useEffect(() => {
     const unsub = onChatEvent((event: ChatEvent) => {
       if (event.type === 'status_update') {
         if (event.statusUpdate) {
-          const prevStatus = executorStatusRef.current
-          const currentConvId = convIdRef.current
           setExecutorStatus(event.statusUpdate)
-          const currentConversationStopped = !!currentConvId && prevStatus.runningConvId === currentConvId && prevStatus.state !== 'idle' && event.statusUpdate.runningConvId !== currentConvId
-          if (currentConversationStopped) {
-            clearStreamTimeout()
-            setStreaming(false)
-            pendingToolCalls.current.clear()
-            shellOutputs.current.clear()
-            setMessages(prev => {
-              const hasPending = prev.some(m => m.type === 'tool_call' && !m.toolResult)
-              if (!hasPending) return prev
-              return prev.map(m =>
-                m.type === 'tool_call' && !m.toolResult
-                  ? { ...m, toolResult: { tool_call_id: m.toolCall!.id, content: t('apps.aiChat.chat.interrupted'), is_error: true }, shellOutput: undefined }
-                  : m
-              )
-            })
-          }
         }
         return
       }
@@ -313,6 +360,7 @@ export default function ChatContent() {
 
       switch (event.type) {
         case 'thinking':
+          setCurrentConversationActive(true)
           thinkingBuf.current += event.content || ''
           if (!thinkingRafRef.current) {
             thinkingRafRef.current = requestAnimationFrame(() => {
@@ -328,6 +376,7 @@ export default function ChatContent() {
           break
 
         case 'delta':
+          setCurrentConversationActive(true)
           if (thinkingBuf.current) {
             if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
             const pendingThinking = thinkingBuf.current
@@ -353,6 +402,7 @@ export default function ChatContent() {
           break
 
         case 'tool_call_pending': {
+          setCurrentConversationActive(true)
           const pendingThinking = thinkingBuf.current
           thinkingBuf.current = ''
           if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
@@ -388,6 +438,7 @@ export default function ChatContent() {
         }
 
         case 'tool_call': {
+          setCurrentConversationActive(true)
           const pendingThinking = thinkingBuf.current
           thinkingBuf.current = ''
           if (thinkingRafRef.current) { cancelAnimationFrame(thinkingRafRef.current); thinkingRafRef.current = 0 }
@@ -449,9 +500,23 @@ export default function ChatContent() {
           }
           break
 
+        case 'media':
+          if (event.media) {
+            const media = event.media
+            setMessages(prev => [...prev, {
+              id: `media-${Date.now()}`,
+              type: 'media',
+              content: media.caption || media.fileName || media.path,
+              media,
+              timestamp: Date.now(),
+            }])
+          }
+          break
+
         case 'done': {
           clearStreamTimeout()
           setStreaming(false)
+          setCurrentConversationActive(false)
           const finalContent = streamBuf.current
           streamBuf.current = ''
           thinkingBuf.current = ''
@@ -497,6 +562,7 @@ export default function ChatContent() {
         case 'error':
           clearStreamTimeout()
           setStreaming(false)
+          setCurrentConversationActive(false)
           streamBuf.current = ''
           thinkingBuf.current = ''
           pendingToolCalls.current.clear()
@@ -513,16 +579,23 @@ export default function ChatContent() {
           ])
           break
 
-        case 'command_result':
+        case 'command_result': {
           clearStreamTimeout()
           setStreaming(false)
+          setCurrentConversationActive(false)
           const commandResult = event.commandResult
           if (commandResult) {
             if (commandResult.clearHistory) {
-              convIdRef.current = ''
-              setConvId('')
-              setMessages([])
-              setDraftModelConfig(null)
+              handleNewChat()
+              loadConversations()
+            } else if (commandResult.switchConversation && commandResult.targetConversationId) {
+              setMessages(prev => [...prev, {
+                id: `cmd-${Date.now()}`,
+                type: commandResult.isError ? 'error' : 'command',
+                content: commandResult.text,
+                timestamp: Date.now(),
+              }])
+              handleSelectConversation(commandResult.targetConversationId)
               loadConversations()
             } else {
               setMessages(prev => [...prev, {
@@ -531,11 +604,12 @@ export default function ChatContent() {
                 content: commandResult.text,
                 timestamp: Date.now(),
               }])
+              loadConversations()
             }
             setConfigVer(v => v + 1)
-            loadConversations()
           }
           break
+        }
 
         case 'ui_action':
           if (event.uiAction) {
@@ -585,7 +659,7 @@ export default function ChatContent() {
       unsub()
       clearStreamTimeout()
     }
-  }, [clearStreamTimeout, loadConversations, resetStreamTimeout, t])
+  }, [clearStreamTimeout, handleNewChat, handleSelectConversation, loadConversations, resetStreamTimeout, t])
 
   const handleSend = async () => {
     const text = input.trim()
@@ -599,6 +673,7 @@ export default function ChatContent() {
 
     if (!text.startsWith('/')) {
       setStreaming(true)
+      setCurrentConversationActive(true)
       streamBuf.current = ''
       thinkingBuf.current = ''
       resetStreamTimeout()
@@ -612,33 +687,6 @@ export default function ChatContent() {
         inputRef.current.focus()
       }
     }, 50)
-  }
-
-  const handleNewChat = () => {
-    convIdRef.current = ''
-    setConvId('')
-    setMessages([])
-    setStreaming(false)
-    setDraftModelConfig(null)
-    streamBuf.current = ''
-    thinkingBuf.current = ''
-    pendingToolCalls.current.clear()
-    shellOutputs.current.clear()
-    clearStreamTimeout()
-  }
-
-  const handleSelectConversation = async (id: string) => {
-    convIdRef.current = id
-    setConvId(id)
-    setMessages([])
-    setStreaming(false)
-    setDraftModelConfig(null)
-    streamBuf.current = ''
-    thinkingBuf.current = ''
-    pendingToolCalls.current.clear()
-    shellOutputs.current.clear()
-    clearStreamTimeout()
-    await loadConversationMessages(id)
   }
 
   const handleDeleteConversation = async (id: string) => {
@@ -761,8 +809,8 @@ export default function ChatContent() {
     } catch { /* ignore invalid data */ }
   }
 
-  const currentConversationBusy = !!convId && executorStatus.runningConvId === convId && (executorStatus.state === 'running' || executorStatus.state === 'tool_executing')
-  const showHeaderBusy = currentConversationBusy || !!commandProgress
+  const currentConversationBusy = streaming || currentConversationActive
+  const showHeaderBusy = currentConversationBusy || !!commandProgress || executorStatus.state !== 'idle'
 
   return (
     <div className="h-full flex bg-white relative">
@@ -824,7 +872,13 @@ export default function ChatContent() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
                 </span>
-                {executorStatus.state === 'running' ? t('apps.aiChat.chat.responding') : t('apps.aiChat.chat.executing')}「{executorStatus.runningConvTitle}」
+                {streaming ? t('apps.aiChat.chat.responding') : t('apps.aiChat.chat.executing')}
+              </span>
+            )}
+            {!currentConversationBusy && executorStatus.state !== 'idle' && (
+              <span className="inline-flex items-center gap-1.5 text-slate-500">
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-400" />
+                {executorStatus.state === 'running' ? t('apps.aiChat.chat.responding') : t('apps.aiChat.chat.executing')}
                 {executorStatus.queueSize > 0 && ` · ${t('apps.aiChat.chat.queue', { count: executorStatus.queueSize })}`}
               </span>
             )}
@@ -865,6 +919,13 @@ export default function ChatContent() {
               return (
                 <div key={msg.id} className="px-2">
                   <ToolCallBlock call={msg.toolCall} result={msg.toolResult} shellOutput={msg.shellOutput} />
+                </div>
+              )
+            }
+            if (msg.type === 'media' && msg.media) {
+              return (
+                <div key={msg.id} className="px-2">
+                  <MediaBlock attachment={msg.media} />
                 </div>
               )
             }

@@ -271,9 +271,11 @@ func rowsToMessages(rows []database.AIMessageRow) []ChatMessage {
 	var msgs []ChatMessage
 	for _, r := range rows {
 		content := r.Content
-		// Strip leaked <think>/<\/think> tags from content to prevent context pollution
+		// Strip leaked <think>/</think> tags from content to prevent context pollution
 		if r.Role == "assistant" {
 			content = stripThinkTags(content)
+		} else if r.Role == "tool" {
+			content = decodeStoredToolMessage(content)
 		}
 		msg := ChatMessage{
 			Role:    r.Role,

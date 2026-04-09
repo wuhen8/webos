@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Loader2, AlertCircle, Brain } from 'lucide-react'
-import type { ToolCall, ToolResult } from '../chatService'
+import { ChevronDown, ChevronRight, Loader2, AlertCircle, Brain, Paperclip } from 'lucide-react'
+import type { ToolCall, ToolResult, MediaAttachment } from '../chatService'
 import { toolMeta } from './types'
 
 export function ShellResultBlock({ content, isError }: { content: string; isError: boolean }) {
@@ -73,6 +73,33 @@ function ToolArgsDisplay({ args }: { args: string }) {
   )
 }
 
+function formatFileSize(size: number) {
+  if (!Number.isFinite(size) || size <= 0) return '0 B'
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${size} B`
+}
+
+export function MediaBlock({ attachment }: { attachment: MediaAttachment }) {
+  return (
+    <div className="my-2 rounded-lg border border-sky-200 bg-sky-50/70 overflow-hidden">
+      <div className="flex items-start gap-2 px-3 py-2 text-sm text-sky-700">
+        <Paperclip className="h-4 w-4 shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium">{attachment.fileName || attachment.path}</div>
+          <div className="mt-1 text-xs text-sky-600 break-all">{attachment.path}</div>
+          <div className="mt-1 text-xs text-sky-500">
+            {attachment.mimeType || 'application/octet-stream'} · {formatFileSize(attachment.size)}
+          </div>
+          {attachment.caption && (
+            <div className="mt-2 text-xs text-slate-600 whitespace-pre-wrap break-words">{attachment.caption}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function ToolCallBlock({ call, result, shellOutput }: { call: ToolCall; result?: ToolResult; shellOutput?: { stdout: string; stderr: string } }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
@@ -85,7 +112,6 @@ export function ToolCallBlock({ call, result, shellOutput }: { call: ToolCall; r
   const isShell = call.function.name === 'shell'
   const hasLiveOutput = isShell && isRunning && shellOutput && (shellOutput.stdout || shellOutput.stderr)
 
-  // Auto-scroll live output to bottom
   useEffect(() => {
     if (liveRef.current) {
       liveRef.current.scrollTop = liveRef.current.scrollHeight

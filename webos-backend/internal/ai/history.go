@@ -9,9 +9,39 @@ import (
 // HistoryManager handles loading and saving conversation history.
 type HistoryManager struct{}
 
+type storedToolMessage struct {
+	Content string `json:"content"`
+	IsError bool   `json:"is_error,omitempty"`
+}
+
 // NewHistoryManager creates a new HistoryManager.
 func NewHistoryManager() *HistoryManager {
 	return &HistoryManager{}
+}
+
+func decodeStoredToolMessage(content string) string {
+	var stored map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(content), &stored); err != nil {
+		return content
+	}
+	if _, ok := stored["content"]; !ok {
+		if _, ok := stored["is_error"]; !ok {
+			return content
+		}
+	}
+	var payload storedToolMessage
+	if err := json.Unmarshal([]byte(content), &payload); err != nil {
+		return content
+	}
+	return payload.Content
+}
+
+func encodeStoredToolMessage(content string, isError bool) string {
+	payload, err := json.Marshal(storedToolMessage{Content: content, IsError: isError})
+	if err != nil {
+		return content
+	}
+	return string(payload)
 }
 
 // LoadMessages loads all messages for a conversation and converts them to ChatMessages.
@@ -23,9 +53,13 @@ func (h *HistoryManager) LoadMessages(convID string) ([]ChatMessage, error) {
 
 	var msgs []ChatMessage
 	for _, r := range rows {
+		content := r.Content
+		if r.Role == "tool" {
+			content = decodeStoredToolMessage(content)
+		}
 		msg := ChatMessage{
 			Role:    r.Role,
-			Content: r.Content,
+			Content: content,
 		}
 		if r.ToolCalls.Valid && r.ToolCalls.String != "" {
 			var calls []ToolCall
@@ -72,8 +106,7 @@ func (h *HistoryManager) SaveAssistantMessage(convID, content string, toolCalls 
 }
 
 // SaveToolMessage saves a tool result message to the database.
-func (h *HistoryManager) SaveToolMessage(convID, toolCallID, content string) error {
-	return database.InsertMessage(convID, "tool", content, nil, &toolCallID, "")
+func (h *HistoryManager) SaveToolMessage(convID, toolCallID, content string, isError bool) error {
+	stored := encodeStoredToolMessage(content, isError)
+	return database.InsertMessage(convID, "tool", stored, nil, &toolCallID, "")
 }
-
-

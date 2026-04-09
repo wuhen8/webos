@@ -479,7 +479,7 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID, dra
 
 		// Mark executor as streaming (busy) during API call
 		if s.Executor != nil {
-			s.Executor.SetStreaming(true)
+			s.Executor.SetStreaming(convID, true)
 		}
 		toolCalls, err = ChatStream(ctx, *cfg, messages, allTools, func(delta StreamDelta) {
 			if delta.Thinking != "" {
@@ -497,7 +497,7 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID, dra
 
 		// API call done — no longer streaming
 		if s.Executor != nil {
-			s.Executor.SetStreaming(false)
+			s.Executor.SetStreaming(convID, false)
 		}
 
 		if err != nil {
@@ -687,7 +687,7 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID, dra
 			sink.OnToolResult(convID, toolResult)
 
 			// Save tool message
-			s.history.SaveToolMessage(convID, item.tc.ID, item.result)
+			s.history.SaveToolMessage(convID, item.tc.ID, item.result, item.isErr)
 
 			// Append tool result to messages
 			messages = append(messages, ChatMessage{
@@ -752,13 +752,13 @@ func (s *Service) HandleChat(ctx context.Context, convID, userMsg, clientID, dra
 // DeleteConversation removes a conversation and cleans up all associated resources:
 // database records (messages, summaries, queue) and in-memory undo backups.
 func (s *Service) DeleteConversation(convID string) error {
-	// Clean up pending queue items for this conversation
-	if _, err := database.DeletePendingAIQueueByConversation(convID); err != nil {
-		log.Printf("[ai] 清理队列失败 conv=%s: %v", convID, err)
+	if s.Executor != nil {
+		s.Executor.StopConversation(convID)
 	}
-	// Clean up in-memory undo backups
+	if _, err := database.DeletePendingAIQueueByConversation(convID); err != nil {
+		return err
+	}
 	s.tools.ClearBackups(convID)
-	// Delete DB records (messages, summaries, conversation)
 	return database.DeleteConversation(convID)
 }
 

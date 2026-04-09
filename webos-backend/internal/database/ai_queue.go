@@ -56,6 +56,30 @@ func DequeueAIMessage() (*AIQueueRow, error) {
 	return &r, nil
 }
 
+// DequeueAIMessageByConversation returns the oldest pending message for a conversation
+// and marks it as 'processing'. Returns nil if the conversation has no pending items.
+func DequeueAIMessageByConversation(convID string) (*AIQueueRow, error) {
+	var r AIQueueRow
+	err := db.QueryRow(`
+		UPDATE ai_queue
+		SET status='processing'
+		WHERE id = (
+			SELECT id FROM ai_queue
+			WHERE conv_id=? AND status='pending'
+			ORDER BY id
+			LIMIT 1
+		)
+		RETURNING id, conv_id, content, COALESCE(client_id, 'web'), COALESCE(provider_id, ''), COALESCE(model, ''), status, created_at
+	`, convID).Scan(&r.ID, &r.ConvID, &r.Content, &r.ClientID, &r.ProviderID, &r.Model, &r.Status, &r.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &r, nil
+}
+
 // CompleteAIQueueItem marks a queue item as done and deletes it.
 func CompleteAIQueueItem(id int64) error {
 	_, err := db.Exec("DELETE FROM ai_queue WHERE id=?", id)

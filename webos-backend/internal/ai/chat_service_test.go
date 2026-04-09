@@ -24,9 +24,7 @@ func TestChatServiceStopConversationClearsPendingAndCancelsMatchingRun(t *testin
 	executor := NewAIExecutor(svc)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	executor.runningConvID = "conv-stop"
-	executor.cancelFn = cancel
-	executor.streaming = true
+	executor.conversations["conv-stop"] = &conversationState{running: true, streaming: true, cancelFn: cancel}
 	chatSvc := NewChatService(executor, svc)
 
 	result, err := chatSvc.StopConversation("conv-stop")
@@ -66,9 +64,7 @@ func TestChatServiceStopConversationDoesNotCancelOtherConversation(t *testing.T)
 	executor := NewAIExecutor(svc)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	executor.runningConvID = "conv-running"
-	executor.cancelFn = cancel
-	executor.streaming = true
+	executor.conversations["conv-running"] = &conversationState{running: true, streaming: true, cancelFn: cancel}
 	chatSvc := NewChatService(executor, svc)
 
 	result, err := chatSvc.StopConversation("conv-target")
@@ -86,8 +82,56 @@ func TestChatServiceStopConversationDoesNotCancelOtherConversation(t *testing.T)
 		t.Fatal("unexpected cancellation for running conversation")
 	default:
 	}
-	if executor.runningConvID != "conv-running" {
-		t.Fatalf("runningConvID = %q, want conv-running", executor.runningConvID)
+	if !executor.IsConversationRunning("conv-running") {
+		t.Fatal("conv-running should still be running")
+	}
+}
+
+func TestChatServiceDeleteConversationStopsActiveRunAndClearsPending(t *testing.T) {
+	setupAIChatTestDB(t)
+
+	if err := database.CreateConversation("conv-delete", "Delete", "provider-1", "model-1"); err != nil {
+		t.Fatalf("CreateConversation failed: %v", err)
+	}
+	if err := database.InsertMessage("conv-delete", "user", "hello", nil, nil, ""); err != nil {
+		t.Fatalf("InsertMessage failed: %v", err)
+	}
+	if _, err := database.EnqueueAIMessage("conv-delete", "queued-1", "client-1", "provider-1", "model-1"); err != nil {
+		t.Fatalf("EnqueueAIMessage failed: %v", err)
+	}
+
+	svc := NewService(nil)
+	executor := NewAIExecutor(svc)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	executor.conversations["conv-delete"] = &conversationState{running: true, streaming: true, cancelFn: cancel}
+	svc.Executor = executor
+	chatSvc := NewChatService(executor, svc)
+
+	if err := chatSvc.DeleteConversation("conv-delete"); err != nil {
+		t.Fatalf("DeleteConversation failed: %v", err)
+	}
+	select {
+	case <-ctx.Done():
+	default:
+		t.Fatal("expected running context to be cancelled")
+	}
+	if got := database.PendingAIQueueCount(); got != 0 {
+		t.Fatalf("PendingAIQueueCount = %d, want 0", got)
+	}
+	conv, err := database.GetConversation("conv-delete")
+	if err != nil {
+		t.Fatalf("GetConversation failed: %v", err)
+	}
+	if conv != nil {
+		t.Fatal("conversation still exists after delete")
+	}
+	rows, err := database.ListMessages("conv-delete")
+	if err != nil {
+		t.Fatalf("ListMessages failed: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("ListMessages len = %d, want 0", len(rows))
 	}
 }
 
@@ -109,8 +153,7 @@ func TestChatServiceIsChatActiveUsesExecutorAndPendingQueue(t *testing.T) {
 
 	svc := NewService(nil)
 	executor := NewAIExecutor(svc)
-	executor.runningConvID = "conv-running"
-	executor.streaming = true
+	executor.conversations["conv-running"] = &conversationState{running: true, streaming: true}
 	chatSvc := NewChatService(executor, svc)
 
 	if !chatSvc.IsChatActive("conv-running") {

@@ -1,16 +1,17 @@
 import i18n from '@/i18n'
 import { Terminal, FileText, FolderOpen, Download, Upload, Pencil, Trash2, AppWindow } from 'lucide-react'
-import type { ToolCall, ToolResult, TokenUsage } from '../chatService'
+import type { ToolCall, ToolResult, TokenUsage, MediaAttachment } from '../chatService'
 
 // ── Types ──
 
 export interface MessageBlock {
   id: string
-  type: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'error' | 'command'
+  type: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'error' | 'command' | 'media'
   content: string
   toolCall?: ToolCall
   toolResult?: ToolResult
   shellOutput?: { stdout: string; stderr: string }
+  media?: MediaAttachment
   timestamp: number
   usage?: TokenUsage
 }
